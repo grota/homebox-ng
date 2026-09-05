@@ -79,3 +79,74 @@ test('uploads a photo and shows its thumbnail', async ({ page }) => {
   // After upload the item's get query refetches; the new thumb appears.
   await expect(page.locator('img[src*="/file/uploads/thumbs/"]').first()).toBeVisible()
 })
+
+// Search + facet-narrowing leg. The first test's "Lamp" item has NO tag, so a
+// narrowing assert would be vacuous (no chip to click). Seed determinism via the
+// API — the same idiom the first test uses to seed the "Default" type: fetch the
+// Lamp id, create a `vintage` tag, assign it, and create ONE untagged twin
+// ("Table Lamp") that also matches the search term. Searching then narrows from
+// the two-item set to only the tagged one when the `vintage` facet is applied.
+test('search + tag facet narrows the item catalog', async ({ page }) => {
+  // The main test's admin already exists. Log in directly.
+  const login = await page.request.post('/trpc/auth.login', {
+    data: { email: 'admin@b.co', password: 'password123' },
+  })
+  expect(login.ok()).toBeTruthy()
+
+  // Resolve the existing "Lamp" item's id (queries are served on GET only, so
+  // the `input` is the URL-encoded JSON of the query's input object).
+  const listRes = await page.request.get(
+    '/trpc/items.list?input=' + encodeURIComponent(JSON.stringify({ page: 1, pageSize: 100 }))
+  )
+  expect(listRes.ok()).toBeTruthy()
+  const lamp = (await listRes.json()).result.data.items.find((item: any) => item.name === 'Lamp')
+  expect(lamp, 'the first test should have seeded a "Lamp" item').toBeTruthy()
+
+  // Resolve the "Default" item type id created by the first test (needed so the
+  // untagged twin is a well-formed item of the same type).
+  const typesRes = await page.request.get(
+    '/trpc/itemTypes.list?input=' + encodeURIComponent(JSON.stringify({}))
+  )
+  expect(typesRes.ok()).toBeTruthy()
+  const defaultType = (await typesRes.json()).result.data.find((type: any) => type.name === 'Default')
+  expect(defaultType, 'the first test should have seeded a "Default" type').toBeTruthy()
+
+  // Create a `vintage` tag and assign it to the existing "Lamp" item.
+  const tagRes = await page.request.post('/trpc/tags.create', { data: { name: 'vintage' } })
+  expect(tagRes.ok()).toBeTruthy()
+  const vintageId = (await tagRes.json()).result.data.id
+
+  const assignRes = await page.request.post('/trpc/tags.assign', {
+    data: { itemId: lamp.id, tagIds: [vintageId] },
+  })
+  expect(assignRes.ok()).toBeTruthy()
+
+  // Create ONE untagged sibling that also matches the search term. It must NOT be
+  // tagged, so the `vintage` facet is what distinguishes it from the tagged Lamp.
+  const siblingRes = await page.request.post('/trpc/items.create', {
+    data: {
+      name: 'Table Lamp',
+      description: '',
+      quantity: 1,
+      unit: null,
+      itemTypeId: defaultType.id,
+      locationId: null,
+      fieldValues: [],
+    },
+  })
+  expect(siblingRes.ok()).toBeTruthy()
+
+  // The search box is bound to `q`; typing debounces (~300ms) then refetches. Both
+  // the tagged "Lamp" and the untagged "Table Lamp" match `lamp` and appear as
+  // cards, plus a per-card FTS snippet while a search term is active.
+  await page.goto('/items')
+  await page.getByPlaceholder('Search items').fill('lamp')
+  await expect(page.getByRole('heading', { name: 'Lamp', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Table Lamp', exact: true })).toBeVisible()
+  await expect(page.locator('[data-testid="item-snippet"]').first()).toBeVisible()
+
+  // Apply the `vintage` tag facet: the result narrows to only the tagged item.
+  await page.getByRole('button', { name: /^vintage/ }).click()
+  await expect(page.getByRole('heading', { name: 'Lamp', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Table Lamp', exact: true })).not.toBeVisible()
+})
