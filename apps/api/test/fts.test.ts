@@ -4,6 +4,7 @@ import { createDb, runMigrations } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import { reindexItem, reindexItemType, reindexLocationSubtree, rebuildFTS } from '../src/modules/items/fts'
 import { createItem, deleteItem } from '../src/modules/items/repo'
+import { updateItem } from '../src/modules/items/service'
 import { createType } from '../src/modules/itemTypes/repo'
 import { createLocation, updateLocation } from '../src/modules/locations/repo'
 import { createTag, replaceItemTags } from '../src/modules/tags/repo'
@@ -199,5 +200,21 @@ describe('fts reindex', () => {
     rebuildFTS(db)
     expect(match('screwdriver')).toEqual([a.itemId])
     expect(match('wrench')).toEqual([b.itemId])
+  })
+})
+
+// Write-path sync: the item create/update service must reindex the FTS row so
+// an item is searchable immediately after creation and again after a rename.
+// Search terms use unique tokens (not 'lamp'/'sofa') because earlier tests in
+// this shared `db` leave indexed items whose blobs contain those tokens.
+describe('fts write-path sync', () => {
+  it('an item is searchable right after create, and re-searchable after a rename', () => {
+    const { itemId } = seedItem({ name: 'Brass Lantern' })
+    expect(match('lantern')).toHaveLength(1) // create must have reindexed
+
+    // rename through the service
+    updateItem(db, { id: itemId, name: 'Canvas Tote' })
+    expect(match('lantern')).toHaveLength(0) // old name no longer matches
+    expect(match('canvas')).toHaveLength(1) // new name is searchable
   })
 })

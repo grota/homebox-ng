@@ -1,6 +1,7 @@
 import { and, count, desc, eq, inArray, like, type SQL } from 'drizzle-orm'
 import { items, itemCustomFieldValues, itemTypeFields, itemTypes, locations, itemTags, tags, images } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
+import { reindexItem } from './fts.js'
 
 // Row shape surfaced by the app layer. CamelCase object keys (the schema is
 // already camelCase on the JS surface). Timestamps land as JS `Date` (the
@@ -121,6 +122,7 @@ export const createItem = (db: DrizzleDb, data: CreateItemData): ItemRow =>
     for (const fv of data.fieldValues) {
       tx.insert(itemCustomFieldValues).values({ itemId: created.id, fieldId: fv.fieldId, value: fv.value }).run()
     }
+    reindexItem(tx as unknown as DrizzleDb, created.id)
     return created
   })
 
@@ -137,14 +139,15 @@ export const updateItem = (db: DrizzleDb, id: number, data: UpdateItemData): Ite
 export const deleteItem = (db: DrizzleDb, id: number): boolean => db.delete(items).where(eq(items.id, id)).run().changes > 0
 
 // Replace an item's whole custom-field value set: delete the existing rows,
-// then insert the new ones, all in one transaction.
+// then insert the new ones. Does NOT open its own transaction — it is always
+// called from within `service.updateItem`'s transaction, so it operates
+// directly on the passed `db`/`tx` handle so the delete+insert+reindex commit
+// atomically.
 export const replaceFieldValues = (db: DrizzleDb, itemId: number, fieldValues: CreateFieldValueData[]): void => {
-  db.transaction((tx) => {
-    tx.delete(itemCustomFieldValues).where(eq(itemCustomFieldValues.itemId, itemId)).run()
-    for (const fv of fieldValues) {
-      tx.insert(itemCustomFieldValues).values({ itemId, fieldId: fv.fieldId, value: fv.value }).run()
-    }
-  })
+  db.delete(itemCustomFieldValues).where(eq(itemCustomFieldValues.itemId, itemId)).run()
+  for (const fv of fieldValues) {
+    db.insert(itemCustomFieldValues).values({ itemId, fieldId: fv.fieldId, value: fv.value }).run()
+  }
 }
 
 // ---------------------------------------------------------------------------

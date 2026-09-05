@@ -2,6 +2,7 @@ import { TRPCError } from '@trpc/server'
 import type { DrizzleDb } from '@homebox/db'
 import * as repo from './repo.js'
 import type { CustomFieldValueRow, ImageRow, ItemRow, LocationRefRow, TagRow, TypeRefRow } from './repo.js'
+import { reindexItem } from './fts.js'
 
 // ---------------------------------------------------------------------------
 // DTO shapes (see task-9 brief HYDRATION bullet).
@@ -126,11 +127,17 @@ export const updateItem = (db: DrizzleDb, input: UpdateItemInput): ItemDto => {
   if (input.itemTypeId !== undefined) data.itemTypeId = input.itemTypeId
   if (input.locationId !== undefined) data.locationId = input.locationId
 
-  const row = Object.keys(data).length > 0 ? repo.updateItem(db, input.id, data) ?? existing : existing
-
-  if (input.fieldValues !== undefined) {
-    repo.replaceFieldValues(db, input.id, input.fieldValues.map((fv) => ({ fieldId: fv.fieldId, value: fv.value })))
-  }
+  // The item write and its FTS reindex commit atomically: rename + field-value
+  // replacement + reindex all happen in one transaction (or none of them).
+  const row = db.transaction((tx) => {
+    const t = tx as unknown as DrizzleDb
+    const updated = Object.keys(data).length > 0 ? repo.updateItem(t, input.id, data) ?? existing : existing
+    if (input.fieldValues !== undefined) {
+      repo.replaceFieldValues(t, input.id, input.fieldValues.map((fv) => ({ fieldId: fv.fieldId, value: fv.value })))
+    }
+    reindexItem(t, input.id)
+    return updated
+  })
 
   return hydrateOne(db, row)
 }
