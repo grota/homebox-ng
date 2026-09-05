@@ -1,14 +1,10 @@
-import { initTRPC } from '@trpc/server'
-import type { Context } from './context.js'
+import { t, publicProcedure } from './trpc.js'
+import { authRouter } from './modules/auth/router.js'
 
-// tRPC v11 no longer tops-level-exports `router`/`publicProcedure`; they come
-// from a single `initTRPC` instance initialized once per app. Type it with our
-// `Context` so procedures see `{ db, user }`.
-const t = initTRPC.context<Context>().create()
-
-export const publicProcedure = t.procedure
+export { publicProcedure }
 
 export const appRouter = t.router({
   ping: publicProcedure.query(() => 'pong'),
+  auth: authRouter,
 })
 export type AppRouter = typeof appRouter
