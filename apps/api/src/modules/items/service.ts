@@ -1,0 +1,173 @@
+import { TRPCError } from '@trpc/server'
+import type { DrizzleDb } from '@homebox/db'
+import * as repo from './repo.js'
+import type { CustomFieldValueRow, ImageRow, ItemRow, LocationRefRow, TagRow, TypeRefRow } from './repo.js'
+
+// ---------------------------------------------------------------------------
+// DTO shapes (see task-9 brief HYDRATION bullet).
+// ---------------------------------------------------------------------------
+export type CustomFieldDto = { fieldId: number; fieldName: string; fieldType: CustomFieldValueRow['fieldType']; value: string | null }
+export type TypeRefDto = { id: number; name: string }
+export type LocationRefDto = { id: number; name: string }
+export type TagDto = { id: number; name: string; color: string | null }
+export type ImageDto = { id: number; originalPath: string; thumbPath: string; isPrimary: boolean | null }
+
+export type ItemDto = {
+  id: number
+  name: string
+  description: string
+  quantity: number
+  unit: string | null
+  published: boolean
+  itemTypeId: number
+  locationId: number | null
+  createdBy: number
+  createdAt: Date | null
+  updatedAt: Date | null
+  customFields: CustomFieldDto[]
+  type: TypeRefDto | null
+  location: LocationRefDto | null
+  tags: TagDto[]
+  images: ImageDto[]
+}
+
+export type CreateItemInput = {
+  name: string
+  description: string
+  quantity: number
+  unit: string | null
+  itemTypeId: number
+  locationId: number | null
+  fieldValues: { fieldId: number; value: string }[]
+}
+export type UpdateItemInput = Partial<Omit<CreateItemInput, 'fieldValues'>> & { id: number; fieldValues?: { fieldId: number; value: string }[] }
+export type ListItemsInput = { page?: number; pageSize?: number; search?: string; locationId?: number; itemTypeId?: number }
+
+const toDto = (
+  row: ItemRow,
+  customFields: CustomFieldValueRow[],
+  type: TypeRefRow | undefined,
+  location: LocationRefRow | undefined,
+  tags: TagRow[],
+  images: ImageRow[]
+): ItemDto => ({
+  id: row.id,
+  name: row.name,
+  description: row.description,
+  quantity: row.quantity,
+  unit: row.unit,
+  published: row.published,
+  itemTypeId: row.itemTypeId,
+  locationId: row.locationId,
+  createdBy: row.createdBy,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+  customFields: customFields.map((cf) => ({ fieldId: cf.fieldId, fieldName: cf.fieldName, fieldType: cf.fieldType, value: cf.value })),
+  type: type ? { id: type.id, name: type.name } : null,
+  location: location ? { id: location.id, name: location.name } : null,
+  tags: tags.map((t) => ({ id: t.id, name: t.name, color: t.color })),
+  images: images.map((img) => ({ id: img.id, originalPath: img.originalPath, thumbPath: img.thumbPath, isPrimary: img.isPrimary })),
+})
+
+// Group child-table rows by `itemId` so a list of items can be hydrated in one pass.
+const groupByItemId = <T extends { itemId: number }>(rows: T[]): Map<number, T[]> => {
+  const map = new Map<number, T[]>()
+  for (const row of rows) {
+    const arr = map.get(row.itemId) ?? []
+    arr.push(row)
+    map.set(row.itemId, arr)
+  }
+  return map
+}
+
+const distinct = (values: number[]): number[] => [...new Set(values)]
+
+// Hydrate a single item row (fetch each child table individually).
+const hydrateOne = (db: DrizzleDb, row: ItemRow): ItemDto =>
+  toDto(
+    row,
+    repo.getCustomFields(db, row.id),
+    row.itemTypeId ? repo.getType(db, row.itemTypeId) : undefined,
+    row.locationId != null ? repo.getLocation(db, row.locationId) : undefined,
+    repo.getTags(db, row.id),
+    repo.getImages(db, row.id)
+  )
+
+export const getItem = (db: DrizzleDb, id: number): ItemDto => {
+  const row = repo.getItem(db, id)
+  if (!row) throw new TRPCError({ code: 'NOT_FOUND' })
+  return hydrateOne(db, row)
+}
+
+export const createItem = (db: DrizzleDb, input: CreateItemInput, createdBy: number): ItemDto => {
+  const row = repo.createItem(db, {
+    name: input.name,
+    description: input.description,
+    quantity: input.quantity,
+    unit: input.unit,
+    itemTypeId: input.itemTypeId,
+    locationId: input.locationId,
+    createdBy,
+    published: true,
+    fieldValues: input.fieldValues.map((fv) => ({ fieldId: fv.fieldId, value: fv.value })),
+  })
+  return hydrateOne(db, row)
+}
+
+export const updateItem = (db: DrizzleDb, input: UpdateItemInput): ItemDto => {
+  const existing = repo.getItem(db, input.id)
+  if (!existing) throw new TRPCError({ code: 'NOT_FOUND' })
+
+  const data: repo.UpdateItemData = {}
+  if (input.name !== undefined) data.name = input.name
+  if (input.description !== undefined) data.description = input.description
+  if (input.quantity !== undefined) data.quantity = input.quantity
+  if (input.unit !== undefined) data.unit = input.unit
+  if (input.itemTypeId !== undefined) data.itemTypeId = input.itemTypeId
+  if (input.locationId !== undefined) data.locationId = input.locationId
+
+  const row = Object.keys(data).length > 0 ? repo.updateItem(db, input.id, data) ?? existing : existing
+
+  if (input.fieldValues !== undefined) {
+    repo.replaceFieldValues(db, input.id, input.fieldValues.map((fv) => ({ fieldId: fv.fieldId, value: fv.value })))
+  }
+
+  return hydrateOne(db, row)
+}
+
+export const deleteItem = (db: DrizzleDb, id: number): { ok: true } => {
+  if (!repo.getItem(db, id)) throw new TRPCError({ code: 'NOT_FOUND' })
+  if (!repo.deleteItem(db, id)) throw new TRPCError({ code: 'NOT_FOUND' })
+  return { ok: true }
+}
+
+// Paginated list, hydrated with `customFields`, `type`, `location`, `tags`,
+// `images`. Child tables are fetched in batches (one query per table) to avoid
+// N+1, then grouped back onto each item.
+export const listItems = (db: DrizzleDb, input: ListItemsInput): { items: ItemDto[]; total: number } => {
+  const { rows, total } = repo.listItems(db, input)
+  if (rows.length === 0) return { items: [], total }
+
+  const ids = rows.map((r) => r.id)
+  const fieldsByItem = groupByItemId(repo.listCustomFields(db, ids))
+  const tagsByItem = groupByItemId(repo.listTags(db, ids))
+  const imagesByItem = groupByItemId(repo.listImages(db, ids))
+
+  const typeIds = distinct(rows.map((r) => r.itemTypeId))
+  const typeById = new Map(repo.listTypeRefsById(db, typeIds).map((t) => [t.id, t]))
+  const locationIds = distinct(rows.filter((r) => r.locationId != null).map((r) => r.locationId!))
+  const locationById = new Map(repo.listLocationRefsById(db, locationIds).map((l) => [l.id, l]))
+
+  const items = rows.map((row) =>
+    toDto(
+      row,
+      fieldsByItem.get(row.id) ?? [],
+      typeById.get(row.itemTypeId),
+      row.locationId != null ? locationById.get(row.locationId) : undefined,
+      tagsByItem.get(row.id) ?? [],
+      imagesByItem.get(row.id) ?? []
+    )
+  )
+
+  return { items, total }
+}

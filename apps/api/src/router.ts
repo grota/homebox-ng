@@ -3,6 +3,7 @@ import { authRouter } from './modules/auth/router.js'
 import { usersRouter } from './modules/users/router.js'
 import { locationsRouter } from './modules/locations/router.js'
 import { itemTypesRouter } from './modules/itemTypes/router.js'
+import { itemsRouter } from './modules/items/router.js'
 
 export { publicProcedure }
 
@@ -12,5 +13,6 @@ export const appRouter = t.router({
   users: usersRouter,
   locations: locationsRouter,
   itemTypes: itemTypesRouter,
+  items: itemsRouter,
 })
 export type AppRouter = typeof appRouter
