@@ -103,3 +103,20 @@ export const images = sqliteTable('images', {
   sortOrder: integer('sort_order'),
   isPrimary: integer('is_primary', { mode: 'boolean' }).default(false),
 })
+
+// ---------------------------------------------------------------------------
+// FTS5 search index. A Drizzle `sqliteTable` models the columns so the query
+// builder can `select`/`insert`/`delete` against it, but the table itself is a
+// SQLite **virtual** table — `item_id` is stored `UNINDEXED`, and the
+// `MATCH`/`rank`/`snippet` concerns stay in raw `sql`. Created by migration
+// `0001_add_items_fts.sql` (Drizzle cannot generate a VIRTUAL TABLE).
+// ---------------------------------------------------------------------------
+export const itemsFts = sqliteTable('items_fts', {
+  itemId: integer('item_id').notNull(),
+  name: text('name').notNull(),
+  description: text('description').notNull(),
+  tags: text('tags').notNull(),
+  customFields: text('custom_fields').notNull(),
+  typeName: text('type_name').notNull(),
+  locationPath: text('location_path').notNull(),
+})

@@ -8,6 +8,13 @@
       "when": 1788601131434,
       "tag": "0000_panoramic_human_robot",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788631027936,
+      "tag": "0001_add_items_fts",
+      "breakpoints": true
     }
   ]
 }
