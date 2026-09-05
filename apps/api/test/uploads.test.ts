@@ -113,4 +113,13 @@ describe('image edit', () => {
     const res = await app.inject({ method: 'POST', url: '/upload/image/edit', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
     expect(res.statusCode).toBe(413)
   })
+
+  it('rejects a forged image mimetype with undecodable bytes', async () => {
+    const img = await uploadImage()
+    const form = new FormData()
+    form.append('imageId', String(img.id))
+    form.append('file', Buffer.from('this is not a real image'), { filename: 'x.png', contentType: 'image/png' })
+    const res = await app.inject({ method: 'POST', url: '/upload/image/edit', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
+    expect(res.statusCode).toBe(400)
+  })
 })

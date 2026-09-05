@@ -168,9 +168,8 @@ export const registerUploadRoutes = (app: FastifyInstance, { db, dataDir }: Regi
     }
     if (buffer.length > maxUploadBytes) return reply.code(413).send({ error: 'file too large' })
 
-    const metadata = await sharp(buffer).metadata()
-    const width = metadata.width ?? null
-    const height = metadata.height ?? null
+    let width: number | null = null
+    let height: number | null = null
 
     const uuid = randomUUID()
     const ext = extFromFilename(part.filename) ?? extFromMime(part.mimetype) ?? 'bin'
@@ -179,9 +178,22 @@ export const registerUploadRoutes = (app: FastifyInstance, { db, dataDir }: Regi
 
     const editedAbs = join(dataDir, editedRel)
     const thumbAbs = join(dataDir, thumbRel)
+
+    // `sharp` throws on undecodable bytes (a forged `image/*` content type). Decode
+    // and produce the thumb before writing anything to disk, so a bad image never
+    // leaves a partial file behind — return a clean 400 instead of a 500.
+    let thumb: Buffer
+    try {
+      const metadata = await sharp(buffer).metadata()
+      width = metadata.width ?? null
+      height = metadata.height ?? null
+      thumb = await sharp(buffer).resize({ width: 400 }).jpeg({ quality: 80 }).toBuffer()
+    } catch {
+      return reply.code(400).send({ error: 'not a decodable image' })
+    }
+
     await mkdir(dirname(editedAbs), { recursive: true })
     await writeFile(editedAbs, buffer)
-    const thumb = await sharp(buffer).resize({ width: 400 }).jpeg({ quality: 80 }).toBuffer()
     await mkdir(dirname(thumbAbs), { recursive: true })
     await writeFile(thumbAbs, thumb)
 
@@ -201,6 +213,9 @@ export const registerUploadRoutes = (app: FastifyInstance, { db, dataDir }: Regi
       width: images.width,
       height: images.height,
     }).get()
+
+    // The image could be deleted between the existence check and the update.
+    if (!row) return reply.code(404).send({ error: 'image not found' })
 
     return reply.code(200).send(row)
   })
