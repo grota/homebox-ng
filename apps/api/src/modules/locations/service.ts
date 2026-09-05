@@ -138,10 +138,11 @@ export const updateLocation = (db: DrizzleDb, input: UpdateLocationInput): Locat
 
   const row = Object.keys(data).length > 0 ? repo.updateLocation(db, input.id, data) : existing
 
-  // A location rename changes `location_path` for every item in its subtree, so
-  // re-index those items after the write. The searchable blob only carries the
-  // name (not the description), so reindex only when the name changed.
-  if (input.name !== undefined) reindexLocationSubtree(db, input.id)
+  // A location rename OR move changes `location_path` for every item in its
+  // subtree (the blob encodes the full ancestor chain), so re-index those items
+  // after the write. The searchable blob only carries the name (not the
+  // description), so reindex when the name or the parent changed.
+  if (input.name !== undefined || input.parentId !== undefined) reindexLocationSubtree(db, input.id)
 
   const depth = computeDepth(buildIndex(repo.listLocations(db)), row)
   return toDto(row, depth)

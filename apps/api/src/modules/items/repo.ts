@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNull, like, sql, type SQL } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm'
 import { items, itemCustomFieldValues, itemTypeFields, itemTypes, locations, itemTags, tags, images } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import { reindexItem } from './fts.js'
@@ -52,41 +52,6 @@ const ITEM_FIELDS = {
 export const getItem = (db: DrizzleDb, id: number): ItemRow | undefined =>
   db.select(ITEM_FIELDS).from(items).where(eq(items.id, id)).get()
 
-export type ListItemsOptions = {
-  page?: number
-  pageSize?: number
-  search?: string
-  locationId?: number
-  itemTypeId?: number
-  tagIds?: number[]
-}
-
-// Paginated listing. `search` does a `LIKE %term%` on name; optional
-// `locationId`/`itemTypeId` narrow the result. Sorted by `createdAt` desc.
-// Returns the matching rows plus a total count (before pagination).
-export const listItems = (db: DrizzleDb, opts: ListItemsOptions): { rows: ItemRow[]; total: number } => {
-  const conds: SQL[] = []
-  if (opts.search) conds.push(like(items.name, `%${opts.search}%`))
-  if (opts.locationId != null) conds.push(eq(items.locationId, opts.locationId))
-  if (opts.itemTypeId != null) conds.push(eq(items.itemTypeId, opts.itemTypeId))
-  const where = conds.length ? and(...conds) : undefined
-
-  const total = db.select({ c: count() }).from(items).where(where).get()?.c ?? 0
-  const page = opts.page ?? 1
-  const pageSize = opts.pageSize ?? 20
-
-  const rows = db
-    .select(ITEM_FIELDS)
-    .from(items)
-    .where(where)
-    .orderBy(desc(items.createdAt))
-    .limit(pageSize)
-    .offset((page - 1) * pageSize)
-    .all()
-
-  return { rows, total }
-}
-
 // ---------------------------------------------------------------------------
 // Ranked FTS search + live facets. `searchItems` handles BOTH the search and the
 // no-search case (it is the path Task 5 routes through). When a `search` term is
@@ -107,7 +72,14 @@ export type FacetCount = { id: number; name: string; count: number }
 export type TagFacet = { id: number; name: string; color: string | null; count: number }
 export type SearchFacets = { types: FacetCount[]; tags: TagFacet[]; locations: FacetCount[] }
 export type SearchRow = ItemRow & { snippet: string | null }
-export type SearchItemsOptions = ListItemsOptions
+export type SearchItemsOptions = {
+  page?: number
+  pageSize?: number
+  search?: string
+  locationId?: number
+  itemTypeId?: number
+  tagIds?: number[]
+}
 
 type RelationalFilters = { locationId?: number; itemTypeId?: number; tagIds?: number[] }
 

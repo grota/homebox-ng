@@ -150,6 +150,7 @@ export const updateItem = (db: DrizzleDb, input: UpdateItemInput): ItemDto => {
 export const deleteItem = (db: DrizzleDb, id: number): { ok: true } => {
   if (!repo.getItem(db, id)) throw new TRPCError({ code: 'NOT_FOUND' })
   if (!repo.deleteItem(db, id)) throw new TRPCError({ code: 'NOT_FOUND' })
+  reindexItem(db, id) // computeBlob returns null for the gone item → clears the items_fts row
   return { ok: true }
 }
 

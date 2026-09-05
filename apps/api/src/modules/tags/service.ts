@@ -1,4 +1,6 @@
 import { TRPCError } from '@trpc/server'
+import { eq } from 'drizzle-orm'
+import { itemTags } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import type { TagInput } from '@homebox/shared'
 import { reindexItem } from '../items/fts.js'
@@ -36,8 +38,12 @@ export const assignTags = (db: DrizzleDb, input: { itemId: number; tagIds: numbe
 }
 
 // `delete` removes the tag row; the `itemTags.tagId` FK cascades, so any
-// associated item links are cleaned up automatically.
+// associated item links are cleaned up automatically. Capture the referencing
+// item ids BEFORE the delete (the cascade wipes the `itemTags` rows), then
+// reindex each so the FTS `tags` blob no longer carries the deleted tag's name.
 export const deleteTag = (db: DrizzleDb, id: number): { ok: true } => {
+  const itemIds = db.select({ itemId: itemTags.itemId }).from(itemTags).where(eq(itemTags.tagId, id)).all().map((r) => r.itemId)
   if (!repo.deleteTag(db, id)) throw new TRPCError({ code: 'NOT_FOUND' })
+  for (const itemId of itemIds) reindexItem(db, itemId)
   return { ok: true }
 }

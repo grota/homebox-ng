@@ -4,13 +4,13 @@ import { createDb, runMigrations } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import { reindexItem, reindexItemType, reindexLocationSubtree, rebuildFTS } from '../src/modules/items/fts'
 import { createItem, deleteItem } from '../src/modules/items/repo'
-import { updateItem } from '../src/modules/items/service'
+import { deleteItem as deleteItemService, updateItem } from '../src/modules/items/service'
 import { createType } from '../src/modules/itemTypes/repo'
 import { updateItemType } from '../src/modules/itemTypes/service'
 import { createLocation, updateLocation } from '../src/modules/locations/repo'
 import { updateLocation as updateLocationService } from '../src/modules/locations/service'
 import { createTag, replaceItemTags } from '../src/modules/tags/repo'
-import { assignTags } from '../src/modules/tags/service'
+import { assignTags, deleteTag } from '../src/modules/tags/service'
 import { createUser } from '../src/modules/users/repo'
 
 let db: DrizzleDb
@@ -269,5 +269,54 @@ describe('tags assign + type/location rename reindex sync', () => {
 
     expect(match('atelier')).toEqual([itemId]) // subtree path recomputed -> new name matches
     expect(match('depot')).not.toContain(itemId) // old path no longer matches
+  })
+})
+
+// Mutation-path sync: the item/tag/location WRITE services must keep `items_fts`
+// consistent with the underlying rows, otherwise stale terms linger in search
+// results. Search terms below are unique tokens (the shared `db` index carries
+// terms from earlier tests).
+describe('mutation-path FTS sync', () => {
+  it('deleteItem clears the item row from items_fts', () => {
+    const { itemId } = seedItem({ name: 'Copper Kettle' })
+    expect(match('kettle')).toEqual([itemId]) // searchable right after create
+
+    deleteItemService(db, itemId) // service delete: must also clear the FTS row
+
+    expect(ftsRowsFor(itemId)).toBe(0) // no stale row left in the index
+    expect(match('kettle')).toEqual([]) // name no longer matches
+  })
+
+  it('deleting a tag drops its name from the items that carried it', () => {
+    const { itemId } = seedItem({ name: 'Wicker Basket' })
+    const { id: tagId } = createTag(db, { name: 'handwoven', color: '#888888' })
+
+    assignTags(db, { itemId, tagIds: [tagId] })
+    expect(match('handwoven')).toEqual([itemId]) // item is searchable by its tag
+
+    deleteTag(db, tagId) // service delete: reindexes every referencing item
+
+    expect(match('handwoven')).toEqual([]) // tag name no longer matches any item
+    expect(match('wicker')).toEqual([itemId]) // the item itself still exists and is searchable
+  })
+
+  it('moving a location re-indexes the items in its subtree', () => {
+    // Item lives in the 'InnerBay' child under the 'GrandDepot' ancestor.
+    const { itemId, childLocationId } = seedItem({
+      name: 'Packing Crate',
+      parentLocationName: 'GrandDepot',
+      locationName: 'InnerBay',
+    })
+
+    expect(match('granddepot')).toContain(itemId) // item is in the 'GrandDepot' subtree before move
+
+    const barn = createLocation(db, { name: 'GreenBarn', parentId: null, description: null })
+
+    // Move 'InnerBay' under the new 'GreenBarn' ancestor: the ancestor chain
+    // changes, so every item in the subtree must be reindexed.
+    updateLocationService(db, { id: childLocationId, parentId: barn.id })
+
+    expect(match('greenbarn')).toContain(itemId) // new ancestor path matches after the move
+    expect(match('granddepot')).not.toContain(itemId) // old path no longer matches
   })
 })
