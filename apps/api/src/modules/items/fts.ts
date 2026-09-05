@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { items, itemTags, tags, itemCustomFieldValues, itemTypes, locations, itemsFts } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 
@@ -9,7 +9,9 @@ import type { DrizzleDb } from '@homebox/db'
 // index for the admin/dev repair path.
 
 // Space-joined ancestor location names, root → leaf, so a query naming any
-// ancestor in the path matches the item. Guards against cycles via `seen`.
+// ancestor in the path matches the item. The design permits cyclic `parent_id`
+// chains, so guard against revisiting a node (check BEFORE adding its name so a
+// cycle's repeated node is not duplicated in the blob).
 const locationPathNames = (db: DrizzleDb, locationId: number): string => {
   const chain: string[] = []
   const seen = new Set<number>()
@@ -20,9 +22,10 @@ const locationPathNames = (db: DrizzleDb, locationId: number): string => {
     .where(eq(locations.id, id))
     .get()
   while (cur) {
+    if (seen.has(id)) break // already visited → cyclic; stop without duplicating
+    seen.add(id)
     chain.unshift(cur.name)
-    if (cur.parentId == null || seen.has(cur.parentId)) break
-    seen.add(cur.parentId)
+    if (cur.parentId == null) break
     id = cur.parentId
     cur = db
       .select({ parentId: locations.parentId, name: locations.name })
@@ -68,7 +71,7 @@ const computeBlob = (db: DrizzleDb, itemId: number): ItemSearchBlob | null => {
   const customValues = db
     .select({ value: itemCustomFieldValues.value })
     .from(itemCustomFieldValues)
-    .where(and(eq(itemCustomFieldValues.itemId, itemId), sql`${itemCustomFieldValues.value} IS NOT NULL`))
+    .where(and(eq(itemCustomFieldValues.itemId, itemId), isNotNull(itemCustomFieldValues.value)))
     .all()
     .map((r) => r.value as string)
 
@@ -108,13 +111,15 @@ export const reindexItemType = (db: DrizzleDb, itemTypeId: number): void => {
 }
 
 // A location rename (or move) changes the `location_path` of every item in its
-// subtree, so walk descendants via a recursive CTE.
+// subtree, so walk descendants via a recursive CTE. `UNION` (distinct) rather
+// than `UNION ALL` so a cyclic `parent_id` chain terminates: once a node is
+// already in the set no new row is produced and the recursion stops.
 export const reindexLocationSubtree = (db: DrizzleDb, locationId: number): void => {
   const ids = db
     .all<{ id: number }>(sql`
       WITH RECURSIVE sub(id) AS (
         SELECT ${locationId}
-        UNION ALL
+        UNION
         SELECT l.id FROM locations l JOIN sub ON l.parent_id = sub.id
       )
       SELECT i.id FROM items i JOIN sub ON i.location_id = sub.id

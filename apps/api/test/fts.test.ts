@@ -5,7 +5,7 @@ import type { DrizzleDb } from '@homebox/db'
 import { reindexItem, reindexItemType, reindexLocationSubtree, rebuildFTS } from '../src/modules/items/fts'
 import { createItem, deleteItem } from '../src/modules/items/repo'
 import { createType } from '../src/modules/itemTypes/repo'
-import { createLocation } from '../src/modules/locations/repo'
+import { createLocation, updateLocation } from '../src/modules/locations/repo'
 import { createTag, replaceItemTags } from '../src/modules/tags/repo'
 import { createUser } from '../src/modules/users/repo'
 
@@ -134,6 +134,44 @@ describe('fts reindex', () => {
     expect(match('acme')).toEqual([a.itemId])
     // B stays out of both narrow reindexes.
     expect(match('warehouse')).not.toContain(b.itemId)
+  })
+
+  it('terminates and matches both parent names when location data is cyclic', () => {
+    // Build a 2-cycle: locA.parent_id = locB and locB.parent_id = locA. The
+    // design permits cyclic parent chains, so both the ancestor walk
+    // (locationPathNames) and the subtree CTE (reindexLocationSubtree) must
+    // terminate — completing this test is the core assertion.
+    const locA = createLocation(db, { name: 'Cyclone', parentId: null, description: null })
+    const locB = createLocation(db, { name: 'Twister', parentId: locA.id, description: null })
+    updateLocation(db, locA.id, { parentId: locB.id }) // close the loop
+
+    const type = createType(db, { name: uniqueName('CycType'), description: null, fields: [] })
+    const item = createItem(db, {
+      name: 'Cyclic Item',
+      description: '',
+      quantity: 1,
+      unit: null,
+      itemTypeId: type.id,
+      locationId: locA.id,
+      createdBy: adminUserId,
+      published: true,
+      fieldValues: [],
+    })
+
+    // reindexItem must walk the ancestor chain without looping or duplicating a name.
+    reindexItem(db, item.id)
+    expect(match('cyclone')).toEqual([item.id])
+    expect(match('twister')).toEqual([item.id])
+    // Each ancestor name appears exactly once in the blob (no duplicated cycle node).
+    const row = db.get<{ location_path: string }>(
+      sql`SELECT location_path FROM items_fts WHERE item_id = ${item.id}`
+    )
+    expect(row?.location_path.split(' ').sort()).toEqual(['Cyclone', 'Twister'])
+
+    // reindexLocationSubtree on the cyclic location must also terminate and pick up the item.
+    reindexLocationSubtree(db, locA.id)
+    expect(match('cyclone')).toEqual([item.id])
+    expect(match('twister')).toEqual([item.id])
   })
 
   it('removes the row from items_fts when the item is deleted', () => {
