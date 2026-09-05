@@ -50,3 +50,32 @@ test('admin catalogs an item end to end', async ({ page }) => {
   // After create the list refetches; the new item's card shows its name.
   await expect(page.getByText('Lamp')).toBeVisible()
 })
+
+// Photo-upload leg: opens the item the main test created, uploads a 1×1 PNG via
+// the real upload control, and asserts the generated thumbnail renders.
+//
+// The E2E database is cleared only once per run (global-setup), so the admin,
+// the "Default" type, and the "Lamp" item created by the first test still exist
+// (tests within a file run serially by default). We therefore log in directly
+// rather than replaying first-run setup, which would fail because `/` no longer
+// routes to `/setup` once the admin exists.
+test('uploads a photo and shows its thumbnail', async ({ page }) => {
+  // The main test's admin already exists (DB persists within a run). Log in directly.
+  const login = await page.request.post('/trpc/auth.login', {
+    data: { email: 'admin@b.co', password: 'password123' },
+  })
+  expect(login.ok()).toBeTruthy()
+
+  // The main test created the "Lamp" item; its list card is a Link/anchor.
+  await page.goto('/items')
+  await page.click('a:has-text("Lamp")')
+
+  // Upload a small PNG via the photo input on the item detail page.
+  await page.setInputFiles('[aria-label="Upload photo"]', {
+    name: 'lamp.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'),
+  })
+  // After upload the item's get query refetches; the new thumb appears.
+  await expect(page.locator('img[src*="/file/uploads/thumbs/"]').first()).toBeVisible()
+})
