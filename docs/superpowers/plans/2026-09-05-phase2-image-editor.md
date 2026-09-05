@@ -28,6 +28,7 @@
 **Files:**
 - Modify: `apps/api/src/uploads.ts` (add the `/upload/image/edit` route; reuse existing imports `images`, `eq`, `randomUUID`, `mkdir`, `writeFile`, `join`, `dirname`, `sharp`, `itemIdFrom`, `extFromFilename`, `extFromMime`)
 - Modify: `apps/api/src/modules/items/service.ts:13` (ImageDto type) and `:69` (the `images.map`)
+- Modify: `apps/api/src/modules/items/repo.ts` (items-layer `ImageRow`/`listImages` must carry `editedPath`, else `tsc -b` fails and the DTO is `undefined`)
 - Test: `apps/api/test/uploads.test.ts` (add an "image edit" describe block, reusing the existing fixture)
 
 **Interfaces:**
@@ -181,6 +182,8 @@ app.post('/upload/image/edit', async (req, reply) => {
     editedPath: images.editedPath,
     thumbPath: images.thumbPath,
     isPrimary: images.isPrimary,
+    width: images.width,
+    height: images.height,
   }).get()
 
   return reply.code(200).send(row)
@@ -202,7 +205,7 @@ Expected: PASS (5 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/api/src/uploads.ts apps/api/src/modules/items/service.ts apps/api/test/uploads.test.ts
+git add apps/api/src/uploads.ts apps/api/src/modules/items/service.ts apps/api/src/modules/items/repo.ts apps/api/test/uploads.test.ts
 git commit -m "feat(upload): non-destructive edit endpoint + ImageDto.editedPath"
 ```
 
