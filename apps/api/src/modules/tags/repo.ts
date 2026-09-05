@@ -36,20 +36,21 @@ export const getItemTagIds = (db: DrizzleDb, itemId: number): TagRow[] =>
     .all()
 
 // Replace an item's whole tag set: delete the existing `itemTags` rows for
-// `itemId`, then insert one row per `tagId`, all in one transaction. Returns
-// the resulting full tag list for the item (read back inside `tx` so it's
-// consistent with the inserts).
-export const replaceItemTags = (db: DrizzleDb, itemId: number, tagIds: number[]): TagRow[] =>
-  db.transaction((tx) => {
-    tx.delete(itemTags).where(eq(itemTags.itemId, itemId)).run()
-    for (const tagId of tagIds) {
-      tx.insert(itemTags).values({ itemId, tagId }).run()
-    }
-    return tx
-      .select(TAG_FIELDS)
-      .from(itemTags)
-      .innerJoin(tags, eq(itemTags.tagId, tags.id))
-      .where(eq(itemTags.itemId, itemId))
-      .orderBy(tags.name)
-      .all()
-  })
+// `itemId`, then insert one row per `tagId`. Does NOT open its own transaction:
+// it is always called from within `service.assignTags`'s transaction, so it
+// operates directly on the passed `db`/`tx` handle so the delete + insert +
+// reindex commit atomically. Returns the resulting full tag list for the item
+// (read back on `db` so it is consistent with the inserts).
+export const replaceItemTags = (db: DrizzleDb, itemId: number, tagIds: number[]): TagRow[] => {
+  db.delete(itemTags).where(eq(itemTags.itemId, itemId)).run()
+  for (const tagId of tagIds) {
+    db.insert(itemTags).values({ itemId, tagId }).run()
+  }
+  return db
+    .select(TAG_FIELDS)
+    .from(itemTags)
+    .innerJoin(tags, eq(itemTags.tagId, tags.id))
+    .where(eq(itemTags.itemId, itemId))
+    .orderBy(tags.name)
+    .all()
+}

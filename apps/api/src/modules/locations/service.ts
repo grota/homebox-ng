@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server'
 import type { DrizzleDb } from '@homebox/db'
 import type { LocationInput } from '@homebox/shared'
+import { reindexLocationSubtree } from '../items/fts.js'
 import * as repo from './repo.js'
 import type { LocationRow } from './repo.js'
 
@@ -136,6 +137,12 @@ export const updateLocation = (db: DrizzleDb, input: UpdateLocationInput): Locat
   if (input.parentId !== undefined) data.parentId = input.parentId
 
   const row = Object.keys(data).length > 0 ? repo.updateLocation(db, input.id, data) : existing
+
+  // A location rename changes `location_path` for every item in its subtree, so
+  // re-index those items after the write. The searchable blob only carries the
+  // name (not the description), so reindex only when the name changed.
+  if (input.name !== undefined) reindexLocationSubtree(db, input.id)
+
   const depth = computeDepth(buildIndex(repo.listLocations(db)), row)
   return toDto(row, depth)
 }

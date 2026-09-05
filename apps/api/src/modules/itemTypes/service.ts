@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server'
 import type { DrizzleDb } from '@homebox/db'
 import type { ItemTypeInput } from '@homebox/shared'
+import { reindexItemType } from '../items/fts.js'
 import type { ItemTypeFieldInput } from './router.js'
 import * as repo from './repo.js'
 import type { ItemTypeFieldRow, ItemTypeRow } from './repo.js'
@@ -80,6 +81,11 @@ export const updateItemType = (db: DrizzleDb, input: { id: number; name?: string
   if (input.description !== undefined) data.description = input.description
 
   const row = Object.keys(data).length > 0 ? repo.updateType(db, input.id, data) : existing
+
+  // A type rename changes `type_name` for every item that references it, so
+  // re-index those items after the write. The searchable blob only carries the
+  // name (not the description), so reindex only when the name changed.
+  if (input.name !== undefined) reindexItemType(db, input.id)
 
   const fields =
     input.fields !== undefined

@@ -6,8 +6,11 @@ import { reindexItem, reindexItemType, reindexLocationSubtree, rebuildFTS } from
 import { createItem, deleteItem } from '../src/modules/items/repo'
 import { updateItem } from '../src/modules/items/service'
 import { createType } from '../src/modules/itemTypes/repo'
+import { updateItemType } from '../src/modules/itemTypes/service'
 import { createLocation, updateLocation } from '../src/modules/locations/repo'
+import { updateLocation as updateLocationService } from '../src/modules/locations/service'
 import { createTag, replaceItemTags } from '../src/modules/tags/repo'
+import { assignTags } from '../src/modules/tags/service'
 import { createUser } from '../src/modules/users/repo'
 
 let db: DrizzleDb
@@ -65,7 +68,11 @@ const seedItem = (opts: SeedItemOptions): SeedItemResult => {
     published: true,
     fieldValues: opts.fieldValue != null ? [{ fieldId: type.fields[0].id, value: opts.fieldValue }] : [],
   })
-  replaceItemTags(db, item.id, [tag.id])
+  // `replaceItemTags` no longer opens its own transaction, so the seed step
+  // supplies one (delete + insert must be atomic).
+  db.transaction((tx) => {
+    replaceItemTags(tx as unknown as DrizzleDb, item.id, [tag.id])
+  })
   return {
     itemId: item.id,
     typeId: type.id,
@@ -216,5 +223,51 @@ describe('fts write-path sync', () => {
     updateItem(db, { id: itemId, name: 'Canvas Tote' })
     expect(match('lantern')).toHaveLength(0) // old name no longer matches
     expect(match('canvas')).toHaveLength(1) // new name is searchable
+  })
+})
+
+// Tag assign and type/location rename must re-index the affected items so a
+// change is searchable immediately. The search terms below are unique tokens:
+// the in-memory `db` is shared across every test in this file, so a shared term
+// (like 'gear'/'home', present in many seeded items) would not be a reliable
+// "equals" assertion.
+describe('tags assign + type/location rename reindex sync', () => {
+  it('assigning a tag makes an item searchable by that tag', () => {
+    // The item's seeded default tag is a unique `misc-N`, never 'handmade'.
+    const { itemId } = seedItem({ name: 'Lounge Chair' })
+    const { id: tagId } = createTag(db, { name: 'handmade', color: '#888888' })
+
+    expect(match('handmade')).toEqual([]) // before: nothing is tagged 'handmade'
+
+    assignTags(db, { itemId, tagIds: [tagId] })
+
+    expect(match('handmade')).toEqual([itemId]) // after: the item matches its new tag
+  })
+
+  it('renaming a type makes its items searchable by the new name', () => {
+    const { itemId, typeId } = seedItem({ name: 'Wool Rug', typeName: 'Mahogany' })
+
+    expect(match('mahogany')).toEqual([itemId]) // old type name matches before rename
+
+    updateItemType(db, { id: typeId, name: 'Crafted' })
+
+    expect(match('crafted')).toEqual([itemId]) // new type name matches after rename
+    expect(match('mahogany')).toEqual([]) // old type name no longer matches
+  })
+
+  it('renaming a location re-indexes the items in its subtree', () => {
+    // Item lives in the 'Bay' child under the 'Depot' ancestor.
+    const { itemId, locationId } = seedItem({
+      name: 'Steel Cart',
+      parentLocationName: 'Depot',
+      locationName: 'Bay',
+    })
+
+    expect(match('depot')).toContain(itemId) // item is in the 'Depot' subtree before rename
+
+    updateLocationService(db, { id: locationId, name: 'Atelier' })
+
+    expect(match('atelier')).toEqual([itemId]) // subtree path recomputed -> new name matches
+    expect(match('depot')).not.toContain(itemId) // old path no longer matches
   })
 })

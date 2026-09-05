@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server'
 import type { DrizzleDb } from '@homebox/db'
 import type { TagInput } from '@homebox/shared'
+import { reindexItem } from '../items/fts.js'
 import * as repo from './repo.js'
 import type { TagRow } from './repo.js'
 
@@ -21,11 +22,18 @@ export const createTag = (db: DrizzleDb, input: TagInput): TagDto => {
 }
 
 // `assign` runs replace semantics: drop the item's existing tag links, then
-// re-establish one row per `tagId`, all in a single transaction. Returns the
-// resulting full tag list for the item as `{ assigned }`.
-export const assignTags = (db: DrizzleDb, input: { itemId: number; tagIds: number[] }): { assigned: TagDto[] } => ({
-  assigned: repo.replaceItemTags(db, input.itemId, input.tagIds).map(toDto),
-})
+// re-establish one row per `tagId`, all in a single transaction. The FTS reindex
+// runs INSIDE the same transaction, so the tag link rewrite and the searchable
+// blob commit atomically. Returns the resulting full tag list for the item as
+// `{ assigned }`.
+export const assignTags = (db: DrizzleDb, input: { itemId: number; tagIds: number[] }): { assigned: TagDto[] } => {
+  const rows = db.transaction((tx) => {
+    const assigned = repo.replaceItemTags(tx as unknown as DrizzleDb, input.itemId, input.tagIds)
+    reindexItem(tx as unknown as DrizzleDb, input.itemId)
+    return assigned
+  })
+  return { assigned: rows.map(toDto) }
+}
 
 // `delete` removes the tag row; the `itemTags.tagId` FK cascades, so any
 // associated item links are cleaned up automatically.
