@@ -1,18 +1,145 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
 import { ItemForm } from './ItemForm'
 
-// Paginated catalog listing. Thumbnails come from the first image on each item
-// (the service hydrates items with an `images` array). Clicking a card navigates
-// to `/items/:id`. "New item" toggles an inline create form.
+// URL param → tRPC input mapping lives in ONE place on this page. The URL uses
+// `q` (Phase-3 spec) but the router input field is `search`; `typeId` maps to
+// `itemTypeId`, and `tagIds[]` (repeated `tagIds` params) maps to `tagIds`.
+
+const parseId = (v: string | null): number | undefined => {
+  if (v == null) return undefined
+  const n = Number(v)
+  return Number.isInteger(n) && n > 0 ? n : undefined
+}
+
+// `tagIds[]` is serialized as repeated `tagIds` query params (a multi-select
+// `or` dimension). Parse the string[] into a de-duplicated positive int[].
+const parseTagIds = (params: URLSearchParams): number[] => {
+  const seen = new Set<number>()
+  for (const raw of params.getAll('tagIds')) {
+    const n = Number(raw)
+    if (Number.isInteger(n) && n > 0) seen.add(n)
+  }
+  return [...seen]
+}
+
+// `locations.list` returns a nested tree (each node carries `children?`). Flatten
+// it so the breadcrumb can walk the `parentId` chain up from the selected
+// location (or to the root), which the location facet says we need for the drill.
+type FlatLocation = { id: number; name: string; parentId: number | null }
+const flattenLocations = (nodes: any[]): FlatLocation[] =>
+  nodes.flatMap((n) => [
+    { id: n.id, name: n.name, parentId: (n.parentId as number | null) ?? null },
+    ...(n.children ? flattenLocations(n.children) : []),
+  ])
+
+// Paginated catalog listing with FTS search + faceted filters. URL params are the
+// single source of truth: `q`, `typeId`, `locationId`, `tagIds[]`, `page`.
+// "New item" toggles an inline create form; clicking a card navigates to the item.
 export function ItemsPage() {
-  const [page, setPage] = useState(1)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [showForm, setShowForm] = useState(false)
   const utils = trpc.useUtils()
 
-  const { data, isLoading } = trpc.items.list.useQuery({ page })
+  const q = searchParams.get('q') ?? ''
+  const locationId = parseId(searchParams.get('locationId'))
+  const itemTypeId = parseId(searchParams.get('typeId'))
+  const tagIds = parseTagIds(searchParams)
+  const page = parseId(searchParams.get('page')) ?? 1
+
+  // The search box is bound to `q` but keeps its own draft value so typing feels
+  // immediate; the draft is written back to `q` (debounced ~300ms).
+  const [searchInput, setSearchInput] = useState(q)
+
+  // Keep the box in sync when `q` changes externally (clear, back/forward).
+  useEffect(() => {
+    setSearchInput(q)
+  }, [q])
+
+  // Debounce the draft into the URL `q` and reset to page 1 on a real change.
+  // Skipping the schedule when draft === current `q` avoids writing on mount.
+  useEffect(() => {
+    if ((searchParams.get('q') ?? '') === searchInput) return
+    const t = setTimeout(() => {
+      setSearchParams((prev) => {
+        if ((prev.get('q') ?? '') === searchInput) return prev
+        const next = new URLSearchParams(prev)
+        if (searchInput.trim() === '') next.delete('q')
+        else next.set('q', searchInput)
+        next.set('page', '1')
+        return next
+      })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [searchInput, searchParams, setSearchParams])
+
+  const { data, isLoading } = trpc.items.list.useQuery({
+    page,
+    search: q.trim() || undefined,
+    locationId,
+    itemTypeId,
+    tagIds: tagIds.length ? tagIds : undefined,
+  })
   const items = data?.items ?? []
+  const facets = data?.facets
+
+  // Breadcrumb for the selected location (walk the `parentId` chain to root).
+  const locationsQuery = trpc.locations.list.useQuery()
+  const locationById = new Map(flattenLocations(locationsQuery.data ?? []).map((l) => [l.id, l]))
+  const breadcrumb: FlatLocation[] = []
+  let cursor = locationId != null ? locationById.get(locationId) : undefined
+  while (cursor) {
+    breadcrumb.unshift(cursor)
+    cursor = cursor.parentId != null ? locationById.get(cursor.parentId) : undefined
+  }
+
+  // Every filter change resets `page` to 1.
+  const applyAndResetPage = (mutate: (params: URLSearchParams) => void) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      mutate(next)
+      next.set('page', '1')
+      return next
+    })
+  }
+
+  const setTypeFilter = (id: number | undefined) =>
+    applyAndResetPage((next) => {
+      if (id == null) next.delete('typeId')
+      else next.set('typeId', String(id))
+    })
+
+  const setLocationFilter = (id: number | undefined) =>
+    applyAndResetPage((next) => {
+      if (id == null) next.delete('locationId')
+      else next.set('locationId', String(id))
+    })
+
+  const toggleTag = (id: number) =>
+    applyAndResetPage((next) => {
+      next.delete('tagIds')
+      const current = new Set(tagIds)
+      if (current.has(id)) current.delete(id)
+      else current.add(id)
+      for (const tagId of current) next.append('tagIds', String(tagId))
+    })
+
+  const clearFilters = () => {
+    setSearchInput('')
+    setSearchParams(() => {
+      const next = new URLSearchParams()
+      next.set('page', '1')
+      return next
+    })
+  }
+
+  const setPage = (p: number) =>
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('page', String(p))
+      return next
+    })
 
   const handleSaved = () => {
     utils.items.list.invalidate()
@@ -28,38 +155,115 @@ export function ItemsPage() {
         </button>
       </header>
 
+      <div className="search-toolbar">
+        <label htmlFor="item-search">Search</label>
+        <input
+          id="item-search"
+          type="search"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Search items"
+        />
+        <button type="button" onClick={clearFilters}>
+          Clear filters
+        </button>
+      </div>
+
       {showForm && <ItemForm onSaved={handleSaved} onCancel={() => setShowForm(false)} />}
 
-      {isLoading ? (
-        <p>Loading…</p>
-      ) : (
-        <div className="grid">
-          {items.map((item) => (
-            <Link key={item.id} to={`/items/${item.id}`} className="card">
-              {item.images?.[0]?.thumbPath ? (
-                <img src={'/file/' + item.images[0].thumbPath} alt={item.name} />
-              ) : null}
-              <h2>{item.name}</h2>
-              <p>{item.location?.name}</p>
-              <p>{item.type?.name}</p>
-              {item.tags.map((tag) => (
-                <span key={tag.id} className="tag">
-                  {tag.name}
-                </span>
-              ))}
-            </Link>
-          ))}
-          {items.length === 0 && <p>No items yet.</p>}
-        </div>
-      )}
+      <div className="items-layout">
+        {facets && (
+          <aside className="facet-bar">
+            {facets.types.length > 0 && (
+              <div className="facet-group">
+                <h2>Types</h2>
+                {facets.types.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`tag${itemTypeId === f.id ? ' active' : ''}`}
+                    onClick={() => setTypeFilter(itemTypeId === f.id ? undefined : f.id)}
+                  >
+                    {f.name} ({f.count})
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {facets.tags.length > 0 && (
+              <div className="facet-group">
+                <h2>Tags</h2>
+                {facets.tags.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className="tag"
+                    style={f.color ? { background: f.color } : undefined}
+                    onClick={() => toggleTag(f.id)}
+                  >
+                    {f.name} ({f.count})
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {facets.locations.length > 0 && (
+              <div className="facet-group">
+                <h2>Locations</h2>
+                <button type="button" className="tag" onClick={() => setLocationFilter(undefined)}>
+                  All locations
+                </button>
+                {breadcrumb.map((loc) => (
+                  <button key={loc.id} type="button" className="tag" onClick={() => setLocationFilter(loc.id)}>
+                    {loc.name}
+                  </button>
+                ))}
+                {facets.locations.map((f) => (
+                  <button key={f.id} type="button" className="tag" onClick={() => setLocationFilter(f.id)}>
+                    {f.name} ({f.count})
+                  </button>
+                ))}
+              </div>
+            )}
+          </aside>
+        )}
+
+        {isLoading ? (
+          <p>Loading…</p>
+        ) : (
+          <div className="grid">
+            {items.map((item) => (
+              <Link key={item.id} to={`/items/${item.id}`} className="card">
+                {item.images?.[0]?.thumbPath ? (
+                  <img src={'/file/' + item.images[0].thumbPath} alt={item.name} />
+                ) : null}
+                <h2>{item.name}</h2>
+                <p>{item.location?.name}</p>
+                <p>{item.type?.name}</p>
+                {item.tags.map((tag) => (
+                  <span key={tag.id} className="tag">
+                    {tag.name}
+                  </span>
+                ))}
+                {q.trim() && item.snippet ? (
+                  <p className="snippet" data-testid="item-snippet">
+                    {item.snippet}
+                  </p>
+                ) : null}
+              </Link>
+            ))}
+            {items.length === 0 && <p>No items yet.</p>}
+          </div>
+        )}
+      </div>
 
       {data && data.total > 1 && (
         <div className="pager">
-          <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+          <button type="button" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}>
             Prev
           </button>
           <span>Page {page}</span>
-          <button type="button" onClick={() => setPage((p) => p + 1)} disabled={page * 20 >= data.total}>
+          <button type="button" onClick={() => setPage(page + 1)} disabled={page * 20 >= data.total}>
             Next
           </button>
         </div>

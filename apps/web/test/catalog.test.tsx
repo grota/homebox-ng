@@ -19,9 +19,29 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
           useQuery: () => ({
             data: {
               items: [
-                { id: 1, name: 'Lamp', thumbPath: 'uploads/thumbs/x.jpg', location: null, type: null, tags: [] },
+                {
+                  id: 1,
+                  name: 'Lamp',
+                  description: '',
+                  quantity: 1,
+                  unit: null,
+                  published: false,
+                  itemTypeId: 1,
+                  locationId: null,
+                  createdBy: 1,
+                  createdAt: null,
+                  updatedAt: null,
+                  customFields: [],
+                  type: null,
+                  location: null,
+                  tags: [],
+                  images: [
+                    { id: 1, originalPath: 'uploads/originals/a.png', editedPath: null, thumbPath: 'uploads/thumbs/x.jpg', isPrimary: true },
+                  ],
+                },
               ],
               total: 1,
+              facets: { types: [], tags: [], locations: [] },
             },
             isLoading: false,
           }),
