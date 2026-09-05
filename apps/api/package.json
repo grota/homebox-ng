@@ -19,6 +19,8 @@
     "@homebox/db": "workspace:*",
     "@homebox/shared": "workspace:*",
     "@trpc/server": "^11.18.0",
+    "argon2": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5.12.3",
     "zod": "^3.24.1"
   },
