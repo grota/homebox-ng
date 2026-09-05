@@ -1,0 +1,17 @@
+/* Minimal reset. Full styling/Tailwind lands in Task 13. */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+input,
+button {
+  font: inherit;
+}
