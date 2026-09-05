@@ -18,7 +18,10 @@
     "@trpc/react-query": "^11.18.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.18.0"
+    "react-filerobot-image-editor": "^4.9.1",
+    "react-konva": "^19.2.6",
+    "react-router-dom": "^7.18.0",
+    "styled-components": "^6.5.3"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

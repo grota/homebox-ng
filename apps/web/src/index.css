@@ -151,6 +151,13 @@ button:disabled {
   margin: 1rem 0;
 }
 
+.photo-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #000;
+}
+
 .location-tree,
 .type-list {
   list-style: none;
