@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { itemTypeInput } from '@homebox/shared'
-import { t, adminProcedure } from '../../trpc.js'
+import { t, adminProcedure, protectedProcedure } from '../../trpc.js'
 import * as service from './service.js'
 
 // One custom field definition, provided inline on create/update. `config` is an
@@ -30,9 +30,11 @@ const updateInput = z.object({
 const idInput = z.object({ id: z.number().int().positive() })
 
 export const itemTypesRouter = t.router({
-  // Item types are instance-wide, admin-managed (unlike locations). Every
-  // procedure is gated behind `adminProcedure`; a non-admin gets `FORBIDDEN`.
-  list: adminProcedure.query(({ ctx }) => service.listItemTypes(ctx.db)),
+  // Item types are instance-wide (unlike locations). Reads (`list`) are
+  // protected: any authenticated user may load the item-type select when
+  // creating an item. Writes (`create`/`update`/`delete`) are admin-gated; a
+  // non-admin gets `FORBIDDEN` on writes.
+  list: protectedProcedure.query(({ ctx }) => service.listItemTypes(ctx.db)),
   create: adminProcedure.input(createInput).mutation(({ ctx, input }) => service.createItemType(ctx.db, input)),
   update: adminProcedure.input(updateInput).mutation(({ ctx, input }) => service.updateItemType(ctx.db, input)),
   delete: adminProcedure.input(idInput).mutation(({ ctx, input }) => service.deleteItemType(ctx.db, input.id)),
