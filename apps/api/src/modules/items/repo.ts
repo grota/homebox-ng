@@ -31,7 +31,7 @@ export type TypeRefRow = { id: number; name: string }
 export type LocationRefRow = { id: number; name: string }
 
 export type TagRow = { itemId: number; id: number; name: string; color: string | null }
-export type ImageRow = { itemId: number; id: number; originalPath: string; thumbPath: string; isPrimary: boolean | null }
+export type ImageRow = { itemId: number; id: number; originalPath: string; editedPath: string | null; thumbPath: string; isPrimary: boolean | null }
 
 // Select only the DTO columns.
 const ITEM_FIELDS = {
@@ -192,7 +192,7 @@ export const getTags = (db: DrizzleDb, itemId: number): TagRow[] => listTags(db,
 
 export const listImages = (db: DrizzleDb, itemIds: number[]): ImageRow[] =>
   db
-    .select({ itemId: images.itemId, id: images.id, originalPath: images.originalPath, thumbPath: images.thumbPath, isPrimary: images.isPrimary })
+    .select({ itemId: images.itemId, id: images.id, originalPath: images.originalPath, editedPath: images.editedPath, thumbPath: images.thumbPath, isPrimary: images.isPrimary })
     .from(images)
     .where(inArray(images.itemId, itemIds))
     .all()

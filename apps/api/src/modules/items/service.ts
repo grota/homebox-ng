@@ -10,7 +10,7 @@ export type CustomFieldDto = { fieldId: number; fieldName: string; fieldType: Cu
 export type TypeRefDto = { id: number; name: string }
 export type LocationRefDto = { id: number; name: string }
 export type TagDto = { id: number; name: string; color: string | null }
-export type ImageDto = { id: number; originalPath: string; thumbPath: string; isPrimary: boolean | null }
+export type ImageDto = { id: number; originalPath: string; editedPath: string | null; thumbPath: string; isPrimary: boolean | null }
 
 export type ItemDto = {
   id: number
@@ -66,7 +66,7 @@ const toDto = (
   type: type ? { id: type.id, name: type.name } : null,
   location: location ? { id: location.id, name: location.name } : null,
   tags: tags.map((t) => ({ id: t.id, name: t.name, color: t.color })),
-  images: images.map((img) => ({ id: img.id, originalPath: img.originalPath, thumbPath: img.thumbPath, isPrimary: img.isPrimary })),
+  images: images.map((img) => ({ id: img.id, originalPath: img.originalPath, editedPath: img.editedPath, thumbPath: img.thumbPath, isPrimary: img.isPrimary })),
 })
 
 // Group child-table rows by `itemId` so a list of items can be hydrated in one pass.

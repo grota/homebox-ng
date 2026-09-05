@@ -135,6 +135,76 @@ export const registerUploadRoutes = (app: FastifyInstance, { db, dataDir }: Regi
     return reply.code(200).send(row)
   })
 
+  // Non-destructive edit of an existing image. Writes the edited file to a fresh
+  // `uploads/edited/` path, regenerates the thumb, and updates the row's
+  // `editedPath`/`thumbPath`/dimensions/format/size while leaving
+  // `originalPath`, `sortOrder`, `isPrimary` and `itemId` untouched.
+  app.post('/upload/image/edit', async (req, reply) => {
+    const token = parseSessionCookie(req.headers.cookie)
+    const user = token ? getSessionUser(db, token, process.env.SESSION_SECRET ?? '') : null
+    if (!user) return reply.code(401).send({ error: 'UNAUTHORIZED' })
+
+    const part = await req.file()
+    if (!part) return reply.code(400).send({ error: 'expected a file part' })
+
+    const imageId = itemIdFrom((part.fields as Record<string, unknown>).imageId)
+    if (Number.isNaN(imageId)) return reply.code(400).send({ error: 'invalid imageId' })
+
+    if (typeof part.mimetype !== 'string' || !part.mimetype.startsWith('image/')) {
+      return reply.code(400).send({ error: 'file must be an image' })
+    }
+
+    const existing = db.select().from(images).where(eq(images.id, imageId)).get()
+    if (!existing) return reply.code(404).send({ error: 'image not found' })
+
+    let buffer: Buffer
+    try {
+      buffer = await part.toBuffer()
+    } catch (err) {
+      if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'FST_REQ_FILE_TOO_LARGE') {
+        return reply.code(413).send({ error: 'file too large' })
+      }
+      throw err
+    }
+    if (buffer.length > maxUploadBytes) return reply.code(413).send({ error: 'file too large' })
+
+    const metadata = await sharp(buffer).metadata()
+    const width = metadata.width ?? null
+    const height = metadata.height ?? null
+
+    const uuid = randomUUID()
+    const ext = extFromFilename(part.filename) ?? extFromMime(part.mimetype) ?? 'bin'
+    const editedRel = `uploads/edited/${uuid}.${ext}`
+    const thumbRel = `uploads/thumbs/${uuid}.jpg`
+
+    const editedAbs = join(dataDir, editedRel)
+    const thumbAbs = join(dataDir, thumbRel)
+    await mkdir(dirname(editedAbs), { recursive: true })
+    await writeFile(editedAbs, buffer)
+    const thumb = await sharp(buffer).resize({ width: 400 }).jpeg({ quality: 80 }).toBuffer()
+    await mkdir(dirname(thumbAbs), { recursive: true })
+    await writeFile(thumbAbs, thumb)
+
+    const row = db.update(images).set({
+      editedPath: editedRel,
+      thumbPath: thumbRel,
+      width,
+      height,
+      format: part.mimetype,
+      sizeBytes: buffer.length,
+    }).where(eq(images.id, imageId)).returning({
+      id: images.id,
+      originalPath: images.originalPath,
+      editedPath: images.editedPath,
+      thumbPath: images.thumbPath,
+      isPrimary: images.isPrimary,
+      width: images.width,
+      height: images.height,
+    }).get()
+
+    return reply.code(200).send(row)
+  })
+
   // Public file-serving route, used by `<img src="/file/uploads/...">` tags
   // which cannot send a Cookie header. Guards against path traversal.
   app.get('/file/*', async (req, reply) => {
