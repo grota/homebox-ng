@@ -3,6 +3,11 @@ import { RequireAuth } from '../lib/auth'
 import { LoginPage } from '../features/auth/LoginPage'
 import { SetupPage } from '../features/auth/SetupPage'
 import { HomePage } from '../features/home/HomePage'
+import { LocationsPage } from '../features/locations/LocationsPage'
+import { ItemTypesPage } from '../features/itemTypes/ItemTypesPage'
+import { TagsPage } from '../features/tags/TagsPage'
+import { ItemsPage } from '../features/items/ItemsPage'
+import { ItemDetail } from '../features/items/ItemDetail'
 
 export function AppRoutes() {
   return (
@@ -14,6 +19,46 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <HomePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/locations"
+        element={
+          <RequireAuth>
+            <LocationsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/types"
+        element={
+          <RequireAuth>
+            <ItemTypesPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/tags"
+        element={
+          <RequireAuth>
+            <TagsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/items"
+        element={
+          <RequireAuth>
+            <ItemsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/items/:id"
+        element={
+          <RequireAuth>
+            <ItemDetail />
           </RequireAuth>
         }
       />

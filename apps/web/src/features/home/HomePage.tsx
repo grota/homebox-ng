@@ -1,4 +1,15 @@
-// Placeholder home — the real catalog pages land in Task 13.
+import { Link } from 'react-router-dom'
+
 export function HomePage() {
-  return <h1>Homebox</h1>
+  return (
+    <div>
+      <h1>Homebox</h1>
+      <nav>
+        <Link to="/items">Items</Link>
+        <Link to="/locations">Locations</Link>
+        <Link to="/types">Item types</Link>
+        <Link to="/tags">Tags</Link>
+      </nav>
+    </div>
+  )
 }
