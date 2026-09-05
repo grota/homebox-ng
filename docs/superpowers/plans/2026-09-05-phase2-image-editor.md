@@ -39,7 +39,6 @@
 Extend `apps/api/test/uploads.test.ts` with an "image edit" describe. Reuse the existing `beforeAll` fixture (`app`, `adminCookie`, `itemId`, `png`). Add a helper `uploadImage()` that POSTs `/upload/image` with a fresh file and returns the JSON image row (needs the image `id`, `originalPath`, `thumbPath`, `isPrimary`).
 
 ```ts
-import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 
 const uploadImage = async () => {
