@@ -11,6 +11,8 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       // A passthrough Provider so <AppProviders> (which renders <trpc.Provider>)
       // doesn't blow up under the mock.
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+      // `useUtils` backs the auth pages' `auth.me.fetch()` on setup/login success.
+      useUtils: () => ({ auth: { me: { fetch: vi.fn(async () => null) } } }),
       auth: {
         me: { useQuery: () => ({ data: null, isLoading: false }) },
         login: { useMutation: () => ({ mutateAsync: vi.fn(async () => ({ id: 1, email: 'a@b.co', name: 'A', role: 'user' })), isPending: false, error: null }) },

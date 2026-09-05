@@ -10,10 +10,18 @@ export function LoginPage() {
   const navigate = useNavigate()
 
   const login = trpc.auth.login.useMutation()
+  const utils = trpc.useUtils()
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     await login.mutateAsync({ email, password })
+    // The login response sets the session cookie. Run the `auth.me` query and
+    // *await* it so the cache holds the freshly-authenticated user before we
+    // navigate; otherwise `RequireAuth` reads the stale cached `null` and bounces
+    // straight back to `/login`. We `fetch` rather than `invalidate` because on
+    // `/login` the `auth.me` query is NOT active, so `invalidate` would only mark
+    // it stale without refetching (leaving the user stranded on `/login`).
+    await utils.auth.me.fetch()
     setSignedIn(true)
     navigate('/')
   }

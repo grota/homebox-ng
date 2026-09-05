@@ -13,6 +13,7 @@ export function SetupPage() {
   const navigate = useNavigate()
 
   const setup = trpc.auth.setup.useMutation()
+  const utils = trpc.useUtils()
 
   // The setup route is only meaningful before an account exists. If a user is
   // already present, send them home.
@@ -22,6 +23,13 @@ export function SetupPage() {
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     await setup.mutateAsync({ name, email, password })
+    // `auth.setup` does not auto-login, so the admin must sign in. Run the
+    // `auth.me` query so the cache reflects reality (no session yet → `null`);
+    // `RequireAuth` then routes to `/login` instead of flashing a stale state.
+    // We `fetch` rather than `invalidate` because `invalidate` only refetches
+    // *active* queries, and on `/setup` the query is active but the result would
+    // not be awaited before navigation.
+    await utils.auth.me.fetch()
     setDone(true)
     navigate('/')
   }

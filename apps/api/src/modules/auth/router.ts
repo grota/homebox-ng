@@ -33,13 +33,6 @@ export const authRouter = t.router({
       .returning(USER_FIELDS)
       .get()
 
-    // First-run setup also logs the admin in (issues the session cookie), so
-    // the page is authenticated immediately after `/setup` — matching the E2E
-    // happy path and the AUTH ruling ("the page holds the cookie after /setup").
-    const secret = process.env.SESSION_SECRET ?? ''
-    const { token } = createSession(ctx.db, inserted.id, secret)
-    ctx.res.header('Set-Cookie', `session=${token}; HttpOnly; SameSite=Lax; Path=/`)
-
     return inserted
   }),
 
