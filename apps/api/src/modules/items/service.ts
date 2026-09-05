@@ -1,8 +1,12 @@
 import { TRPCError } from '@trpc/server'
 import type { DrizzleDb } from '@homebox/db'
 import * as repo from './repo.js'
-import type { CustomFieldValueRow, ImageRow, ItemRow, LocationRefRow, TagRow, TypeRefRow } from './repo.js'
+import type { CustomFieldValueRow, FacetCount, ImageRow, ItemRow, LocationRefRow, SearchFacets, TagFacet, TagRow, TypeRefRow } from './repo.js'
 import { reindexItem } from './fts.js'
+
+// Facet shapes are defined once in `repo.ts` (surfaced by `repo.searchItems`);
+// re-export here so callers have a single import site for the DTO facets.
+export type { FacetCount, SearchFacets, TagFacet }
 
 // ---------------------------------------------------------------------------
 // DTO shapes (see task-9 brief HYDRATION bullet).
@@ -30,6 +34,7 @@ export type ItemDto = {
   location: LocationRefDto | null
   tags: TagDto[]
   images: ImageDto[]
+  snippet?: string
 }
 
 export type CreateItemInput = {
@@ -42,7 +47,7 @@ export type CreateItemInput = {
   fieldValues: { fieldId: number; value: string }[]
 }
 export type UpdateItemInput = Partial<Omit<CreateItemInput, 'fieldValues'>> & { id: number; fieldValues?: { fieldId: number; value: string }[] }
-export type ListItemsInput = { page?: number; pageSize?: number; search?: string; locationId?: number; itemTypeId?: number }
+export type ListItemsInput = { page?: number; pageSize?: number; search?: string; locationId?: number; itemTypeId?: number; tagIds?: number[] }
 
 const toDto = (
   row: ItemRow,
@@ -149,11 +154,15 @@ export const deleteItem = (db: DrizzleDb, id: number): { ok: true } => {
 }
 
 // Paginated list, hydrated with `customFields`, `type`, `location`, `tags`,
-// `images`. Child tables are fetched in batches (one query per table) to avoid
-// N+1, then grouped back onto each item.
-export const listItems = (db: DrizzleDb, input: ListItemsInput): { items: ItemDto[]; total: number } => {
-  const { rows, total } = repo.listItems(db, input)
-  if (rows.length === 0) return { items: [], total }
+// `images`, and a live `snippet` + facet counts. Takes the same input shape as
+// `repo.searchItems`, which handles BOTH the FTS search and the no-search case
+// and returns `{ rows, total, facets }`. Child tables are fetched in batches
+// (one query per table) to avoid N+1, then grouped back onto each item. The
+// `snippet` is attached only when present (i.e. only when `input.search` is
+// set, since the no-search / LIKE-fallback paths return `snippet: null`).
+export const listItems = (db: DrizzleDb, input: ListItemsInput): { items: ItemDto[]; total: number; facets: SearchFacets } => {
+  const { rows, total, facets } = repo.searchItems(db, input)
+  if (rows.length === 0) return { items: [], total, facets }
 
   const ids = rows.map((r) => r.id)
   const fieldsByItem = groupByItemId(repo.listCustomFields(db, ids))
@@ -165,8 +174,8 @@ export const listItems = (db: DrizzleDb, input: ListItemsInput): { items: ItemDt
   const locationIds = distinct(rows.filter((r) => r.locationId != null).map((r) => r.locationId!))
   const locationById = new Map(repo.listLocationRefsById(db, locationIds).map((l) => [l.id, l]))
 
-  const items = rows.map((row) =>
-    toDto(
+  const items = rows.map((row) => {
+    const dto = toDto(
       row,
       fieldsByItem.get(row.id) ?? [],
       typeById.get(row.itemTypeId),
@@ -174,7 +183,9 @@ export const listItems = (db: DrizzleDb, input: ListItemsInput): { items: ItemDt
       tagsByItem.get(row.id) ?? [],
       imagesByItem.get(row.id) ?? []
     )
-  )
+    if (row.snippet != null) dto.snippet = row.snippet
+    return dto
+  })
 
-  return { items, total }
+  return { items, total, facets }
 }

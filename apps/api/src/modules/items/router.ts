@@ -29,6 +29,7 @@ const listInput = z.object({
   search: z.string().optional(),
   locationId: z.number().int().positive().optional(),
   itemTypeId: z.number().int().positive().optional(),
+  tagIds: z.array(z.number().int().positive()).optional(),
 })
 
 export const itemsRouter = t.router({
