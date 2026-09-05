@@ -3,13 +3,13 @@ import FilerobotImageEditor from 'react-filerobot-image-editor'
 import { trpc } from '../../api/trpc'
 
 type PhotoEditorProps = { image: { id: number; originalPath: string }; itemId: number; open: boolean; onClose: () => void }
-type SaveImageData = { canvas?: HTMLCanvasElement; imageBase64?: string; mimeType?: string }
+type SaveImageData = { imageCanvas?: HTMLCanvasElement; imageBase64?: string; mimeType?: string }
 
 // Derive a Blob from filerobot's `imageData`. Prefer the canvas (accurate size),
 // fall back to decoding the base64 data URL.
 const toBlob = (imageData: SaveImageData): Promise<Blob | null> => {
-  if (imageData.canvas) {
-    return new Promise((resolve) => imageData.canvas!.toBlob((b) => resolve(b), imageData.mimeType ?? 'image/png'))
+  if (imageData.imageCanvas) {
+    return new Promise((resolve) => imageData.imageCanvas!.toBlob((b) => resolve(b), imageData.mimeType ?? 'image/png'))
   }
   if (imageData.imageBase64) {
     const base64 = imageData.imageBase64.split(',')[1] ?? imageData.imageBase64

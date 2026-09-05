@@ -5,7 +5,7 @@ vi.mock('react-filerobot-image-editor', () => ({
   // The package exports the editor as its default export only (no named export).
   // On mount, invoke onSave with a fake edited image to exercise the submit path.
   default: ({ onSave }: any) => {
-    onSave({ canvas: { toBlob: (cb: any) => cb(new Blob(['x'], { type: 'image/png' })) }, mimeType: 'image/png' })
+    onSave({ imageCanvas: { toBlob: (cb: any) => cb(new Blob(['x'], { type: 'image/png' })) }, mimeType: 'image/png' })
     return null
   },
 }))
