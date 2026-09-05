@@ -65,6 +65,13 @@ export const authRouter = t.router({
     return user ?? null
   }),
 
+  // True when no user exists yet (fresh first-run instance). The SPA uses this
+  // to route a brand-new install to `/setup` instead of the dead-end `/login`.
+  requiresSetup: publicProcedure.query(async ({ ctx }) => {
+    const existing = ctx.db.select({ id: users.id }).from(users).limit(1).get()
+    return { setupRequired: existing == null }
+  }),
+
   // Invalidates the session and clears the cookie.
   logout: publicProcedure.mutation(async ({ ctx }) => {
     const token = parseSessionCookie(ctx.req.headers.cookie)

@@ -12,7 +12,11 @@ test('admin catalogs an item end to end', async ({ page }) => {
   // is obtained only via `auth.login`). Wait for the setup mutation response.
   const setupDone = page.waitForResponse((res) => res.url().includes('/trpc/auth.setup') && res.status() === 200)
 
-  await page.goto('/setup')
+  // A fresh install has no users, so the app must route the home page to the
+  // setup screen (not the dead-end sign-in page). This is the regression test
+  // for the first-run routing bug.
+  await page.goto('/')
+  await expect(page).toHaveURL(/\/setup/)
   await page.fill('#name', 'Admin')
   await page.fill('#email', 'admin@b.co')
   await page.fill('#password', 'password123')

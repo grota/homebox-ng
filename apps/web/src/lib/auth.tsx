@@ -10,6 +10,22 @@ export function useAuth() {
   return { user, isLoading }
 }
 
+// True on a fresh first-run instance (no users exist yet) — the SPA uses this to
+// route a brand-new install to `/setup` instead of the dead-end `/login`.
+export function useSetupRequired() {
+  const { data, isLoading } = trpc.auth.requiresSetup.useQuery()
+  return { setupRequired: data?.setupRequired ?? false, isLoading }
+}
+
+// Route guard: on a first-run instance (no users exist), send the visitor to
+// `/setup` — there's no account to log into yet. Rendering nothing while loading.
+export function SetupGate({ children }: { children: ReactNode }) {
+  const { setupRequired, isLoading } = useSetupRequired()
+  if (isLoading) return null
+  if (setupRequired) return <Navigate to="/setup" replace />
+  return <>{children}</>
+}
+
 // Route guard: redirects unauthenticated visitors away from protected pages to
 // `/login`. Renders nothing while the session is loading.
 export function RequireAuth({ children }: { children: ReactNode }) {
