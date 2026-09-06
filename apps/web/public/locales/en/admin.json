@@ -1,0 +1,58 @@
+{
+  "nav": {
+    "admin": "Admin"
+  },
+  "admin": {
+    "title": "Admin",
+    "tabs": {
+      "users": "Users",
+      "settings": "Instance settings",
+      "backup": "Backup & restore",
+      "system": "System"
+    },
+    "users": {
+      "title": "Users",
+      "name": "Name",
+      "email": "Email",
+      "tempPassword": "Temp password",
+      "role": "Role",
+      "create": "Invite user",
+      "remove": "Remove",
+      "makeAdmin": "Make admin",
+      "makeUser": "Make user",
+      "resetPassword": "Reset password",
+      "shareTempPassword": "Share this one-time temp password with {name}:",
+      "empty": "No users yet."
+    },
+    "settings": {
+      "title": "Instance settings",
+      "maxUploadMb": "Max upload size (MB)",
+      "detectionProvider": "Detection provider",
+      "remote": "Remote",
+      "local": "Local",
+      "endpoint": "Endpoint",
+      "model": "Model",
+      "save": "Save",
+      "saved": "Settings saved."
+    },
+    "backup": {
+      "title": "Backup & restore",
+      "download": "Download backup",
+      "uploadLabel": "Restore from a backup archive",
+      "preview": "Backup preview",
+      "previewDetail": "{users} users · {items} items · {uploads} uploads · max {mb} MB",
+      "confirm": "Restore this backup",
+      "cancel": "Cancel",
+      "replaceWarning": "This replaces all current data.",
+      "restored": "Restore complete.",
+      "restoreFailed": "Restore failed.",
+      "uploadFailed": "Upload failed.",
+      "downloadFailed": "Download failed."
+    },
+    "system": {
+      "title": "System",
+      "rebuildFts": "Rebuild search index",
+      "rebuilt": "Reindexed {count} items"
+    }
+  }
+}

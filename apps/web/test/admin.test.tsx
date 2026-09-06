@@ -3,7 +3,10 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (k: string) => k }),
+  // Map the admin page title to its English string so the guard test can assert
+  // the page rendered; every other key resolves to itself (the test's concern is
+  // routing/guarding, not translation).
+  useTranslation: () => ({ t: (k: string) => (k === 'admin.title' ? 'Admin' : k) }),
   // `AppRoutes` → `SettingsPage` → `SettingsProvider` touches `i18n.ts`, which
   // calls `i18n.use(initReactI18next)` at module load; satisfy that import.
   initReactI18next: { type: '3rdParty' },
@@ -21,16 +24,39 @@ vi.mock('react-filerobot-image-editor', () => ({
 let mockRole: string = 'admin'
 
 // mock the tRPC module so `useAuth` (auth.me) and `SetupGate` (requiresSetup)
-// resolve deterministically without a backend.
+// resolve deterministically without a backend. The admin page renders the
+// `users` tab by default, so the `users`, `instanceSettings`, `system` routers
+// and `useUtils` are stubbed too — otherwise the real client would attempt a
+// network call.
 vi.mock('../src/api/trpc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/api/trpc')>()
+  const invalidate = vi.fn()
+  const idleMutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false, error: null }
   return {
     ...actual,
     trpc: {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+      useUtils: () => ({
+        users: { list: { invalidate } },
+        instanceSettings: { get: { invalidate } },
+        system: { rebuildFts: { invalidate } },
+      }),
       auth: {
         me: { useQuery: () => ({ data: { id: 1, email: 'a@b.co', name: 'A', role: mockRole }, isLoading: false }) },
         requiresSetup: { useQuery: () => ({ data: { setupRequired: false }, isLoading: false }) },
+      },
+      users: {
+        list: { useQuery: () => ({ data: [], isLoading: false }) },
+        create: { useMutation: () => idleMutation },
+        update: { useMutation: () => idleMutation },
+        delete: { useMutation: () => idleMutation },
+      },
+      instanceSettings: {
+        get: { useQuery: () => ({ data: { maxUploadMb: 10, detectionProvider: 'remote', detectionConfig: null }, isLoading: false }) },
+        update: { useMutation: () => idleMutation },
+      },
+      system: {
+        rebuildFts: { useMutation: () => idleMutation },
       },
     },
   }
