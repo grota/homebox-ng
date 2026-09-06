@@ -6,18 +6,12 @@ import type { FastifyInstance } from 'fastify'
 import sharp from 'sharp'
 import { eq } from 'drizzle-orm'
 import { itemTypes } from '@homebox/db'
+import { itemIdFrom } from '../../uploads.js'
 import { parseSessionCookie, type DbHolder } from '../../context.js'
 import { getSessionUser } from '../../auth/sessions.js'
 import * as service from './service.js'
 
 type RegisterUnpackRouteOptions = { dbHolder: DbHolder; dataDir: string }
-
-const itemIdFrom = (field: unknown): number => {
-  const raw = Array.isArray(field) ? field[0] : field
-  const value = typeof raw === 'string' ? raw : raw && typeof raw === 'object' && 'value' in raw ? (raw as { value: unknown }).value : undefined
-  const id = Number(value)
-  return Number.isInteger(id) && id > 0 ? id : NaN
-}
 
 // Resolve the type for a root unpack: the provided field when valid, else the
 // lowest-id existing type, else null (→ 400 "no item type available").

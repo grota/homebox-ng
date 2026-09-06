@@ -136,4 +136,16 @@ describe('unpack routes', () => {
     expect(data.drafts[0]).toMatchObject({ id: expect.any(Number), name: 'chair', imageId: expect.any(Number) })
     expect(data.drafts[1]).toMatchObject({ id: expect.any(Number), name: 'table', imageId: expect.any(Number) })
   })
+
+  it('unpack.run rejects an unauthenticated request with 401', async () => {
+    const res = await app.inject({ method: 'POST', url: '/trpc/unpack.run', payload: { kind: 'item', imageId } })
+    expect(res.statusCode).toBe(401)
+    expect(res.json()?.error?.data?.code).toBe('UNAUTHORIZED')
+  })
+
+  it('POST /upload/unpack rejects an unauthenticated request with 401', async () => {
+    const res = await app.inject({ method: 'POST', url: '/upload/unpack' })
+    expect(res.statusCode).toBe(401)
+    expect(res.json()).toEqual({ error: 'UNAUTHORIZED' })
+  })
 })

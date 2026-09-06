@@ -45,7 +45,7 @@ const resolveInside = (dataDir: string, relpath: string): string | null => {
 // Read the `itemId` text field that precedes the file part. `part.fields`
 // values can be a string, a `{ value, ... }` object, or (rarely) an array;
 // normalize to a single `number`.
-const itemIdFrom = (field: unknown): number => {
+export const itemIdFrom = (field: unknown): number => {
   let raw = Array.isArray(field) ? field[0] : field
   const value =
     typeof raw === 'string'
