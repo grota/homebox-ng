@@ -15,6 +15,7 @@ export const users = sqliteTable('users', {
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   role: text('role', { enum: ['admin', 'user'] }).notNull().default('user'),
+  mustChangePassword: integer('must_change_password', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
 })
 
@@ -89,6 +90,14 @@ export const userSettings = sqliteTable('user_settings', {
   themeMode: text('theme_mode', { enum: ['auto', 'light', 'dark'] }).notNull().default('auto'),
   lightThemeId: text('light_theme_id').notNull().default('light-default'),
   darkThemeId: text('dark_theme_id').notNull().default('dark-default'),
+})
+
+export const instanceSettings = sqliteTable('instance_settings', {
+  id: integer('id').primaryKey(), // fixed row id = 1
+  maxUploadMb: integer('max_upload_mb').notNull().default(10),
+  detectionProvider: text('detection_provider', { enum: ['remote', 'local'] })
+    .notNull().default('remote'),
+  detectionConfig: text('detection_config', { mode: 'json' }),
 })
 
 export const itemTags = sqliteTable(

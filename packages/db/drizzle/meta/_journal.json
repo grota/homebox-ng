@@ -22,6 +22,13 @@
       "when": 1788685782964,
       "tag": "0002_add_user_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788698843472,
+      "tag": "0003_cute_tinkerer",
+      "breakpoints": true
     }
   ]
 }

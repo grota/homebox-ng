@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import { createDb, runMigrations } from '../src/index'
+import { createDb, runMigrations, instanceSettings, users } from '../src/index'
 
 let db: ReturnType<typeof createDb>
 beforeAll(() => {
@@ -15,5 +15,17 @@ describe('db schema', () => {
   })
   it('enforces a non-null item name', () => {
     expect(() => db.prepare('INSERT INTO items (name) VALUES (NULL)').run()).toThrow()
+  })
+  it('new migration adds instance_settings + users.must_change_password', () => {
+    const db = createDb(':memory:')
+    runMigrations(db)
+    // instance_settings row is not auto-seeded here (the api layer seeds it); the
+    // table is just queryable.
+    expect(() => db.select().from(instanceSettings).all()).not.toThrow()
+    const name = 'Alice'
+    const email = 'alice@example.com'
+    const passwordHash = 'a'.repeat(64)
+    const insert = db.insert(users).values({ name, email, passwordHash, role: 'user' }).returning().get()
+    expect(insert.mustChangePassword).toBe(false)
   })
 })
