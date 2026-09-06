@@ -186,11 +186,11 @@ export function ItemsPage() {
           <>
             <button
               type="button"
-              className="lg:hidden px-2 py-1 rounded border border-border bg-surface text-text"
+              className="relative z-[60] lg:hidden px-2 py-1 rounded border border-border bg-surface text-text"
               onClick={() => setFacetsOpen((v) => !v)}
               aria-expanded={facetsOpen}
             >
-              Filters
+              {facetsOpen ? 'Close' : 'Filters'}
             </button>
             <aside
               className={`${facetsOpen ? 'fixed inset-0 z-50 bg-bg p-4 overflow-y-auto' : 'hidden'} lg:static lg:z-auto lg:block lg:bg-transparent lg:p-0 lg:overflow-visible lg:flex lg:flex-col lg:gap-4 lg:w-60 lg:flex-shrink-0`}
