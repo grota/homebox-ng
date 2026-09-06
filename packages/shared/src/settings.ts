@@ -40,7 +40,7 @@ export const DEFAULT_USER_SETTINGS: UserSettingsDto = {
 
 // Detection provider selection (Phase 5 ships the setting + interface only; the
 // concrete providers are wired in a later phase).
-export const DETECTION_PROVIDERS = ['remote', 'local'] as const
+export const DETECTION_PROVIDERS = ['local', 'google', 'openai'] as const
 export type DetectionProvider = (typeof DETECTION_PROVIDERS)[number]
 
 // Single row of instance-wide settings.
@@ -58,6 +58,6 @@ export type InstanceSettingsInput = z.infer<typeof instanceSettingsUpdateSchema>
 // Used when no row exists yet.
 export const DEFAULT_INSTANCE_SETTINGS: InstanceSettingsDto = {
   maxUploadMb: 10,
-  detectionProvider: 'remote',
+  detectionProvider: 'google',
   detectionConfig: null,
 }

@@ -34,7 +34,7 @@ describe('instanceSettings module', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json().result.data).toEqual({
       maxUploadMb: 10,
-      detectionProvider: 'remote',
+      detectionProvider: 'google',
       detectionConfig: null,
     })
   })

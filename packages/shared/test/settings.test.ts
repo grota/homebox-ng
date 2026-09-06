@@ -31,6 +31,6 @@ describe('shared settings schemas', () => {
   test('instanceSettings defaults + partial update', () => {
     expect(DEFAULT_INSTANCE_SETTINGS.maxUploadMb).toBe(10)
     expect(instanceSettingsUpdateSchema.parse({ maxUploadMb: 25 })).toEqual({ maxUploadMb: 25 })
-    expect(instanceSettingsSchema.parse(DEFAULT_INSTANCE_SETTINGS).detectionProvider).toBe('remote')
+    expect(instanceSettingsSchema.parse(DEFAULT_INSTANCE_SETTINGS).detectionProvider).toBe('google')
   })
 })

@@ -95,8 +95,8 @@ export const userSettings = sqliteTable('user_settings', {
 export const instanceSettings = sqliteTable('instance_settings', {
   id: integer('id').primaryKey(), // fixed row id = 1
   maxUploadMb: integer('max_upload_mb').notNull().default(10),
-  detectionProvider: text('detection_provider', { enum: ['remote', 'local'] })
-    .notNull().default('remote'),
+  detectionProvider: text('detection_provider', { enum: ['local', 'google', 'openai'] })
+    .notNull().default('google'),
   detectionConfig: text('detection_config', { mode: 'json' }),
 })
 
