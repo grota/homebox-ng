@@ -25,6 +25,13 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
           useMutation: () => ({ mutateAsync, isPending: false, error: null }),
         },
       },
+      // `<AppProviders>` renders `<SettingsProvider>`, which reads `settings.get`
+      // and wires `settings.update`. Return `data: undefined` so the provider falls
+      // back to the spec defaults.
+      settings: {
+        get: { useQuery: () => ({ data: undefined, isLoading: false }) },
+        update: { useMutation: () => ({ mutateAsync, isPending: false, error: null }) },
+      },
     },
     __itemTypes: { invalidate, mutateAsync },
   }

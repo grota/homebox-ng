@@ -18,6 +18,13 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         login: { useMutation: () => ({ mutateAsync: vi.fn(async () => ({ id: 1, email: 'a@b.co', name: 'A', role: 'user' })), isPending: false, error: null }) },
         setup: { useMutation: () => ({ mutateAsync: vi.fn(async () => ({ id: 1 })), isPending: false, error: null }) },
       },
+      // `<AppProviders>` renders `<SettingsProvider>`, which reads `settings.get`
+      // and wires `settings.update`. Return `data: undefined` so the provider falls
+      // back to the spec defaults (no crash for the unauthenticated view).
+      settings: {
+        get: { useQuery: () => ({ data: undefined, isLoading: false }) },
+        update: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
+      },
     },
   }
 })
