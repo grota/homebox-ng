@@ -6,6 +6,7 @@ import { createContext, type DbHolder } from './context.js'
 import { loadEnv } from './env.js'
 import { registerUploadRoutes } from './uploads.js'
 import { registerBackupRoutes } from './modules/backup/backupRoutes.js'
+import { registerUnpackRoute } from './modules/unpack/route.js'
 import { getSettings } from './modules/instanceSettings/service.js'
 import { registerDetectionProviders } from './modules/detection/register.js'
 
@@ -36,6 +37,9 @@ export const buildApp = ({ db, dataDir = './data', dbPath }: BuildAppOptions) =>
   // reuses (`/upload/backup` reads `req.file()`).
   registerUploadRoutes(app, { dbHolder, dataDir })
   registerBackupRoutes(app, { dbHolder, dataDir, dbPath })
+  // After the upload/backup routes so `@fastify/multipart` (registered by
+  // registerUploadRoutes) is available to the unpack route's `req.file()`.
+  registerUnpackRoute(app, { dbHolder, dataDir })
 
   // Register the detection providers against live instance settings. The mock
   // gate (DETECTION_MOCK=1) lets e2e/smoke runs avoid real model/API calls.
