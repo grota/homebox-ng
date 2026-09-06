@@ -5,6 +5,7 @@ apps/web/dist
 data/
 .env
 .superpowers/
+.worktrees/
 *.tsbuildinfo
 # Playwright artifacts
 test-results/
