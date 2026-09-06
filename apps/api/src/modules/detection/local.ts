@@ -15,7 +15,7 @@ export const createLocalProvider = (
     // Lazy import: @huggingface/transformers drags onnxruntime-node which is
     // native and heavy; keep module load light and only load it on first use.
     const { pipeline } = await import('@huggingface/transformers')
-    return pipeline('object-detection', model, opts) as Promise<Pipeline>
+    return pipeline('object-detection', model, opts) as unknown as Promise<Pipeline>
   })
 
   return {
