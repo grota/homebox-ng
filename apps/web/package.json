@@ -16,9 +16,11 @@
     "@tanstack/react-query": "^5.102.8",
     "@trpc/client": "^11.18.0",
     "@trpc/react-query": "^11.18.0",
+    "i18next": "^26.4.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-filerobot-image-editor": "^4.9.1",
+    "react-i18next": "^17.0.13",
     "react-konva": "^19.2.6",
     "react-router-dom": "^7.18.0"
   },

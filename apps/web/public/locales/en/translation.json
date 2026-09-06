@@ -1,0 +1,22 @@
+{
+  "app": { "title": "Homebox" },
+  "nav": {
+    "items": "Items",
+    "locations": "Locations",
+    "types": "Item types",
+    "tags": "Tags",
+    "settings": "Settings"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "locale": "Locale",
+    "themeMode": "Theme mode",
+    "auto": "Auto (system)",
+    "light": "Light",
+    "dark": "Dark",
+    "lightPalette": "Light palette",
+    "darkPalette": "Dark palette",
+    "datePreview": "Today"
+  }
+}
