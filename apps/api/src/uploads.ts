@@ -9,6 +9,7 @@ import { eq, max } from 'drizzle-orm'
 import { images, items } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import { parseSessionCookie } from './context.js'
+import type { DbHolder } from './context.js'
 import { getSessionUser } from './auth/sessions.js'
 import { insertImage } from './modules/images/repo.js'
 import { getSettings as getInstanceSettings } from './modules/instanceSettings/service.js'
@@ -18,7 +19,7 @@ import { getSettings as getInstanceSettings } from './modules/instanceSettings/s
 export const HARD_UPLOAD_CEILING_MB = Number(process.env.MAX_UPLOAD_MB) || 100
 const hardUploadBytes = HARD_UPLOAD_CEILING_MB * 1024 * 1024
 
-type RegisterUploadRoutesOptions = { db: DrizzleDb; dataDir: string }
+type RegisterUploadRoutesOptions = { dbHolder: DbHolder; dataDir: string }
 
 const MIME_BY_EXT: Record<string, string> = {
   '.png': 'image/png',
@@ -57,7 +58,7 @@ const itemIdFrom = (field: unknown): number => {
   return Number.isInteger(id) && id > 0 ? id : NaN
 }
 
-export const registerUploadRoutes = (app: FastifyInstance, { db, dataDir }: RegisterUploadRoutesOptions): void => {
+export const registerUploadRoutes = (app: FastifyInstance, { dbHolder, dataDir }: RegisterUploadRoutesOptions): void => {
   // Align busboy's own file-size limit with HARD_UPLOAD_CEILING_MB so uploads
   // over the hard ceiling are rejected by the multipart parser (surfaced as
   // FST_REQ_FILE_TOO_LARGE) rather than silently truncated. The effective
@@ -67,6 +68,7 @@ export const registerUploadRoutes = (app: FastifyInstance, { db, dataDir }: Regi
   // Multipart upload of one image for an item. Auth required (the image is tied
   // to an item, which is itself auth-gated via the tRPC `items` router).
   app.post('/upload/image', async (req, reply) => {
+    const db = dbHolder.current
     const token = parseSessionCookie(req.headers.cookie)
     const user = token ? getSessionUser(db, token, process.env.SESSION_SECRET ?? '') : null
     if (!user) return reply.code(401).send({ error: 'UNAUTHORIZED' })
@@ -141,6 +143,7 @@ export const registerUploadRoutes = (app: FastifyInstance, { db, dataDir }: Regi
   // `editedPath`/`thumbPath`/dimensions/format/size while leaving
   // `originalPath`, `sortOrder`, `isPrimary` and `itemId` untouched.
   app.post('/upload/image/edit', async (req, reply) => {
+    const db = dbHolder.current
     const token = parseSessionCookie(req.headers.cookie)
     const user = token ? getSessionUser(db, token, process.env.SESSION_SECRET ?? '') : null
     if (!user) return reply.code(401).send({ error: 'UNAUTHORIZED' })

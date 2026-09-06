@@ -21,7 +21,7 @@ mkdirSync(dirname(env.DATABASE_PATH), { recursive: true })
 const db = createDb(env.DATABASE_PATH)
 runMigrations(db)
 
-const app = buildApp({ db, dataDir: env.DATA_DIR })
+const app = buildApp({ db, dataDir: env.DATA_DIR, dbPath: env.DATABASE_PATH })
 
 // Serve the built SPA. `@fastify/static` registers a `GET /*` wildcard, but
 // find-my-way prioritises the more-specific `/trpc/:path`, `/upload/image`, and

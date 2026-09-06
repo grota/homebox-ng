@@ -2,18 +2,23 @@ import Fastify from 'fastify'
 import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from '@trpc/server/adapters/fastify'
 import type { DrizzleDb } from '@homebox/db'
 import { appRouter, type AppRouter } from './router.js'
-import { createContext } from './context.js'
+import { createContext, type DbHolder } from './context.js'
 import { loadEnv } from './env.js'
 import { registerUploadRoutes } from './uploads.js'
+import { registerBackupRoutes } from './modules/backup/backupRoutes.js'
 
-export type BuildAppOptions = { db: DrizzleDb; dataDir?: string }
+export type BuildAppOptions = { db: DrizzleDb; dataDir?: string; dbPath?: string }
 
 // Build a Fastify instance with `/health`, tRPC mounted under `/trpc`, and the
 // image upload/file routes. Exported for tests and for embedding (e.g. a server
 // entrypoint or another Fastify host). Doesn't read env — callers pass the db
 // (and optionally `dataDir`) in.
-export const buildApp = ({ db, dataDir = './data' }: BuildAppOptions) => {
+export const buildApp = ({ db, dataDir = './data', dbPath }: BuildAppOptions) => {
   const app = Fastify()
+  // The live DB is held behind a holder so a restore can swap it in place. Both
+  // tRPC and the upload/backup routes read `dbHolder.current` per request, so
+  // they keep working after a restore (instead of holding a closed old handle).
+  const dbHolder: DbHolder = { current: db }
 
   app.get('/health', async () => ({ ok: true }))
 
@@ -21,11 +26,14 @@ export const buildApp = ({ db, dataDir = './data' }: BuildAppOptions) => {
     prefix: '/trpc',
     trpcOptions: {
       router: appRouter,
-      createContext: createContext(db),
+      createContext: createContext(dbHolder),
     } satisfies FastifyTRPCPluginOptions<AppRouter>['trpcOptions'],
   })
 
-  registerUploadRoutes(app, { db, dataDir })
+  // Uploads first: it registers @fastify/multipart, which the backup upload route
+  // reuses (`/upload/backup` reads `req.file()`).
+  registerUploadRoutes(app, { dbHolder, dataDir })
+  registerBackupRoutes(app, { dbHolder, dataDir, dbPath })
 
   return app
 }
@@ -37,7 +45,7 @@ export const createApp = buildApp
 // listens on the configured port.
 export const listen = async (opts: { db: DrizzleDb; port?: number; host?: string }) => {
   const env = loadEnv()
-  const app = buildApp({ db: opts.db, dataDir: env.DATA_DIR })
+  const app = buildApp({ db: opts.db, dataDir: env.DATA_DIR, dbPath: env.DATABASE_PATH })
   await app.listen({ port: opts.port ?? env.PORT, host: opts.host ?? '0.0.0.0' })
   return app
 }
