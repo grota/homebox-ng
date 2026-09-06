@@ -37,6 +37,9 @@ export default defineConfig({
       SESSION_SECRET: 'e2e-secret',
       DATA_DIR: './data/e2e-uploads',
       PORT: String(PORT),
+      // Register the deterministic mock detection provider so the unpack e2e spec
+      // produces fixed boxes (chair + table) without a real model download.
+      DETECTION_MOCK: '1',
     },
   },
 })

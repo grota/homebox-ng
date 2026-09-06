@@ -1,4 +1,4 @@
-import type { DetectionBox } from './provider'
+import type { DetectionBox } from './provider.js'
 
 // Clamp a pixel box (top-left origin) to the decoded image bounds so a
 // malformed/out-of-range box can never drive `sharp.extract` into a negative or

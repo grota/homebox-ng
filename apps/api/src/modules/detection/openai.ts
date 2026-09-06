@@ -1,7 +1,7 @@
-import type { DetectionProvider } from './provider'
-import { clampBox } from './coords'
-import { DetectionProviderError } from './errors'
-import type { ProviderConfig } from './local'
+import type { DetectionProvider } from './provider.js'
+import { clampBox } from './coords.js'
+import { DetectionProviderError } from './errors.js'
+import type { ProviderConfig } from './local.js'
 import { OpenAI } from 'openai'
 
 const DEFAULT_MODEL = 'gpt-4o-mini'

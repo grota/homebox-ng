@@ -1,4 +1,4 @@
-import type { DetectionBox, DetectionProvider } from './provider'
+import type { DetectionBox, DetectionProvider } from './provider.js'
 
 // Deterministic provider for e2e and smoke tests, gated behind DETECTION_MOCK=1.
 // Returns fixed boxes so the full unpack→draft→publish flow is reproducible.

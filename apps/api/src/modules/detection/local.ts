@@ -1,6 +1,6 @@
-import type { DetectionProvider } from './provider'
-import { clampBox } from './coords'
-import { DetectionProviderError } from './errors'
+import type { DetectionProvider } from './provider.js'
+import { clampBox } from './coords.js'
+import { DetectionProviderError } from './errors.js'
 
 export type ProviderConfig = { model?: string; device?: string; threshold?: number }
 type Pipeline = (image: Buffer) => Promise<{ label: string; score: number; box: { xmin: number; ymin: number; xmax: number; ymax: number } }[]>
