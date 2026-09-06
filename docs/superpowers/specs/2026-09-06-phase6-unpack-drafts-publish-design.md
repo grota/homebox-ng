@@ -125,7 +125,8 @@ export const runUnpack = async (db, image: { path: string; width: number; height
   const boxes = await provider.detectBoxes(buffer)   // pixels, top-left
   if (boxes.length === 0) return { detected: 0, drafts: [] }
   // 3. for each box: crop + write originals+thumb + insert images row + items row (published=false, no location)
-  //    boxes may overlap → keep all, no dedupe
+  //    boxes may overlap → keep all, no dedupe. Each draft gets ONLY its own crop — the source photo is
+  //    NOT retained (a root-photo's source is discardable; an item-photo's source stays on the origin item).
   // 4. return { detected, drafts: [{ id, name, imageId }] }
 }
 ```
@@ -244,7 +245,8 @@ default remote engine) so a Phase 5 instance still works. `items.published`, `im
 
 - **Real local model in CI** — not used in the Playwright suite (mock provider instead). The admin CLI script
   provides the pre-download path. Whether to also network-ship the model in Docker is deferred to the Docker phase.
-- **Draft image retention on publish** — publish leaves the draft's crop as the item's only image (same image
-  rows); no merge/re-grid rework. A later phase could offer "keep the source photo too" for the item-photo path.
+- **Draft image retention (resolved)** — each draft keeps only its own crop; the source photo is NOT retained in
+  any draft (a root-photo source is discardable; an item-photo source stays on the origin item). No merge/re-grid
+  rework in this phase.
 - **Overlapping-box dedupe** — deliberately keep all boxes (no NMS) per the master spec's "boxes may overlap".
   If the model overproduces overlapping crops, a future `mNMS`/threshold knob is a `detection_config` addition.
