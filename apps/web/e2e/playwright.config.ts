@@ -10,6 +10,12 @@ const baseURL = `http://localhost:${PORT}`
 export default defineConfig({
   testDir: __dirname,
   testMatch: '**/*.spec.ts',
+  // All spec files share ONE e2e database (global-setup wipes it once per RUN),
+  // so files must run one at a time. In parallel, the first-run `/setup` test
+  // (00-catalog.spec.ts, which sorts first) and a later spec that provisions the
+  // admin would race on the shared DB. `workers: 1` makes the file order (and the
+  // shared-DB contract) deterministic.
+  workers: 1,
   timeout: 60_000,
   expect: { timeout: 10_000 },
   reporter: 'list',
