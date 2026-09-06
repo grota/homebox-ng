@@ -116,6 +116,34 @@ describe('backup & restore', () => {
     expect(existsSync(join(dest, 'uploads'))).toBe(true)
   })
 
+  it('creates a valid backup on a fresh install with no uploads/ tree', async () => {
+    // A brand-new instance has no `uploads/` directory; `createBackup` must not
+    // fail (tar ENOENT) when it tars the archive. Build a minimal second app.
+    const root = mkdtempSync(join(tmpdir(), 'homebox-fresh-'))
+    const freshDataDir = join(root, 'data')
+    mkdirSync(freshDataDir, { recursive: true })
+    const freshDbPath = join(root, 'fresh.db')
+    const freshDb = createDb(freshDbPath)
+    runMigrations(freshDb)
+    const freshApp = buildApp({ db: freshDb, dataDir: freshDataDir, dbPath: freshDbPath })
+    await freshApp.ready()
+    try {
+      await freshApp.inject({ method: 'POST', url: '/trpc/auth.setup', payload: { name: 'Admin', email: 'admin@fresh.co', password: 'password123' } })
+      const login = await freshApp.inject({ method: 'POST', url: '/trpc/auth.login', payload: { email: 'admin@fresh.co', password: 'password123' } })
+      const cookie = login.headers['set-cookie'] as string
+      const res = await freshApp.inject({ method: 'GET', url: '/backup', headers: { cookie } })
+      expect(res.statusCode).toBe(200)
+      expect(res.headers['content-type']).toContain('application/gzip')
+      const dest = await extract(res.rawPayload)
+      expect(existsSync(join(dest, 'homebox.db'))).toBe(true)
+      expect(integrityOk(join(dest, 'homebox.db'))).toBe(true)
+      expect(existsSync(join(dest, 'uploads'))).toBe(true)
+    } finally {
+      await freshApp?.close()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('POST /upload/backup then /backup/restore swaps the live data (round-trip)', async () => {
     // Snapshot the current (Original-only) state.
     const buf = await getBackup(adminCookie)

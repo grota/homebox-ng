@@ -24,6 +24,9 @@ export const createBackup = async (db: DrizzleDb, dataDir: string): Promise<{ ar
   await rawDb(db).backup(dump) // safe: handles WAL, produces a standalone file
   // Only include the uploads tree if it exists (a fresh install may have none).
   try { await cp(join(dataDir, 'uploads'), join(tmp, 'uploads'), { recursive: true }) } catch { /* no uploads yet */ }
+  // Guarantee `tmp/uploads` exists so `tar` never fails on a backup whose live
+  // uploads tree is absent (a fresh install) — an empty dir keeps the layout stable.
+  await mkdir(join(tmp, 'uploads'), { recursive: true }).catch(() => {})
   const archive = join(tmp, `backup-${randomUUID()}.tar.gz`)
   await exec('tar', ['-czf', archive, 'homebox.db', 'uploads'], { cwd: tmp })
   return { archivePath: archive, size: (await stat(archive)).size }
@@ -67,20 +70,27 @@ export const applyRestore = async (holder: DbHolder, destDir: string, dbPath: st
   const old = holder.current
   rawDb(old).pragma('wal_checkpoint(TRUNCATE)')
   rawDb(old).close()
-  await copyFile(join(destDir, 'homebox.db'), dbPath)
-  for (const ext of ['-wal', '-shm']) await rm(dbPath + ext, { force: true })
-  // Restore = the instance becomes exactly the backup. Wipe the live uploads tree,
-  // then copy the archive's tree (guarded: a backup may have no `uploads/` such as
-  // a fresh install). Never throw after the old DB is closed, or we'd be left with
-  // a half-restored instance.
-  await rm(join(dataDir, 'uploads'), { recursive: true, force: true })
-  if (existsSync(join(destDir, 'uploads'))) {
-    await cp(join(destDir, 'uploads'), join(dataDir, 'uploads'), { recursive: true })
+  try {
+    await copyFile(join(destDir, 'homebox.db'), dbPath)
+    for (const ext of ['-wal', '-shm']) await rm(dbPath + ext, { force: true })
+    // Restore = the instance becomes exactly the backup. Wipe the live uploads tree,
+    // then copy the archive's tree (guarded: a backup may have no `uploads/` such as
+    // a fresh install). Filesystem-only — safe to run after `copyFile` while inside
+    // the try.
+    await rm(join(dataDir, 'uploads'), { recursive: true, force: true })
+    if (existsSync(join(destDir, 'uploads'))) {
+      await cp(join(destDir, 'uploads'), join(dataDir, 'uploads'), { recursive: true })
+    }
+    await mkdir(join(dataDir, 'uploads'), { recursive: true })
+    const fresh = createDb(dbPath)
+    runMigrations(fresh)
+    holder.current = fresh
+  } catch (err) {
+    // Never leave a closed handle: best-effort reopen; fall back to a live
+    // in-memory db so the API keeps serving rather than 500ing on every call.
+    try { holder.current = createDb(dbPath) } catch { holder.current = createDb(':memory:') }
+    throw err
   }
-  await mkdir(join(dataDir, 'uploads'), { recursive: true })
-  const fresh = createDb(dbPath)
-  runMigrations(fresh)
-  holder.current = fresh
 }
 
 const countFiles = async (dir: string): Promise<number> => {
