@@ -123,3 +123,23 @@ describe('image edit', () => {
     expect(res.statusCode).toBe(400)
   })
 })
+
+describe('effective instance cap on upload', () => {
+  it('rejects a file over the configured max_upload_mb', async () => {
+    // Lower the instance cap to 1MB (default is 10MB) via the admin tRPC endpoint.
+    const upd = await app.inject({ method: 'POST', url: '/trpc/instanceSettings.update', headers: { cookie: adminCookie }, payload: { maxUploadMb: 1 } })
+    expect(upd.statusCode).toBe(200)
+    expect(upd.json().result.data.maxUploadMb).toBe(1)
+
+    const big = Buffer.alloc(2 * 1024 * 1024, 1)  // 2MB buffer > 1MB instance cap
+    const form = new FormData()
+    form.append('itemId', String(itemId))
+    form.append('file', big, { filename: 'big.png', contentType: 'image/png' })
+    const res = await app.inject({ method: 'POST', url: '/upload/image', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
+    expect(res.statusCode).toBe(413)
+
+    // Restore the default so later tests / the file see the original 10MB cap.
+    const upd2 = await app.inject({ method: 'POST', url: '/trpc/instanceSettings.update', headers: { cookie: adminCookie }, payload: { maxUploadMb: 10 } })
+    expect(upd2.statusCode).toBe(200)
+  })
+})

@@ -11,13 +11,12 @@ import type { DrizzleDb } from '@homebox/db'
 import { parseSessionCookie } from './context.js'
 import { getSessionUser } from './auth/sessions.js'
 import { insertImage } from './modules/images/repo.js'
+import { getSettings as getInstanceSettings } from './modules/instanceSettings/service.js'
 
-// No `instance_settings` table exists in Phase 1 (the plan's original source of
-// `max_upload_mb`), so this is a module constant. A settings table is out of
-// scope; `process.env.MAX_UPLOAD_MB` can override it if a deploy needs to.
-export const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 10
-
-const maxUploadBytes = MAX_UPLOAD_MB * 1024 * 1024
+// Hard parser ceiling: never pre-truncate a file the admin might allow. The
+// effective per-request cap is read from instance_settings below.
+export const HARD_UPLOAD_CEILING_MB = Number(process.env.MAX_UPLOAD_MB) || 100
+const hardUploadBytes = HARD_UPLOAD_CEILING_MB * 1024 * 1024
 
 type RegisterUploadRoutesOptions = { db: DrizzleDb; dataDir: string }
 
@@ -59,10 +58,11 @@ const itemIdFrom = (field: unknown): number => {
 }
 
 export const registerUploadRoutes = (app: FastifyInstance, { db, dataDir }: RegisterUploadRoutesOptions): void => {
-  // Align busboy's own file-size limit with MAX_UPLOAD_MB so uploads over the
-  // cap are rejected by the multipart parser (surfaced as FST_REQ_FILE_TOO_LARGE)
-  // rather than silently truncated.
-  app.register(multipart, { limits: { fileSize: maxUploadBytes, files: 1 } })
+  // Align busboy's own file-size limit with HARD_UPLOAD_CEILING_MB so uploads
+  // over the hard ceiling are rejected by the multipart parser (surfaced as
+  // FST_REQ_FILE_TOO_LARGE) rather than silently truncated. The effective
+  // per-request cap is read from instance_settings inside the handlers.
+  app.register(multipart, { limits: { fileSize: hardUploadBytes, files: 1 } })
 
   // Multipart upload of one image for an item. Auth required (the image is tied
   // to an item, which is itself auth-gated via the tRPC `items` router).
@@ -93,7 +93,8 @@ export const registerUploadRoutes = (app: FastifyInstance, { db, dataDir }: Regi
       }
       throw err
     }
-    if (buffer.length > maxUploadBytes) return reply.code(413).send({ error: 'file too large' })
+    const effBytes = getInstanceSettings(db).maxUploadMb * 1024 * 1024
+    if (buffer.length > effBytes) return reply.code(413).send({ error: 'file too large' })
 
     const metadata = await sharp(buffer).metadata()
     const width = metadata.width ?? null
@@ -166,7 +167,8 @@ export const registerUploadRoutes = (app: FastifyInstance, { db, dataDir }: Regi
       }
       throw err
     }
-    if (buffer.length > maxUploadBytes) return reply.code(413).send({ error: 'file too large' })
+    const effBytes = getInstanceSettings(db).maxUploadMb * 1024 * 1024
+    if (buffer.length > effBytes) return reply.code(413).send({ error: 'file too large' })
 
     let width: number | null = null
     let height: number | null = null
