@@ -34,3 +34,13 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
+
+// Route guard: non-admins can't reach the /admin area. An unauthenticated
+// visitor is sent to /login; a logged-in non-admin is sent home.
+export function RequireAdmin({ children }: { children: ReactNode }) {
+  const { user, isLoading } = useAuth()
+  if (isLoading) return null
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'admin') return <Navigate to="/" replace />
+  return <>{children}</>
+}

@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
-import { RequireAuth, SetupGate } from '../lib/auth'
+import { RequireAdmin, RequireAuth, SetupGate } from '../lib/auth'
+import { AdminPage } from '../features/admin'
 import { LoginPage } from '../features/auth/LoginPage'
 import { SetupPage } from '../features/auth/SetupPage'
 import { HomePage } from '../features/home/HomePage'
@@ -34,6 +35,7 @@ export function AppRoutes() {
         <Route path="/items" element={<ItemsPage />} />
         <Route path="/items/:id" element={<ItemDetail />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
       </Route>
     </Routes>
   )

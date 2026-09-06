@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Link, Outlet } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAuth } from '../lib/auth'
 
 const navItems = [
   { to: '/items', key: 'items' },
@@ -19,9 +20,13 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
 // below `md:`. Renders the routed page via <Outlet/>.
 export function Shell() {
   const { t } = useTranslation()
+  const { user } = useAuth()
   const [open, setOpen] = useState(false)
 
   const close = () => setOpen(false)
+
+  const adminNav = user?.role === 'admin' ? [{ to: '/admin', key: 'admin' }] : []
+  const items = [...navItems, ...adminNav]
 
   return (
     <div className="min-h-screen bg-bg text-text">
@@ -30,7 +35,7 @@ export function Shell() {
           <Link to="/" className="font-semibold text-lg no-underline text-text">{t('app.title')}</Link>
           {/* Horizontal nav, hidden below md. */}
           <nav className="hidden md:flex gap-1">
-            {navItems.map((item) => (
+            {items.map((item) => (
               <NavLink key={item.to} to={item.to} className={navLinkClass}>{t(`nav.${item.key}`)}</NavLink>
             ))}
           </nav>
@@ -50,7 +55,7 @@ export function Shell() {
         {/* Drawer (below md only). */}
         {open && (
           <nav className="md:hidden flex flex-col gap-1 px-4 pb-3" data-testid="drawer-nav">
-            {navItems.map((item) => (
+            {items.map((item) => (
               <NavLink key={item.to} to={item.to} className={navLinkClass} onClick={close}>
                 {t(`nav.${item.key}`)}
               </NavLink>
