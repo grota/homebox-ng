@@ -6,6 +6,7 @@ import { HomePage } from '../features/home/HomePage'
 import { LocationsPage } from '../features/locations/LocationsPage'
 import { ItemTypesPage } from '../features/itemTypes/ItemTypesPage'
 import { TagsPage } from '../features/tags/TagsPage'
+import { SettingsPage } from '../features/settings/SettingsPage'
 import { ItemsPage } from '../features/items/ItemsPage'
 import { ItemDetail } from '../features/items/ItemDetail'
 
@@ -45,6 +46,14 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <TagsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <RequireAuth>
+            <SettingsPage />
           </RequireAuth>
         }
       />
