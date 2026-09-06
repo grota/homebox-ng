@@ -27,10 +27,10 @@ export function LoginPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 max-w-[30rem] my-4">
       <h1>Sign in</h1>
 
-      <div>
+      <div className="flex flex-col gap-1">
         <label htmlFor="email">Email</label>
         <input
           id="email"
@@ -38,10 +38,11 @@ export function LoginPage() {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         />
       </div>
 
-      <div>
+      <div className="flex flex-col gap-1">
         <label htmlFor="password">Password</label>
         <input
           id="password"
@@ -49,14 +50,19 @@ export function LoginPage() {
           autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         />
       </div>
 
-      <button type="submit" disabled={login.isPending}>
+      <button
+        type="submit"
+        disabled={login.isPending}
+        className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
+      >
         Sign in
       </button>
 
-      {login.error && <p role="alert">{login.error.message}</p>}
+      {login.error && <p role="alert" className="text-text-muted">{login.error.message}</p>}
       {signedIn && <p>Signed in</p>}
     </form>
   )

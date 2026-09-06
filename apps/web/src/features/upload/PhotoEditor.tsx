@@ -50,7 +50,7 @@ export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) 
   }
 
   return (
-    <div className="photo-editor" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[100] bg-black" role="dialog" aria-modal="true">
       {error && <p role="alert">{error}</p>}
       {saving && <p>Saving…</p>}
       <FilerobotImageEditor

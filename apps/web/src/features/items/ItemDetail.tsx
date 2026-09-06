@@ -17,25 +17,36 @@ export function ItemDetail() {
 
   return (
     <section>
-      <Link to="/items">← Items</Link>
+      <Link to="/items" className="no-underline text-text">
+        ← Items
+      </Link>
       <h1>{item.name}</h1>
-      <p>{item.description}</p>
-      <p>
+      <p className="text-text">{item.description}</p>
+      <p className="text-text-muted">
         Qty: {item.quantity} {item.unit}
       </p>
-      <p>Type: {item.type?.name}</p>
-      <p>Location: {item.location?.name}</p>
+      <p className="text-text-muted">Type: {item.type?.name}</p>
+      <p className="text-text-muted">Location: {item.location?.name}</p>
 
       <PhotoUpload itemId={item.id} />
 
-      <div className="grid">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         {item.images.map((img) => (
-          <div key={img.id} className="image-card">
-            <img src={'/file/' + img.thumbPath} alt={item.name} />
-            <button type="button" onClick={() => setEditingImage({ id: img.id, originalPath: img.originalPath })}>
+          <div key={img.id} className="border border-border rounded-lg p-2">
+            <img src={'/file/' + img.thumbPath} alt={item.name} className="w-full h-32 object-cover rounded-md mb-2" />
+            <button
+              type="button"
+              className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
+              onClick={() => setEditingImage({ id: img.id, originalPath: img.originalPath })}
+            >
               Edit
             </button>
-            <a href={'/file/' + (img.editedPath ?? img.originalPath)} target="_blank" rel="noreferrer">
+            <a
+              href={'/file/' + (img.editedPath ?? img.originalPath)}
+              target="_blank"
+              rel="noreferrer"
+              className="px-3 py-1.5 rounded-md border border-border bg-surface text-text no-underline"
+            >
               View
             </a>
           </div>

@@ -47,8 +47,8 @@ export function ItemTypesPage() {
     <section>
       <h1>Item types</h1>
 
-      <form className="form" onSubmit={handleSubmit}>
-        <div className="form-field">
+      <form className="flex flex-col gap-3 max-w-[30rem] my-4" onSubmit={handleSubmit}>
+        <div className="flex flex-col gap-1">
           <label htmlFor="type-name">Name</label>
           <input
             id="type-name"
@@ -56,39 +56,47 @@ export function ItemTypesPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
+            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           />
         </div>
 
-        <div className="form-field">
+        <div className="flex flex-col gap-1">
           <label htmlFor="type-description">Description</label>
           <textarea
             id="type-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           />
         </div>
 
-        <div className="form-fields">
-          <div className="form-field">
-            <span className="muted">Custom fields</span>
-            <button type="button" onClick={addField}>
+        <div className="border border-border rounded-lg p-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-text-muted">Custom fields</span>
+            <button
+              type="button"
+              onClick={addField}
+              className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
+            >
               Add field
             </button>
           </div>
           {fields.map((field) => (
-            <div className="form-row" key={field.key}>
-              <div className="form-field">
+            <div className="flex gap-3" key={field.key}>
+              <div className="flex flex-col gap-1">
                 <input
                   type="text"
                   placeholder="Field name"
                   value={field.name}
                   onChange={(e) => patchField(field.key, { name: e.target.value })}
+                  className="px-2 py-1 border border-border rounded-md bg-surface text-text"
                 />
               </div>
-              <div className="form-field">
+              <div className="flex flex-col gap-1">
                 <select
                   value={field.fieldType}
                   onChange={(e) => patchField(field.key, { fieldType: e.target.value as DraftField['fieldType'] })}
+                  className="px-2 py-1 border border-border rounded-md bg-surface text-text"
                 >
                   {FIELD_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -97,15 +105,19 @@ export function ItemTypesPage() {
                   ))}
                 </select>
               </div>
-              <button type="button" onClick={() => removeField(field.key)}>
+              <button
+                type="button"
+                onClick={() => removeField(field.key)}
+                className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
+              >
                 Remove
               </button>
             </div>
           ))}
         </div>
 
-        <div className="form-actions">
-          <button type="submit" disabled={create.isPending}>
+        <div className="flex gap-2">
+          <button type="submit" disabled={create.isPending} className="px-3 py-1.5 rounded-md border border-border bg-surface text-text">
             Create type
           </button>
         </div>
@@ -115,7 +127,7 @@ export function ItemTypesPage() {
       {isLoading ? (
         <p>Loading…</p>
       ) : (
-        <ul className="type-list">
+        <ul className="list-none pl-0">
           {(data ?? []).map((type) => (
             <li key={type.id}>
               <strong>{type.name}</strong>
@@ -124,7 +136,7 @@ export function ItemTypesPage() {
                 <ul>
                   {type.fields.map((field) => (
                     <li key={field.id}>
-                      {field.name} <span className="muted">({field.fieldType})</span>
+                      {field.name} <span className="text-text-muted">({field.fieldType})</span>
                       {field.required ? ' *' : ''}
                     </li>
                   ))}

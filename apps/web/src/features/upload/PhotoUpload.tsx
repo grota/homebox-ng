@@ -37,7 +37,7 @@ export function PhotoUpload({ itemId }: PhotoUploadProps) {
   }
 
   return (
-    <div className="photo-upload">
+    <div className="my-4">
       <input ref={inputRef} type="file" accept="image/*" aria-label="Upload photo" onChange={handleFile} />
       {uploading && <p>Uploading…</p>}
       {error && <p role="alert">{error}</p>}

@@ -9,9 +9,9 @@ export function TagsPage() {
       {isLoading ? (
         <p>Loading…</p>
       ) : (
-        <ul className="tag-list">
+        <ul className="list-none flex flex-wrap gap-2">
           {(data ?? []).map((tag) => (
-            <li key={tag.id} className="tag" style={tag.color ? { background: tag.color } : undefined}>
+            <li key={tag.id} className="inline-block rounded px-1.5 py-0.5 mr-1 text-xs" style={tag.color ? { background: tag.color } : undefined}>
               {tag.name}
             </li>
           ))}

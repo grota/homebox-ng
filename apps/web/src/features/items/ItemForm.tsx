@@ -78,26 +78,33 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="form">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 max-w-[30rem] my-4">
       <h2>{item ? 'Edit item' : 'New item'}</h2>
 
-      <div className="form-field">
+      <div className="flex flex-col gap-1">
         <label htmlFor="item-name">Name</label>
-        <input id="item-name" value={name} onChange={(e) => setName(e.target.value)} required />
+        <input
+          id="item-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
+        />
       </div>
 
-      <div className="form-field">
+      <div className="flex flex-col gap-1">
         <label htmlFor="item-description">Description</label>
         <textarea
           id="item-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
+          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         />
       </div>
 
-      <div className="form-row">
-        <div className="form-field">
+      <div className="flex gap-3">
+        <div className="flex flex-col gap-1">
           <label htmlFor="item-quantity">Quantity</label>
           <input
             id="item-quantity"
@@ -105,17 +112,28 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
             min="0"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
+            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           />
         </div>
-        <div className="form-field">
+        <div className="flex flex-col gap-1">
           <label htmlFor="item-unit">Unit</label>
-          <input id="item-unit" value={unit} onChange={(e) => setUnit(e.target.value)} />
+          <input
+            id="item-unit"
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
+          />
         </div>
       </div>
 
-      <div className="form-field">
+      <div className="flex flex-col gap-1">
         <label htmlFor="item-type">Type</label>
-        <select id="item-type" value={itemTypeId === '' ? '' : String(itemTypeId)} onChange={(e) => handleTypeChange(e.target.value)}>
+        <select
+          id="item-type"
+          value={itemTypeId === '' ? '' : String(itemTypeId)}
+          onChange={(e) => handleTypeChange(e.target.value)}
+          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
+        >
           <option value="">Select a type</option>
           {allTypes.map((type) => (
             <option key={type.id} value={type.id}>
@@ -125,12 +143,13 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
         </select>
       </div>
 
-      <div className="form-field">
+      <div className="flex flex-col gap-1">
         <label htmlFor="item-location">Location</label>
         <select
           id="item-location"
           value={locationId === '' ? '' : String(locationId)}
           onChange={(e) => setLocationId(e.target.value === '' ? '' : Number(e.target.value))}
+          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         >
           <option value="">No location</option>
           {(locations.data ?? []).map((loc) => (
@@ -142,10 +161,10 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
       </div>
 
       {selectedType && selectedType.fields.length > 0 && (
-        <fieldset className="form-fields">
+        <fieldset className="border border-border rounded-lg p-3">
           <legend>Custom fields</legend>
           {selectedType.fields.map((field) => (
-            <div className="form-field" key={field.id}>
+            <div className="flex flex-col gap-1" key={field.id}>
               <label htmlFor={`field-${field.id}`}>
                 {field.name}
                 {field.required ? ' *' : ''}
@@ -156,18 +175,27 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
                 value={fieldValues[field.id] ?? ''}
                 required={field.required}
                 onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                className="px-2 py-1 border border-border rounded-md bg-surface text-text"
               />
             </div>
           ))}
         </fieldset>
       )}
 
-      <div className="form-actions">
-        <button type="submit" disabled={createItem.isPending || updateItem.isPending}>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={createItem.isPending || updateItem.isPending}
+          className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
+        >
           {item ? 'Save' : 'Create item'}
         </button>
         {onCancel && (
-          <button type="button" onClick={onCancel}>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
+          >
             Cancel
           </button>
         )}

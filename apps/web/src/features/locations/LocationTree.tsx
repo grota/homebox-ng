@@ -12,7 +12,7 @@ type LocationTreeItem = {
 export function LocationTree({ locations }: { locations: LocationTreeItem[] }) {
   if (locations.length === 0) return <p>No locations yet.</p>
   return (
-    <ul className="location-tree">
+    <ul className="list-none pl-0">
       {locations.map((loc) => (
         <LocationBranch key={loc.id} location={loc} />
       ))}

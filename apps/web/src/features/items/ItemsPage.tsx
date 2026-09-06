@@ -40,6 +40,7 @@ const flattenLocations = (nodes: any[]): FlatLocation[] =>
 export function ItemsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [showForm, setShowForm] = useState(false)
+  const [facetsOpen, setFacetsOpen] = useState(false)
   const utils = trpc.useUtils()
 
   const q = searchParams.get('q') ?? ''
@@ -148,14 +149,18 @@ export function ItemsPage() {
 
   return (
     <section>
-      <header className="page-header">
+      <header className="flex items-center justify-between mb-4">
         <h1>Items</h1>
-        <button type="button" onClick={() => setShowForm((open) => !open)}>
+        <button
+          type="button"
+          className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
+          onClick={() => setShowForm((open) => !open)}
+        >
           New item
         </button>
       </header>
 
-      <div className="search-toolbar">
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
         <label htmlFor="item-search">Search</label>
         <input
           id="item-search"
@@ -163,90 +168,111 @@ export function ItemsPage() {
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           placeholder="Search items"
+          className="flex-1 min-w-0 max-w-[26rem] px-2 py-1 border border-border rounded-md bg-surface text-text"
         />
-        <button type="button" onClick={clearFilters}>
+        <button
+          type="button"
+          className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
+          onClick={clearFilters}
+        >
           Clear filters
         </button>
       </div>
 
       {showForm && <ItemForm onSaved={handleSaved} onCancel={() => setShowForm(false)} />}
 
-      <div className="items-layout">
+      <div className="flex gap-4 items-start">
         {facets && (
-          <aside className="facet-bar">
-            {facets.types.length > 0 && (
-              <div className="facet-group">
-                <h2>Types</h2>
-                {facets.types.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    className={`tag${itemTypeId === f.id ? ' active' : ''}`}
-                    onClick={() => setTypeFilter(itemTypeId === f.id ? undefined : f.id)}
-                  >
-                    {f.name} ({f.count})
-                  </button>
-                ))}
-              </div>
-            )}
+          <>
+            <button
+              type="button"
+              className="lg:hidden px-2 py-1 rounded border border-border bg-surface text-text"
+              onClick={() => setFacetsOpen((v) => !v)}
+              aria-expanded={facetsOpen}
+            >
+              Filters
+            </button>
+            <aside
+              className={`${facetsOpen ? 'fixed inset-0 z-50 bg-bg p-4 overflow-y-auto' : 'hidden'} lg:static lg:z-auto lg:block lg:bg-transparent lg:p-0 lg:overflow-visible lg:flex lg:flex-col lg:gap-4 lg:w-60 lg:flex-shrink-0`}
+            >
+              {facets.types.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <h2 className="w-full mb-0">Types</h2>
+                  {facets.types.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      className={`inline-block rounded px-1.5 py-0.5 mr-1 text-xs${itemTypeId === f.id ? ' bg-accent text-accent-contrast' : ''}`}
+                      onClick={() => setTypeFilter(itemTypeId === f.id ? undefined : f.id)}
+                    >
+                      {f.name} ({f.count})
+                    </button>
+                  ))}
+                </div>
+              )}
 
-            {facets.tags.length > 0 && (
-              <div className="facet-group">
-                <h2>Tags</h2>
-                {facets.tags.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    className="tag"
-                    style={f.color ? { background: f.color } : undefined}
-                    onClick={() => toggleTag(f.id)}
-                  >
-                    {f.name} ({f.count})
-                  </button>
-                ))}
-              </div>
-            )}
+              {facets.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <h2 className="w-full mb-0">Tags</h2>
+                  {facets.tags.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      className="inline-block rounded px-1.5 py-0.5 mr-1 text-xs"
+                      style={f.color ? { background: f.color } : undefined}
+                      onClick={() => toggleTag(f.id)}
+                    >
+                      {f.name} ({f.count})
+                    </button>
+                  ))}
+                </div>
+              )}
 
-            {facets.locations.length > 0 && (
-              <div className="facet-group">
-                <h2>Locations</h2>
-                <button type="button" className="tag" onClick={() => setLocationFilter(undefined)}>
-                  All locations
-                </button>
-                {breadcrumb.map((loc) => (
-                  <button key={loc.id} type="button" className="tag" onClick={() => setLocationFilter(loc.id)}>
-                    {loc.name}
+              {facets.locations.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <h2 className="w-full mb-0">Locations</h2>
+                  <button type="button" className="inline-block rounded px-1.5 py-0.5 mr-1 text-xs" onClick={() => setLocationFilter(undefined)}>
+                    All locations
                   </button>
-                ))}
-                {facets.locations.map((f) => (
-                  <button key={f.id} type="button" className="tag" onClick={() => setLocationFilter(f.id)}>
-                    {f.name} ({f.count})
-                  </button>
-                ))}
-              </div>
-            )}
-          </aside>
+                  {breadcrumb.map((loc) => (
+                    <button key={loc.id} type="button" className="inline-block rounded px-1.5 py-0.5 mr-1 text-xs" onClick={() => setLocationFilter(loc.id)}>
+                      {loc.name}
+                    </button>
+                  ))}
+                  {facets.locations.map((f) => (
+                    <button key={f.id} type="button" className="inline-block rounded px-1.5 py-0.5 mr-1 text-xs" onClick={() => setLocationFilter(f.id)}>
+                      {f.name} ({f.count})
+                    </button>
+                  ))}
+                </div>
+              )}
+            </aside>
+          </>
         )}
 
         {isLoading ? (
           <p>Loading…</p>
         ) : (
-          <div className="grid">
+          <div className="flex-1 min-w-0 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             {items.map((item) => (
-              <Link key={item.id} to={`/items/${item.id}`} className="card">
+              <Link
+                key={item.id}
+                to={`/items/${item.id}`}
+                className="block rounded-lg border border-border p-3 no-underline text-inherit hover:border-text-muted"
+              >
                 {item.images?.[0]?.thumbPath ? (
-                  <img src={'/file/' + item.images[0].thumbPath} alt={item.name} />
+                  <img src={'/file/' + item.images[0].thumbPath} alt={item.name} className="w-full h-32 object-cover rounded-md mb-2" />
                 ) : null}
                 <h2>{item.name}</h2>
                 <p>{item.location?.name}</p>
                 <p>{item.type?.name}</p>
                 {item.tags.map((tag) => (
-                  <span key={tag.id} className="tag">
+                  <span key={tag.id} className="inline-block rounded px-1.5 py-0.5 mr-1 text-xs">
                     {tag.name}
                   </span>
                 ))}
                 {q.trim() && item.snippet ? (
-                  <p className="snippet" data-testid="item-snippet">
+                  <p className="mt-2 text-text-muted text-sm" data-testid="item-snippet">
                     {item.snippet}
                   </p>
                 ) : null}
@@ -258,12 +284,22 @@ export function ItemsPage() {
       </div>
 
       {data && data.total > 1 && (
-        <div className="pager">
-          <button type="button" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}>
+        <div className="flex gap-2 items-center mt-4">
+          <button
+            type="button"
+            className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page <= 1}
+          >
             Prev
           </button>
           <span>Page {page}</span>
-          <button type="button" onClick={() => setPage(page + 1)} disabled={page * 20 >= data.total}>
+          <button
+            type="button"
+            className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
+            onClick={() => setPage(page + 1)}
+            disabled={page * 20 >= data.total}
+          >
             Next
           </button>
         </div>
