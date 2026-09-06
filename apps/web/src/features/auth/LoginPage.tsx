@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
+import { useAuth } from '../../lib/auth'
 
 export function LoginPage() {
+  const { user } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [signedIn, setSignedIn] = useState(false)
@@ -12,9 +14,16 @@ export function LoginPage() {
   const login = trpc.auth.login.useMutation()
   const utils = trpc.useUtils()
 
+  // An already-signed-in user whose account is forced to change its password
+  // must not rest on the sign-in form — send them straight to the change screen
+  // (e.g. when they reload `/login` while the `mustChangePassword` flag is set).
+  useEffect(() => {
+    if (user?.mustChangePassword) navigate('/change-password')
+  }, [user, navigate])
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    await login.mutateAsync({ email, password })
+    const result = await login.mutateAsync({ email, password })
     // The login response sets the session cookie. Run the `auth.me` query and
     // *await* it so the cache holds the freshly-authenticated user before we
     // navigate; otherwise `RequireAuth` reads the stale cached `null` and bounces
@@ -28,7 +37,14 @@ export function LoginPage() {
     // because on /login that query is NOT active, but settings.get IS.
     await utils.settings.get.invalidate()
     setSignedIn(true)
-    navigate('/')
+    // A forced password-change account is routed to the change screen instead of
+    // home; the `changePassword` form's exit guard (plus the invalidate in its
+    // success handler) bounces the user back to `/` once the flag is cleared.
+    if (result.mustChangePassword) {
+      navigate('/change-password')
+    } else {
+      navigate('/')
+    }
   }
 
   return (
