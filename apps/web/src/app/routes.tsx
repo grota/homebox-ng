@@ -6,73 +6,35 @@ import { HomePage } from '../features/home/HomePage'
 import { LocationsPage } from '../features/locations/LocationsPage'
 import { ItemTypesPage } from '../features/itemTypes/ItemTypesPage'
 import { TagsPage } from '../features/tags/TagsPage'
-import { SettingsPage } from '../features/settings/SettingsPage'
 import { ItemsPage } from '../features/items/ItemsPage'
 import { ItemDetail } from '../features/items/ItemDetail'
+import { SettingsPage } from '../features/settings/SettingsPage'
+import { Shell } from './Shell'
 
 export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<SetupGate><LoginPage /></SetupGate>} />
       <Route path="/setup" element={<SetupPage />} />
+
+      {/* Authenticated, first-run-gated routes all render inside the shared Shell. */}
       <Route
-        path="/"
         element={
           <SetupGate>
             <RequireAuth>
-              <HomePage />
+              <Shell />
             </RequireAuth>
           </SetupGate>
         }
-      />
-      <Route
-        path="/locations"
-        element={
-          <RequireAuth>
-            <LocationsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/types"
-        element={
-          <RequireAuth>
-            <ItemTypesPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/tags"
-        element={
-          <RequireAuth>
-            <TagsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <RequireAuth>
-            <SettingsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/items"
-        element={
-          <RequireAuth>
-            <ItemsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/items/:id"
-        element={
-          <RequireAuth>
-            <ItemDetail />
-          </RequireAuth>
-        }
-      />
+      >
+        <Route path="/" element={<HomePage />} />
+        <Route path="/locations" element={<LocationsPage />} />
+        <Route path="/types" element={<ItemTypesPage />} />
+        <Route path="/tags" element={<TagsPage />} />
+        <Route path="/items" element={<ItemsPage />} />
+        <Route path="/items/:id" element={<ItemDetail />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Route>
     </Routes>
   )
 }
