@@ -87,11 +87,13 @@ type RelationalFilters = { locationId?: number; itemTypeId?: number; tagIds?: nu
 type LevelNode = { id: number; name: string }
 
 // `buildWhere` composes the relational filters (and an optional search predicate)
-// into a single AND'd fragment, or `undefined` when no condition is present. The
-// `tagIds` predicate is OR-within-dimension: an item matches if it carries AT
-// LEAST ONE of the selected tags (membership in the subselect of `item_tag` ids).
+// into a single AND'd fragment. A `published = true` base predicate is always
+// present, so drafts (`published = false`) never leak into the catalog, search,
+// or any facet count. The `tagIds` predicate is OR-within-dimension: an item
+// matches if it carries AT LEAST ONE of the selected tags (membership in the
+// subselect of `item_tag` ids).
 const buildWhere = (db: DrizzleDb, filters: RelationalFilters, searchPredicate?: SQL): SQL | undefined => {
-  const conds: SQL[] = []
+  const conds: SQL[] = [eq(items.published, true)] // drafts never leak into the catalog or facets
   if (searchPredicate) conds.push(searchPredicate)
   if (filters.locationId != null) conds.push(eq(items.locationId, filters.locationId))
   if (filters.itemTypeId != null) conds.push(eq(items.itemTypeId, filters.itemTypeId))
@@ -331,6 +333,15 @@ export const updateItem = (db: DrizzleDb, id: number, data: UpdateItemData): Ite
     .get()
 
 export const deleteItem = (db: DrizzleDb, id: number): boolean => db.delete(items).where(eq(items.id, id)).run().changes > 0
+
+// Unpublished items only, for the drafts page. No FTS join — a draft may not be in
+// items_fts (it always is, but keep this independent of the search path).
+export const listDraftItems = (db: DrizzleDb): ItemRow[] =>
+  db.select(ITEM_FIELDS).from(items).where(eq(items.published, false)).orderBy(desc(items.createdAt)).all()
+
+// Flip the published flag. Returns whether the item existed.
+export const setItemPublished = (db: DrizzleDb, id: number, published: boolean): boolean =>
+  db.update(items).set({ published, updatedAt: new Date() }).where(eq(items.id, id)).run().changes > 0
 
 // Replace an item's whole custom-field value set: delete the existing rows,
 // then insert the new ones. Does NOT open its own transaction — it is always

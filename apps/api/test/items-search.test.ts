@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/server'
-import { createDb, runMigrations } from '@homebox/db'
+import { createDb, runMigrations, users } from '@homebox/db'
+import * as repo from '../src/modules/items/repo'
 
 let app: ReturnType<typeof buildApp>
 let adminCookie: string
+let db: ReturnType<typeof createDb>
 
 let typeId: number
 let itemId: number
@@ -15,7 +17,7 @@ let tagId: number
 // and then assert searchability (that would need `rebuildFTS`).
 beforeAll(async () => {
   process.env.SESSION_SECRET = 'test-secret'
-  const db = createDb(':memory:'); runMigrations(db)
+  db = createDb(':memory:'); runMigrations(db)
   app = buildApp({ db }); await app.ready()
 
   await app.inject({ method: 'POST', url: '/trpc/auth.setup', payload: { name: 'Admin', email: 'admin@b.co', password: 'password123' } })
@@ -76,5 +78,36 @@ describe('items.search across the tRPC boundary', () => {
     expect(Array.isArray(data.facets.types)).toBe(true)
     expect(Array.isArray(data.facets.tags)).toBe(true)
     expect(Array.isArray(data.facets.locations)).toBe(true)
+  })
+
+  // Drafts are seeded directly via the repo (the tRPC write path hardcodes
+  // `published: true`). `repo.createItem` reindexes into FTS, so this draft IS
+  // searchable in `items_fts` — only the `published` base predicate can exclude
+  // it from the list and search results.
+  it('hides draft items (published=false) from list and search', async () => {
+    const adminId = db.select({ id: users.id }).from(users).limit(1).get()?.id
+    repo.createItem(db, {
+      name: 'Draft Thing',
+      description: '',
+      quantity: 1,
+      unit: null,
+      itemTypeId: typeId,
+      locationId: null,
+      createdBy: adminId!,
+      published: false,
+      fieldValues: [],
+    })
+
+    const l = await list({})
+    expect(l.statusCode).toBe(200)
+    const lData = l.json()?.result?.data
+    const lNames = lData.items.map((i: { name: string }) => i.name)
+    expect(lNames).not.toContain('Draft Thing')
+    expect(lNames).toContain('Brass Lantern')
+
+    const s = await list({ search: 'Draft' })
+    expect(s.statusCode).toBe(200)
+    const sData = s.json()?.result?.data
+    expect(sData.items).toEqual([])
   })
 })

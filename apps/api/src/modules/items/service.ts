@@ -99,6 +99,22 @@ const hydrateOne = (db: DrizzleDb, row: ItemRow): ItemDto =>
     repo.getImages(db, row.id)
   )
 
+// Hydrate a batch of item rows with one query per child table (avoids N+1), then
+// group each table's rows back onto its item. Returns `ItemDto[]` WITHOUT the
+// live `snippet` (that is attached by the caller, e.g. `listItems`, by index).
+export const hydrateRows = (db: DrizzleDb, rows: ItemRow[]): ItemDto[] => {
+  const fieldsByItem = groupByItemId(repo.listCustomFields(db, rows.map((r) => r.id)))
+  const tagsByItem = groupByItemId(repo.listTags(db, rows.map((r) => r.id)))
+  const imagesByItem = groupByItemId(repo.listImages(db, rows.map((r) => r.id)))
+  const typeIds = distinct(rows.map((r) => r.itemTypeId))
+  const typeById = new Map(repo.listTypeRefsById(db, typeIds).map((t) => [t.id, t]))
+  const locationIds = distinct(rows.filter((r) => r.locationId != null).map((r) => r.locationId!))
+  const locationById = new Map(repo.listLocationRefsById(db, locationIds).map((l) => [l.id, l]))
+  return rows.map((row) =>
+    toDto(row, fieldsByItem.get(row.id) ?? [], typeById.get(row.itemTypeId), row.locationId != null ? locationById.get(row.locationId) : undefined, tagsByItem.get(row.id) ?? [], imagesByItem.get(row.id) ?? [])
+  )
+}
+
 export const getItem = (db: DrizzleDb, id: number): ItemDto => {
   const row = repo.getItem(db, id)
   if (!row) throw new TRPCError({ code: 'NOT_FOUND' })
@@ -165,28 +181,10 @@ export const listItems = (db: DrizzleDb, input: ListItemsInput): { items: ItemDt
   const { rows, total, facets } = repo.searchItems(db, input)
   if (rows.length === 0) return { items: [], total, facets }
 
-  const ids = rows.map((r) => r.id)
-  const fieldsByItem = groupByItemId(repo.listCustomFields(db, ids))
-  const tagsByItem = groupByItemId(repo.listTags(db, ids))
-  const imagesByItem = groupByItemId(repo.listImages(db, ids))
-
-  const typeIds = distinct(rows.map((r) => r.itemTypeId))
-  const typeById = new Map(repo.listTypeRefsById(db, typeIds).map((t) => [t.id, t]))
-  const locationIds = distinct(rows.filter((r) => r.locationId != null).map((r) => r.locationId!))
-  const locationById = new Map(repo.listLocationRefsById(db, locationIds).map((l) => [l.id, l]))
-
-  const items = rows.map((row) => {
-    const dto = toDto(
-      row,
-      fieldsByItem.get(row.id) ?? [],
-      typeById.get(row.itemTypeId),
-      row.locationId != null ? locationById.get(row.locationId) : undefined,
-      tagsByItem.get(row.id) ?? [],
-      imagesByItem.get(row.id) ?? []
-    )
-    if (row.snippet != null) dto.snippet = row.snippet
-    return dto
+  const items = hydrateRows(db, rows)
+  // hydrateRows returns items without the live `snippet`; attach it back by index.
+  rows.forEach((row, i) => {
+    if (row.snippet != null) items[i].snippet = row.snippet
   })
-
   return { items, total, facets }
 }
