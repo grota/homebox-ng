@@ -50,7 +50,10 @@ export const createBackup = async (db: DrizzleDb, dataDir: string): Promise<{ ar
 // null byte. Runs before any filesystem write, so the live tree is never touched
 // and a rejected archive is surfaced as a client error (the route's 400 path).
 const assertArchiveMembersSafe = async (archivePath: string): Promise<void> => {
-  const { stdout } = await exec('tar', ['-tzf', archivePath])
+  // A real instance can hold tens of thousands of uploads, so the member list
+  // can exceed execFile's default 1 MiB maxBuffer — a larger list must not be
+  // killed mid-list (which would surface as a misleading "invalid archive" 400).
+  const { stdout } = await exec('tar', ['-tzf', archivePath], { maxBuffer: 64 * 1024 * 1024 })
   for (const raw of stdout.split('\n')) {
     const member = raw.trim().replace(/\/$/, '')
     if (!member) continue
