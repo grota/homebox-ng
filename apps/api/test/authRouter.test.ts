@@ -25,8 +25,13 @@ describe('auth procedures', () => {
     const setCookie = login.headers['set-cookie'] as unknown as string
     expect(setCookie).toContain('session=')
 
+    // The bootstrapped admin is NOT forced to change their password (setup keeps
+    // the DB default `false`), but the field is surfaced on both login and /me.
+    expect(login.json()?.result?.data?.mustChangePassword).toBe(false)
+
     const me = await app.inject({ method: 'GET', url: '/trpc/auth.me', headers: { cookie: setCookie } })
     expect(me.json()?.result?.data?.email).toBe('a@b.co')
+    expect(me.json()?.result?.data?.mustChangePassword).toBe(false)
   })
 
   it('returns null for /me when unauthenticated', async () => {
@@ -58,6 +63,33 @@ describe('auth procedures', () => {
 
     const me = await app.inject({ method: 'GET', url: '/trpc/auth.me', headers: { cookie: setCookie } })
     expect(me.json()?.result?.data).toBeNull()
+  })
+
+  it('forces a created user to change their password, then clears the flag on success', async () => {
+    // Admin creates a user -> the user is forced to change their password.
+    const aLogin = await app.inject({ method: 'POST', url: '/trpc/auth.login', payload: { email: 'a@b.co', password: 'password123' } })
+    const adminCookie = aLogin.headers['set-cookie'] as unknown as string
+    const create = await app.inject({ method: 'POST', url: '/trpc/users.create', headers: { cookie: adminCookie }, payload: { name: 'X', email: 'x@x.co', password: 'password123', role: 'user' } })
+    expect(create.json()?.result?.data?.mustChangePassword).toBe(true)
+
+    const login = await app.inject({ method: 'POST', url: '/trpc/auth.login', payload: { email: 'x@x.co', password: 'password123' } })
+    const cookie = login.headers['set-cookie'] as unknown as string
+    expect(login.json()?.result?.data?.mustChangePassword).toBe(true)
+
+    const me = await app.inject({ method: 'GET', url: '/trpc/auth.me', headers: { cookie } })
+    expect(me.json()?.result?.data?.mustChangePassword).toBe(true)
+
+    // Wrong current password -> FORBIDDEN.
+    const wrong = await app.inject({ method: 'POST', url: '/trpc/auth.changePassword', headers: { cookie }, payload: { current: 'wrongwrong', next: 'newpassword123' } })
+    expect(wrong.statusCode).toBe(403)
+    expect(wrong.json()?.error?.data?.code).toBe('FORBIDDEN')
+
+    // Correct current password -> clears the flag and reports success.
+    const ok = await app.inject({ method: 'POST', url: '/trpc/auth.changePassword', headers: { cookie }, payload: { current: 'password123', next: 'newpassword123' } })
+    expect(ok.json()?.result?.data).toEqual({ ok: true })
+
+    const me2 = await app.inject({ method: 'GET', url: '/trpc/auth.me', headers: { cookie } })
+    expect(me2.json()?.result?.data?.mustChangePassword).toBe(false)
   })
 
   it('treats a corrupted stored hash as a failed login, not a 500', async () => {

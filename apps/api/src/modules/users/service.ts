@@ -5,9 +5,9 @@ import { hashPassword } from '../../auth/password.js'
 import * as repo from './repo.js'
 import type { Role, UserRow } from './repo.js'
 
-export type UserDto = { id: number; name: string; email: string; role: Role }
+export type UserDto = { id: number; name: string; email: string; role: Role; mustChangePassword: boolean }
 
-const toDto = (row: UserRow): UserDto => ({ id: row.id, name: row.name, email: row.email, role: row.role })
+const toDto = (row: UserRow): UserDto => ({ id: row.id, name: row.name, email: row.email, role: row.role, mustChangePassword: row.mustChangePassword })
 
 export const listUsers = (db: DrizzleDb): UserDto[] => repo.listUsers(db).map(toDto)
 
@@ -18,6 +18,7 @@ export const createUser = async (db: DrizzleDb, input: UserInput): Promise<UserD
     email: input.email,
     passwordHash: await hashPassword(input.password),
     role: input.role,
+    mustChangePassword: true,
   })
   return toDto(row)
 }
@@ -33,7 +34,10 @@ export const updateUser = async (db: DrizzleDb, id: number, input: UserUpdateInp
   if (input.name !== undefined) data.name = input.name
   if (input.email !== undefined) data.email = input.email
   if (input.role !== undefined) data.role = input.role
-  if (input.password !== undefined) data.passwordHash = await hashPassword(input.password)
+  if (input.password !== undefined) {
+    data.passwordHash = await hashPassword(input.password)
+    data.mustChangePassword = true
+  }
 
   const row = Object.keys(data).length > 0 ? repo.updateUser(db, id, data) : existing
   return toDto(row)

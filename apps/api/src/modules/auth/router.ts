@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server'
 import { users } from '@homebox/db'
 import { loginInput } from '@homebox/shared'
 import { z } from 'zod'
-import { t, publicProcedure } from '../../trpc.js'
+import { t, publicProcedure, protectedProcedure } from '../../trpc.js'
 import { hashPassword, verifyPassword } from '../../auth/password.js'
 import { createSession, invalidateSession } from '../../auth/sessions.js'
 import { parseSessionCookie } from '../../context.js'
@@ -14,7 +14,9 @@ const setupInput = z.object({
   password: z.string().min(8),
 })
 
-const USER_FIELDS = { id: users.id, name: users.name, email: users.email, role: users.role } as const
+const changePasswordInput = z.object({ current: z.string().min(8), next: z.string().min(8) })
+
+const USER_FIELDS = { id: users.id, name: users.name, email: users.email, role: users.role, mustChangePassword: users.mustChangePassword } as const
 
 export const authRouter = t.router({
   // Bootstraps the initial admin. Only allowed when no user exists yet.
@@ -55,7 +57,7 @@ export const authRouter = t.router({
 
     const { token } = createSession(ctx.db, found.id, secret)
     ctx.res.header('Set-Cookie', `session=${token}; HttpOnly; SameSite=Lax; Path=/`)
-    return { id: found.id, name: found.name, email: found.email, role: found.role }
+    return { id: found.id, name: found.name, email: found.email, role: found.role, mustChangePassword: found.mustChangePassword }
   }),
 
   // Returns the current user (full shape), or null when unauthenticated.
@@ -63,6 +65,19 @@ export const authRouter = t.router({
     if (!ctx.user) return null
     const user = ctx.db.select(USER_FIELDS).from(users).where(eq(users.id, ctx.user.id)).get()
     return user ?? null
+  }),
+
+  // Allows an authenticated user to change their own password. A correct
+  // current password clears the forced-change flag.
+  changePassword: protectedProcedure.input(changePasswordInput).mutation(async ({ ctx, input }) => {
+    const user = ctx.db.select().from(users).where(eq(users.id, ctx.user!.id)).get()
+    if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' })
+    if (!(await verifyPassword(input.current, user.passwordHash)))
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'current password is incorrect' })
+    await ctx.db.update(users)
+      .set({ passwordHash: await hashPassword(input.next), mustChangePassword: false })
+      .where(eq(users.id, user.id))
+    return { ok: true }
   }),
 
   // True when no user exists yet (fresh first-run instance). The SPA uses this
