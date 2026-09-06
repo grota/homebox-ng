@@ -6,6 +6,8 @@ import { createContext, type DbHolder } from './context.js'
 import { loadEnv } from './env.js'
 import { registerUploadRoutes } from './uploads.js'
 import { registerBackupRoutes } from './modules/backup/backupRoutes.js'
+import { getSettings } from './modules/instanceSettings/service.js'
+import { registerDetectionProviders } from './modules/detection/register.js'
 
 export type BuildAppOptions = { db: DrizzleDb; dataDir?: string; dbPath?: string }
 
@@ -26,7 +28,7 @@ export const buildApp = ({ db, dataDir = './data', dbPath }: BuildAppOptions) =>
     prefix: '/trpc',
     trpcOptions: {
       router: appRouter,
-      createContext: createContext(dbHolder),
+      createContext: createContext(dbHolder, dataDir),
     } satisfies FastifyTRPCPluginOptions<AppRouter>['trpcOptions'],
   })
 
@@ -34,6 +36,10 @@ export const buildApp = ({ db, dataDir = './data', dbPath }: BuildAppOptions) =>
   // reuses (`/upload/backup` reads `req.file()`).
   registerUploadRoutes(app, { dbHolder, dataDir })
   registerBackupRoutes(app, { dbHolder, dataDir, dbPath })
+
+  // Register the detection providers against live instance settings. The mock
+  // gate (DETECTION_MOCK=1) lets e2e/smoke runs avoid real model/API calls.
+  registerDetectionProviders(() => getSettings(dbHolder.current), { mock: process.env.DETECTION_MOCK === '1' })
 
   return app
 }

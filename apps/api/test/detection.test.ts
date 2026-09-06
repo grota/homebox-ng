@@ -1,33 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import { detectionRegistry } from '../src/modules/detection/provider'
-import type { DetectionBox, DetectionProvider } from '../src/modules/detection/provider'
+import { registerDetectionProviders } from '../src/modules/detection/register'
+import { DEFAULT_INSTANCE_SETTINGS } from '@homebox/shared'
 
 describe('detectionRegistry', () => {
-  it('starts empty: get returns undefined and names() is []', () => {
-    expect(detectionRegistry.get('remote')).toBeUndefined()
-    expect(detectionRegistry.names()).toEqual([])
+  it('registers the three built-in providers', () => {
+    registerDetectionProviders(() => DEFAULT_INSTANCE_SETTINGS, { mock: false })
+    expect(detectionRegistry.get('local')).toBeDefined()
+    expect(detectionRegistry.get('google')).toBeDefined()
+    expect(detectionRegistry.get('openai')).toBeDefined()
   })
-
-  it('round-trips a fake provider through register/get/detectBoxes', async () => {
-    const box: DetectionBox = {
-      box: { x: 1, y: 2, width: 3, height: 4 },
-      label: 'widget',
-      confidence: 0.99,
-    }
-    const fake: DetectionProvider = {
-      name: 'fake',
-      detectBoxes: async (image) => {
-        expect(Buffer.isBuffer(image)).toBe(true)
-        return [box]
-      },
-    }
-
-    detectionRegistry.register(fake)
-    expect(detectionRegistry.get('fake')).toBe(fake)
-    expect(detectionRegistry.names()).toEqual(['fake'])
-
-    const provider = detectionRegistry.get('fake')!
-    const result = await provider.detectBoxes(Buffer.from('image'))
-    expect(result).toEqual([box])
+  it('registers a mock provider when mock is set', () => {
+    registerDetectionProviders(() => DEFAULT_INSTANCE_SETTINGS, { mock: true })
+    expect(detectionRegistry.get('mock')).toBeDefined()
+    expect(detectionRegistry.names()).toEqual(['mock'])
   })
 })

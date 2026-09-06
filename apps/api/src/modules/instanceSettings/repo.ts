@@ -16,7 +16,7 @@ const toDto = (row: typeof instanceSettings.$inferSelect): InstanceSettingsDto =
 export const getOrCreate = (db: DrizzleDb): InstanceSettingsDto => {
   const row = db.select().from(instanceSettings).where(eq(instanceSettings.id, FIRST_ID)).get()
   if (row) return toDto(row)
-  const inserted = db.insert(instanceSettings).values({ id: FIRST_ID }).returning().get()
+  const inserted = db.insert(instanceSettings).values({ id: FIRST_ID, detectionProvider: 'google' }).returning().get()
   return toDto(inserted)
 }
 
