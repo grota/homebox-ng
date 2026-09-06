@@ -22,6 +22,11 @@ export function LoginPage() {
     // `/login` the `auth.me` query is NOT active, so `invalidate` would only mark
     // it stale without refetching (leaving the user stranded on `/login`).
     await utils.auth.me.fetch()
+    // `settings.get` is observed by the always-mounted SettingsProvider, so after
+    // login we invalidate it (it's active → refetches) to apply the user's
+    // persisted theme/locale/language without a reload; `auth.me` used `fetch`
+    // because on /login that query is NOT active, but settings.get IS.
+    await utils.settings.get.invalidate()
     setSignedIn(true)
     navigate('/')
   }

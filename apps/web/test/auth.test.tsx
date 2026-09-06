@@ -12,7 +12,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       // doesn't blow up under the mock.
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
       // `useUtils` backs the auth pages' `auth.me.fetch()` on setup/login success.
-      useUtils: () => ({ auth: { me: { fetch: vi.fn(async () => null) } } }),
+      useUtils: () => ({ auth: { me: { fetch: vi.fn(async () => null) } }, settings: { get: { invalidate: vi.fn(async () => undefined) } } }),
       auth: {
         me: { useQuery: () => ({ data: null, isLoading: false }) },
         login: { useMutation: () => ({ mutateAsync: vi.fn(async () => ({ id: 1, email: 'a@b.co', name: 'A', role: 'user' })), isPending: false, error: null }) },
