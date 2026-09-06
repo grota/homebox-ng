@@ -81,6 +81,16 @@ export const tags = sqliteTable('tags', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
 })
 
+export const userSettings = sqliteTable('user_settings', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
+  language: text('language').notNull().default('en'),
+  locale: text('locale').notNull().default('en-US'),
+  themeMode: text('theme_mode', { enum: ['auto', 'light', 'dark'] }).notNull().default('auto'),
+  lightThemeId: text('light_theme_id').notNull().default('light-default'),
+  darkThemeId: text('dark_theme_id').notNull().default('dark-default'),
+})
+
 export const itemTags = sqliteTable(
   'item_tags',
   {

@@ -15,6 +15,13 @@
       "when": 1788631027936,
       "tag": "0001_add_items_fts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788685782964,
+      "tag": "0002_add_user_settings",
+      "breakpoints": true
     }
   ]
 }
