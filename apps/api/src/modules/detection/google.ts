@@ -50,25 +50,39 @@ export const createGoogleProvider = (
         throw new DetectionProviderError('api-error', `Gemini request failed: ${(err as Error).message}`)
       }
       if (!text) throw new DetectionProviderError('api-error', 'Gemini returned no content')
-      const result = JSON.parse(text) as Result
+      let result: Result
+      try {
+        result = JSON.parse(text) as Result
+      } catch (err) {
+        throw new DetectionProviderError('api-error', `Gemini returned invalid JSON: ${(err as Error).message}`)
+      }
       // Gemini's box_2d is normalized 0-1000; scale to the decoded pixel dims and
       // clamp so the box is real, in-bounds pixels. This keeps the
       // DetectionProvider interface unchanged — no consumer ever sees a
       // normalized space, per the spec's "normalized to pixels at the boundary".
       const { width, height } = await measure(image)
-      return (result.detections ?? []).map((d) => {
-        const [ymin, xmin, ymax, xmax] = d.box_2d
-        return {
-          label: d.label,
-          confidence: d.confidence,
-          box: clampBox({
-            x: (xmin / 1000) * width,
-            y: (ymin / 1000) * height,
-            width: ((xmax - xmin) / 1000) * width,
-            height: ((ymax - ymin) / 1000) * height,
-          }, width, height),
-        }
-      })
+      try {
+        return (result.detections ?? []).map((d) => {
+          const { box_2d } = d
+          if (!box_2d || box_2d.length !== 4) {
+            throw new DetectionProviderError('api-error', 'Gemini returned a detection without a valid box_2d')
+          }
+          const [ymin, xmin, ymax, xmax] = box_2d
+          return {
+            label: d.label,
+            confidence: d.confidence,
+            box: clampBox({
+              x: (xmin / 1000) * width,
+              y: (ymin / 1000) * height,
+              width: ((xmax - xmin) / 1000) * width,
+              height: ((ymax - ymin) / 1000) * height,
+            }, width, height),
+          }
+        })
+      } catch (err) {
+        if (err instanceof DetectionProviderError) throw err
+        throw new DetectionProviderError('api-error', `Gemini returned malformed detections: ${(err as Error).message}`)
+      }
     },
   }
 }
