@@ -28,10 +28,13 @@
       "title": "Instance settings",
       "maxUploadMb": "Max upload size (MB)",
       "detectionProvider": "Detection provider",
-      "remote": "Remote",
-      "local": "Local",
-      "endpoint": "Endpoint",
+      "provider": {
+        "local": "Local model",
+        "google": "Google Gemini",
+        "openai": "OpenAI"
+      },
       "model": "Model",
+      "endpoint": "Endpoint",
       "save": "Save",
       "saved": "Settings saved."
     },

@@ -14,8 +14,7 @@ export function AdminSettingsTab() {
   const update = trpc.instanceSettings.update.useMutation()
 
   const [maxUploadMb, setMaxUploadMb] = useState(10)
-  const [provider, setProvider] = useState<DetectionProvider>('remote')
-  const [endpoint, setEndpoint] = useState('')
+  const [provider, setProvider] = useState<DetectionProvider>('google')
   const [model, setModel] = useState('')
   const [saved, setSaved] = useState(false)
 
@@ -24,15 +23,12 @@ export function AdminSettingsTab() {
     setMaxUploadMb(data.maxUploadMb)
     setProvider(data.detectionProvider)
     const config = (data.detectionConfig ?? {}) as Record<string, unknown>
-    setEndpoint(typeof config.endpoint === 'string' ? config.endpoint : '')
     setModel(typeof config.model === 'string' ? config.model : '')
   }, [data])
 
   const handleSave = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const detectionConfig = provider === 'remote'
-      ? { endpoint: endpoint.trim() }
-      : { model: model.trim() }
+    const detectionConfig = { model: model.trim() }
     await update.mutateAsync({ maxUploadMb, detectionProvider: provider, detectionConfig })
     setSaved(true)
     await utils.instanceSettings.get.invalidate()
@@ -60,52 +56,31 @@ export function AdminSettingsTab() {
         <div className="flex flex-col gap-1">
           <span className="text-text-muted">{t('admin.settings.detectionProvider')}</span>
           <div className="flex gap-4">
-            <label className="flex items-center gap-1">
-              <input
-                type="radio"
-                name="detectionProvider"
-                value="remote"
-                checked={provider === 'remote'}
-                onChange={(e) => setProvider(e.target.value as DetectionProvider)}
-              />
-              {t('admin.settings.remote')}
-            </label>
-            <label className="flex items-center gap-1">
-              <input
-                type="radio"
-                name="detectionProvider"
-                value="local"
-                checked={provider === 'local'}
-                onChange={(e) => setProvider(e.target.value as DetectionProvider)}
-              />
-              {t('admin.settings.local')}
-            </label>
+            {(['local', 'google', 'openai'] as DetectionProvider[]).map((p) => (
+              <label key={p} className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="detectionProvider"
+                  value={p}
+                  checked={provider === p}
+                  onChange={(e) => setProvider(e.target.value as DetectionProvider)}
+                />
+                {t(`admin.settings.provider.${p}`)}
+              </label>
+            ))}
           </div>
         </div>
 
-        {provider === 'remote' ? (
-          <div className="flex flex-col gap-1">
-            <label htmlFor="admin-settings-endpoint">{t('admin.settings.endpoint')}</label>
-            <input
-              id="admin-settings-endpoint"
-              type="text"
-              value={endpoint}
-              onChange={(e) => setEndpoint(e.target.value)}
-              className="px-2 py-1 border border-border rounded-md bg-surface text-text"
-            />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1">
-            <label htmlFor="admin-settings-model">{t('admin.settings.model')}</label>
-            <input
-              id="admin-settings-model"
-              type="text"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="px-2 py-1 border border-border rounded-md bg-surface text-text"
-            />
-          </div>
-        )}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="admin-settings-model">{t('admin.settings.model')}</label>
+          <input
+            id="admin-settings-model"
+            type="text"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
+          />
+        </div>
 
         <button
           type="submit"

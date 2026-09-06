@@ -16,7 +16,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
   // React Query keeps a stable reference across renders; the component's
   // hydration `useEffect` depends on `[data]`, so the mock must too, otherwise
   // the effect re-runs every render and resets the edited fields.
-  const settingsData = { maxUploadMb: 10, detectionProvider: 'remote', detectionConfig: null }
+  const settingsData = { maxUploadMb: 10, detectionProvider: 'google', detectionConfig: null }
 
   return {
     ...actual,
@@ -44,7 +44,7 @@ describe('AdminSettingsTab', () => {
     render(<AdminSettingsTab />)
 
     fireEvent.change(await screen.findByLabelText('admin.settings.maxUploadMb'), { target: { value: '25' } })
-    fireEvent.click(screen.getByRole('radio', { name: 'admin.settings.local' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'admin.settings.provider.local' }))
     fireEvent.change(screen.getByLabelText('admin.settings.model'), { target: { value: 'mymodel' } })
     fireEvent.click(screen.getByRole('button', { name: 'admin.settings.save' }))
 

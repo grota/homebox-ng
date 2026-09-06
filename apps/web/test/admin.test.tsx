@@ -52,7 +52,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         delete: { useMutation: () => idleMutation },
       },
       instanceSettings: {
-        get: { useQuery: () => ({ data: { maxUploadMb: 10, detectionProvider: 'remote', detectionConfig: null }, isLoading: false }) },
+        get: { useQuery: () => ({ data: { maxUploadMb: 10, detectionProvider: 'google', detectionConfig: null }, isLoading: false }) },
         update: { useMutation: () => idleMutation },
       },
       system: {
