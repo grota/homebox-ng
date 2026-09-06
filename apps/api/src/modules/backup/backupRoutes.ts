@@ -1,12 +1,16 @@
 import { createReadStream } from 'node:fs'
 import { writeFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { parseSessionCookie } from '../../context.js'
 import type { DbHolder } from '../../context.js'
 import { getSessionUser } from '../../auth/sessions.js'
 import { createBackup, validateBackup, applyRestore } from './service.js'
+
+// How long a validated-but-unconfirmed restore stays available before it is
+// treated as abandoned and its temp dir is cleaned up.
+const RESTORE_TTL_MS = 15 * 60 * 1000 // 15 minutes
 
 export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbHolder; dataDir: string; dbPath?: string }): void => {
   const { dbHolder, dataDir, dbPath } = opts
@@ -23,15 +27,32 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
   // Phase 1 → Phase 2 hand-off: `restoreId` → extracted `destDir` (short-lived,
   // in-memory). A restore consumes/removes its entry; leftovers are ephemeral.
   const restoreDirs = new Map<string, string>()
+  // Backing expiry timers so an abandoned upload (validate passed, restore never
+  // confirmed) cannot leak its temp dir + map entry forever.
+  const restoreDirsTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+  // Drop a pending restore so it can't leak: remove the map entry + its expiry
+  // timer and wipe the temp base dir (the archive + extracted tree, which is
+  // `dirname(dest)`). Idempotent — safe to call from success, failure, and the
+  // expiry-path; errors are swallowed since it's best-effort cleanup.
+  const dropRestore = (restoreId: string, dest?: string) => {
+    restoreDirs.delete(restoreId)
+    const timer = restoreDirsTimers.get(restoreId)
+    if (timer) { clearTimeout(timer); restoreDirsTimers.delete(restoreId) }
+    if (dest) void rm(dirname(dest), { recursive: true, force: true }).catch(() => {})
+  }
 
   // Download a fresh backup archive.
   app.get('/backup', async (req, reply) => {
     if (!admin(req, reply)) return
-    const { archivePath } = await createBackup(dbHolder.current, dataDir)
+    const { archivePath, baseDir } = await createBackup(dbHolder.current, dataDir)
     reply.header('Content-Type', 'application/gzip')
     reply.header('Content-Disposition', 'attachment; filename="homebox-backup.tar.gz"')
     const stream = createReadStream(archivePath)
-    stream.on('close', () => void rm(archivePath, { recursive: true, force: true }))
+    // Remove the whole temp base dir (dump + uploads copy + archive) once the
+    // download finishes. Errors are swallowed: the archive was already served, so
+    // a cleanup failure must not break the response.
+    stream.on('close', () => void rm(baseDir, { recursive: true, force: true }).catch(() => {}))
     return reply.send(stream)
   })
 
@@ -42,16 +63,23 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
     if (!part) return reply.code(400).send({ error: 'expected a backup archive' })
     const tmp = await mkdtemp(join(tmpdir(), 'homebox-restore-'))
     const archive = join(tmp, 'backup.tar.gz')
-    await writeFile(archive, await part.toBuffer())
     const dest = join(tmp, 'extract')
     try {
+      await writeFile(archive, await part.toBuffer())
       const { preview, restoreId } = await validateBackup(archive, dest)
+      // Keep the validated extraction for the confirm step, and arm an expiry
+      // timer so a never-confirmed restore can't leak the temp dir forever.
       restoreDirs.set(restoreId, dest)
+      const timer = setTimeout(() => dropRestore(restoreId, dest), RESTORE_TTL_MS)
+      timer.unref()
+      restoreDirsTimers.set(restoreId, timer)
       return { preview, restoreId }
     } catch {
-      // An undecodable archive (bad gzip, missing dump, failed integrity check)
-      // is a client error, not a server fault. Return 400 and leave the live
-      // DB untouched — validateBackup applies nothing.
+      // An undecodable archive (bad gzip, missing dump, failed integrity check,
+      // or an unsafe/traversal member caught by the guard) is a client error,
+      // not a server fault. Return 400 and leave the live DB untouched —
+      // validateBackup applies nothing. Clean up the temp dir so it can't leak.
+      await rm(tmp, { recursive: true, force: true }).catch(() => {})
       return reply.code(400).send({ error: 'invalid backup archive' })
     }
   })
@@ -62,8 +90,14 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
     const { restoreId } = (req.body ?? {}) as { restoreId?: string }
     const dest = restoreId ? restoreDirs.get(restoreId) : undefined
     if (!dest || !restoreId) return reply.code(400).send({ error: 'unknown restoreId' })
-    await applyRestore(dbHolder, dest, dbPath, dataDir)
-    restoreDirs.delete(restoreId)
-    return { ok: true }
+    try {
+      await applyRestore(dbHolder, dest, dbPath, dataDir)
+      return { ok: true }
+    } finally {
+      // Whether the swap succeeded or failed, the validated extraction has been
+      // consumed (or can no longer be safely applied) — drop the map entry + its
+      // temp dir so it can't leak. Idempotent and best-effort.
+      dropRestore(restoreId, dest)
+    }
   })
 }

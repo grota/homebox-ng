@@ -4,7 +4,8 @@ import { createDb, runMigrations } from '@homebox/db'
 import FormData from 'form-data'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { gzipSync } from 'node:zlib'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -93,6 +94,55 @@ const extract = async (buf: Buffer) => {
   return dest
 }
 
+// Count temp dirs under os.tmpdir() with the given prefix. The backup route
+// creates `homebox-backup-*` (GET /backup) and `homebox-restore-*` (upload); a
+// leaked dir shows up here and is the regression we assert against. Note the test
+// setup's own root uses `homebox-backup-test-*`, which also matches the backup
+// prefix — so we always compare against a baseline captured before the call.
+const tmpDirCount = (prefix: string): number => {
+  try { return readdirSync(tmpdir()).filter((d) => d.startsWith(prefix)).length } catch { return 0 }
+}
+
+// Poll until `fn` is true (with a short timeout) — used because some temp-dir
+// cleanups (the download close handler, the restore finally) are fire-and-forget.
+const waitFor = async (fn: () => boolean, ms = 3000): Promise<boolean> => {
+  const start = Date.now()
+  while (Date.now() - start < ms) { if (fn()) return true; await new Promise((r) => setTimeout(r, 25)) }
+  return fn()
+}
+
+// Hand-craft a tar.gz whose member name escapes the extraction dir (`../evil.txt`),
+// so the path-traversal guard must reject it. We write the raw tar bytes (rather
+// than rely on `tar --transform`, which is GNU-specific) so the test is deterministic.
+// `homebox.db` is a real, valid dump so that the archive is rejected because of the
+// traversal member and NOT because of a failed integrity check.
+const evilTarGz = (homeboxDb: Buffer): Buffer => {
+  const entry = (name: string, content: Buffer): Buffer => {
+    const nameBuf = Buffer.from(name, 'utf8')
+    const header = Buffer.alloc(512, 0x20)
+    nameBuf.copy(header, 0, 0, 100)
+    header.write('0000644', 100, 8) // mode
+    header.write('0000000', 108, 8) // uid
+    header.write('0000000', 116, 8) // gid
+    header.write(content.length.toString(8).padStart(11, '0'), 124, 12) // size (octal)
+    header.write('00000000000', 136, 12) // mtime
+    header.write('\0', 156, 1) // typeflag: regular file
+    header.write('ustar', 257, 5)
+    header.write('00', 263, 2) // version
+    let sum = 0
+    for (let i = 0; i < 512; i++) sum += header[i]
+    header.write(sum.toString(8).padStart(6, '0') + '\0 ', 148, 8) // checksum
+    const data = Buffer.alloc(Math.ceil(content.length / 512) * 512) // pad to a 512-block
+    content.copy(data, 0, 0, Math.min(content.length, data.length))
+    return Buffer.concat([header, data])
+  }
+  const body = Buffer.concat([
+    entry('../../evil.txt', Buffer.from('pwned', 'utf8')),
+    entry('homebox.db', homeboxDb),
+  ])
+  return gzipSync(Buffer.concat([body, Buffer.alloc(1024)])) // two zero 512-blocks => end of tar
+}
+
 // `items.list` is a tRPC query, so the fastify adapter routes it via GET with
 // the input in the `?input=` search param.
 const listItems = async (cookie: string, input: unknown = {}) => {
@@ -146,6 +196,7 @@ describe('backup & restore', () => {
 
   it('POST /upload/backup then /backup/restore swaps the live data (round-trip)', async () => {
     // Snapshot the current (Original-only) state.
+    const uploadDirsBefore = tmpDirCount('homebox-restore-')
     const buf = await getBackup(adminCookie)
 
     // Mutate the live data so it diverges from the snapshot.
@@ -174,6 +225,8 @@ describe('backup & restore', () => {
     const restore = await app.inject({ method: 'POST', url: '/backup/restore', headers: { cookie: adminCookie }, payload: { restoreId } })
     expect(restore.statusCode).toBe(200)
     expect(restore.json()).toEqual({ ok: true })
+    // A consumed restore must not leak its temp dir (extraction + archive).
+    expect(await waitFor(() => tmpDirCount('homebox-restore-') === uploadDirsBefore)).toBe(true)
 
     // The live data now matches the restored snapshot.
     expect(await itemNames(adminCookie)).toContain('Original')
@@ -199,6 +252,7 @@ describe('backup & restore', () => {
   })
 
   it('rejects an invalid archive with 400 and leaves the live DB untouched', async () => {
+    const dirsBefore = tmpDirCount('homebox-restore-')
     const before = (await listItems(adminCookie)).json()?.result?.data?.items?.length
     const form = new FormData()
     form.append('file', Buffer.from('this is not a gzip archive'), { filename: 'bad.tar.gz', contentType: 'application/gzip' })
@@ -206,5 +260,35 @@ describe('backup & restore', () => {
     expect(up.statusCode).toBe(400)
     const after = (await listItems(adminCookie)).json()?.result?.data?.items?.length
     expect(after).toBe(before)
+    // A rejected archive must not leak its temp dir (uploaded archive + extraction).
+    expect(await waitFor(() => tmpDirCount('homebox-restore-') === dirsBefore)).toBe(true)
+  })
+
+  it('does not leak the temp dir after GET /backup downloads an archive', async () => {
+    const backupDirsBefore = tmpDirCount('homebox-backup-')
+    // Download triggers createBackup, which materializes a full uploads copy + DB
+    // dump into a `homebox-backup-*` temp dir; the download path must remove the
+    // WHOLE dir (not just the archive) once streaming finishes.
+    await getBackup(adminCookie)
+    expect(await waitFor(() => tmpDirCount('homebox-backup-') === backupDirsBefore)).toBe(true)
+  })
+
+  it('rejects an archive that would escape the extraction dir (path traversal) and leaves the live DB untouched', async () => {
+    const dirsBefore = tmpDirCount('homebox-restore-')
+    const itemsBefore = (await listItems(adminCookie)).json()?.result?.data?.items?.length
+    // Build an archive from a REAL, valid dump plus a member that escapes the
+    // extraction dir. With the guard, it is rejected on the traversal member; the
+    // valid dump guarantees it is NOT the integrity check doing the rejecting.
+    const real = await getBackup(adminCookie)
+    const realDest = await extract(real)
+    const db = readFileSync(join(realDest, 'homebox.db'))
+    const form = new FormData()
+    form.append('file', evilTarGz(db), { filename: 'evil.tar.gz', contentType: 'application/gzip' })
+    const up = await app.inject({ method: 'POST', url: '/upload/backup', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
+    expect(up.statusCode).toBe(400)
+    const itemsAfter = (await listItems(adminCookie)).json()?.result?.data?.items?.length
+    expect(itemsAfter).toBe(itemsBefore)
+    // The rejected archive must not leak its temp dir.
+    expect(await waitFor(() => tmpDirCount('homebox-restore-') === dirsBefore)).toBe(true)
   })
 })
