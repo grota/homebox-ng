@@ -6,6 +6,7 @@ import { itemTypesRouter } from './modules/itemTypes/router.js'
 import { itemsRouter } from './modules/items/router.js'
 import { imagesRouter } from './modules/images/router.js'
 import { tagsRouter } from './modules/tags/router.js'
+import { settingsRouter } from './modules/settings/router.js'
 
 export { publicProcedure }
 
@@ -18,5 +19,6 @@ export const appRouter = t.router({
   items: itemsRouter,
   images: imagesRouter,
   tags: tagsRouter,
+  settings: settingsRouter,
 })
 export type AppRouter = typeof appRouter
