@@ -37,3 +37,27 @@ export const DEFAULT_USER_SETTINGS: UserSettingsDto = {
   lightThemeId: 'light-default',
   darkThemeId: 'dark-default',
 }
+
+// Detection provider selection (Phase 5 ships the setting + interface only; the
+// concrete providers are wired in a later phase).
+export const DETECTION_PROVIDERS = ['remote', 'local'] as const
+export type DetectionProvider = (typeof DETECTION_PROVIDERS)[number]
+
+// Single row of instance-wide settings.
+export const instanceSettingsSchema = z.object({
+  maxUploadMb: z.number().int().positive(),
+  detectionProvider: z.enum(DETECTION_PROVIDERS),
+  detectionConfig: z.record(z.unknown()).nullish(),
+})
+export type InstanceSettingsDto = z.infer<typeof instanceSettingsSchema>
+
+// `instanceSettings.update` takes any subset.
+export const instanceSettingsUpdateSchema = instanceSettingsSchema.partial()
+export type InstanceSettingsInput = z.infer<typeof instanceSettingsUpdateSchema>
+
+// Used when no row exists yet.
+export const DEFAULT_INSTANCE_SETTINGS: InstanceSettingsDto = {
+  maxUploadMb: 10,
+  detectionProvider: 'remote',
+  detectionConfig: null,
+}

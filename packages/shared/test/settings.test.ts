@@ -1,8 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, test, expect } from 'vitest'
 import {
   userSettingsSchema,
   userSettingsUpdateSchema,
   DEFAULT_USER_SETTINGS,
+  instanceSettingsSchema,
+  instanceSettingsUpdateSchema,
+  DEFAULT_INSTANCE_SETTINGS,
 } from '../src/settings'
 
 describe('shared settings schemas', () => {
@@ -23,5 +26,11 @@ describe('shared settings schemas', () => {
       language: 'en', locale: 'en-US', themeMode: 'auto',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
     })
+  })
+
+  test('instanceSettings defaults + partial update', () => {
+    expect(DEFAULT_INSTANCE_SETTINGS.maxUploadMb).toBe(10)
+    expect(instanceSettingsUpdateSchema.parse({ maxUploadMb: 25 })).toEqual({ maxUploadMb: 25 })
+    expect(instanceSettingsSchema.parse(DEFAULT_INSTANCE_SETTINGS).detectionProvider).toBe('remote')
   })
 })
