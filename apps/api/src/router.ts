@@ -10,6 +10,7 @@ import { settingsRouter } from './modules/settings/router.js'
 import { instanceSettingsRouter } from './modules/instanceSettings/router.js'
 import { systemRouter } from './modules/system/router.js'
 import { unpackRouter } from './modules/unpack/router.js'
+import { draftsRouter } from './modules/drafts/router.js'
 
 export { publicProcedure }
 
@@ -26,5 +27,6 @@ export const appRouter = t.router({
   instanceSettings: instanceSettingsRouter,
   system: systemRouter,
   unpack: unpackRouter,
+  drafts: draftsRouter,
 })
 export type AppRouter = typeof appRouter
