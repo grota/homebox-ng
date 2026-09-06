@@ -150,3 +150,34 @@ test('search + tag facet narrows the item catalog', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Lamp', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Table Lamp', exact: true })).not.toBeVisible()
 })
+
+// Settings persistence + locale formatting leg. The main test's admin already
+// exists (DB persists within a run), so log in directly, open `/settings`, switch
+// the locale to de-DE and the theme mode to dark, reload, and assert the choice
+// survived AND a date renders in the chosen locale.
+test('settings persist across reload and drive locale formatting', async ({ page }) => {
+  const login = await page.request.post('/trpc/auth.login', {
+    data: { email: 'admin@b.co', password: 'password123' },
+  })
+  expect(login.ok()).toBeTruthy()
+
+  await page.goto('/settings')
+
+  // Switch locale to German and theme mode to dark.
+  await page.selectOption('#settings-locale', 'de-DE')
+  await page.selectOption('#settings-theme-mode', 'dark')
+  await page.selectOption('#settings-dark-palette', 'dark-dracula')
+
+  // The default dark palette resolves to dark-dracula: the root carries the
+  // data-theme attribute.
+  await expect(page.locator('html[data-theme="dark-dracula"]')).toBeVisible()
+
+  // A date renders in the chosen locale (German day-first format).
+  const dateText = await page.getByTestId('locale-date').textContent()
+  expect(dateText).toMatch(/\d{1,2}\.\d{1,2}\.\d{4}/)
+
+  // Reload → the persisted values survive.
+  await page.reload()
+  await expect(page.locator('#settings-theme-mode')).toHaveValue('dark')
+  await expect(page.locator('#settings-locale')).toHaveValue('de-DE')
+})
