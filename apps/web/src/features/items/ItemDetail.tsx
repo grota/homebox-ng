@@ -10,8 +10,9 @@ export function ItemDetail() {
   const { id } = useParams()
   const itemId = Number(id)
   const navigate = useNavigate()
+  const utils = trpc.useUtils()
   const { data: item, isLoading } = trpc.items.get.useQuery({ id: itemId })
-  const unpack = trpc.unpack.run.useMutation()
+  const unpack = trpc.unpack.run.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const [editingImage, setEditingImage] = useState<{ id: number; originalPath: string } | null>(null)
 
   if (isLoading) return <p>Loading…</p>
