@@ -19,8 +19,8 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
     setBusy(true); setErr(null)
     try {
       const fd = new FormData()
-      fd.append('photo', file)
       fd.append('itemTypeId', String(itemTypeId))
+      fd.append('photo', file)
       const res = await fetch('/upload/unpack', { method: 'POST', body: fd, credentials: 'include' })
       if (!res.ok) throw new Error(await res.text())
       const result = await res.json() as { detected: number }
