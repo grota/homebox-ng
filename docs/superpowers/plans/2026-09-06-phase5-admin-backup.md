@@ -384,9 +384,11 @@ import type { DrizzleDb } from '@homebox/db'
 import { rebuildFTS } from '../items/fts.js'
 
 export const rebuild = (db: DrizzleDb): { reindexed: number } => {
-  const [{ n }] = db.all<{ n: number }>(sql`select count(*) as n from items`)
+  // `select().from().get()` is the proven count pattern (see repo.ts); avoid the
+  // top-level `db.all(sql)` form.
+  const row = db.select({ n: sql<number>`count(*)` }).from(items).get()
   rebuildFTS(db)
-  return { reindexed: n }
+  return { reindexed: Number(row?.n ?? 0) }
 }
 ```
 
@@ -449,6 +451,8 @@ const toDto = (row: UserRow): UserDto => ({ id: row.id, name: row.name, email: r
 ```
 
 - [ ] **Step 3:** `modules/auth/router.ts` — add `mustChangePassword` to `USER_FIELDS`, to the `login` return, and add the procedure:
+
+**Import `protectedProcedure` too** — the file currently imports `{ t, publicProcedure } from '../../trpc.js'`; `changePassword` needs `protectedProcedure` added to that import.
 
 ```ts
 const USER_FIELDS = { id: users.id, name: users.name, email: users.email, role: users.role, mustChangePassword: users.mustChangePassword } as const
@@ -527,6 +531,8 @@ export const buildApp = ({ db, dataDir = './data', dbPath }: BuildAppOptions) =>
 **Add the parallel change in `uploads.ts`** — `registerUploadRoutes` takes `{ dbHolder, dataDir }` instead of `{ db, dataDir }`, and every handler that previously read `db` now reads `const db = dbHolder.current` at the top of the handler (this is what Task 4's per-request `getInstanceSettings(db)` consumes, so it now tracks the active DB). `dataDir` is unchanged.
 
 - [ ] **Step 3: `index.ts` — pass the DB path.** `buildApp({ db, dataDir: env.DATA_DIR, dbPath: env.DATABASE_PATH })`.
+
+**Also update the `listen` helper in `server.ts`** (line ~40): `buildApp({ db: opts.db, dataDir: env.DATA_DIR, dbPath: env.DATABASE_PATH })` — it reads `loadEnv()` so it can pass `env.DATABASE_PATH` just like `index.ts`.
 
 - [ ] **Step 4: `modules/backup/service.ts`** — the file-format logic, isolated and testable (uses the raw driver for `.backup()`/`.close()`):
 
