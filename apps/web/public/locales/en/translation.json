@@ -5,7 +5,20 @@
     "locations": "Locations",
     "types": "Item types",
     "tags": "Tags",
-    "settings": "Settings"
+    "settings": "Settings",
+    "drafts": "Drafts"
+  },
+  "drafts": {
+    "title": "Drafts",
+    "empty": "No drafts. Use Unpack a photo to import several items at once.",
+    "unpackTitle": "Unpack a photo",
+    "unpack": "Unpack",
+    "chooseType": "Choose a type…",
+    "publish": "Publish",
+    "discard": "Discard",
+    "selectAll": "Select all",
+    "publishSelected": "Publish selected",
+    "unpacked": "Detected {count} item(s)"
   },
   "settings": {
     "title": "Settings",

@@ -26,6 +26,9 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
       useUtils: () => ({ items: { list: { invalidate }, get: { invalidate } } }),
       items: { get: { useQuery: () => ({ data: item, isLoading: false }) } },
+      // `ItemDetail` renders a per-image "Unpack this photo" button backed by
+      // `trpc.unpack.run.useMutation()`, so the mock must provide it.
+      unpack: { run: { useMutation: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false, error: null }) } },
     },
     __item: item,
   }

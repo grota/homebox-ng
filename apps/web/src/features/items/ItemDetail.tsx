@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
 import { PhotoUpload } from '../upload/PhotoUpload'
 import { PhotoEditor } from '../upload/PhotoEditor'
@@ -9,7 +9,9 @@ import { PhotoEditor } from '../upload/PhotoEditor'
 export function ItemDetail() {
   const { id } = useParams()
   const itemId = Number(id)
+  const navigate = useNavigate()
   const { data: item, isLoading } = trpc.items.get.useQuery({ id: itemId })
+  const unpack = trpc.unpack.run.useMutation()
   const [editingImage, setEditingImage] = useState<{ id: number; originalPath: string } | null>(null)
 
   if (isLoading) return <p>Loading…</p>
@@ -40,6 +42,13 @@ export function ItemDetail() {
               onClick={() => setEditingImage({ id: img.id, originalPath: img.originalPath })}
             >
               Edit
+            </button>
+            <button
+              type="button"
+              className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
+              onClick={() => { unpack.mutate({ kind: 'item', imageId: img.id }); navigate('/drafts') }}
+            >
+              Unpack this photo
             </button>
             <a
               href={'/file/' + (img.editedPath ?? img.originalPath)}
