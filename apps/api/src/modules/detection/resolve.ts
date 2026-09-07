@@ -2,9 +2,9 @@ import type { DrizzleDb } from '@homebox/db'
 import { getSettings } from '../instanceSettings/service.js'
 import { detectionRegistry } from './provider.js'
 import { DetectionProviderError } from './errors.js'
-import type { DetectionProvider } from './provider.js'
+import type { DetectionProviderImpl } from './provider.js'
 
-export const resolveDetectionProvider = (db: DrizzleDb): DetectionProvider => {
+export const resolveDetectionProvider = (db: DrizzleDb): DetectionProviderImpl => {
   const { detectionProvider } = getSettings(db)
   const provider = detectionRegistry.get(detectionProvider)
   if (!provider) throw new DetectionProviderError('not-configured', `no detection provider named '${detectionProvider}'`)

@@ -1,4 +1,4 @@
-import type { DetectionProvider } from './provider.js'
+import type { DetectionProviderImpl } from './provider.js'
 import { clampBox } from './coords.js'
 import { DetectionProviderError } from './errors.js'
 import type { ProviderConfig } from './local.js'
@@ -16,7 +16,7 @@ box_2d values are normalized to 0-1000. Only include confident detections.`
 export const createGoogleProvider = (
   getConfig: () => ProviderConfig,
   deps: { genai?: (apiKey: string) => GenAILike } = {},
-): DetectionProvider => {
+): DetectionProviderImpl => {
   const makeGenai = deps.genai ?? ((apiKey: string) => {
     return new GoogleGenAI({ apiKey }) as unknown as GenAILike
   })

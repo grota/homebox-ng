@@ -1,4 +1,4 @@
-import type { DetectionProvider } from './provider.js'
+import type { DetectionProviderImpl } from './provider.js'
 import { clampBox } from './coords.js'
 import { DetectionProviderError } from './errors.js'
 import type { ProviderConfig } from './local.js'
@@ -18,7 +18,7 @@ where box is in pixels (top-left origin). Only include confident detections.`
 export const createOpenAIProvider = (
   getConfig: () => ProviderConfig,
   deps: { client?: (apiKey: string) => OpenAIClientLike } = {},
-): DetectionProvider => {
+): DetectionProviderImpl => {
   const makeClient = deps.client ?? ((apiKey: string) => {
     return new OpenAI({ apiKey }) as unknown as OpenAIClientLike
   })

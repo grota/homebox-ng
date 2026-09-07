@@ -1,4 +1,4 @@
-import type { DetectionBox, DetectionProvider } from './provider.js'
+import type { DetectionBox, DetectionProviderImpl } from './provider.js'
 import { clampBox } from './coords.js'
 
 // Deterministic provider for e2e and smoke tests, gated behind DETECTION_MOCK=1.
@@ -11,7 +11,7 @@ export const MOCK_BOXES: DetectionBox[] = [
 // Clamp the fixed boxes to the passed bounds so the mock honors the seam's
 // in-bounds guarantee (a box may extend past the real image dims). We build a
 // fresh box each call so the shared MOCK_BOXES array is never mutated.
-export const createMockProvider = (boxes: DetectionBox[] = MOCK_BOXES): DetectionProvider => ({
+export const createMockProvider = (boxes: DetectionBox[] = MOCK_BOXES): DetectionProviderImpl => ({
   name: 'mock',
   async detectBoxes(_image, bounds) {
     return boxes.map((b) => ({ ...b, box: clampBox(b.box, bounds.width, bounds.height) }))

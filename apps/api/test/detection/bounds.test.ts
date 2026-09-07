@@ -3,7 +3,7 @@ import { createLocalProvider } from '../../src/modules/detection/local'
 import { createOpenAIProvider } from '../../src/modules/detection/openai'
 import { createGoogleProvider } from '../../src/modules/detection/google'
 import { createMockProvider } from '../../src/modules/detection/mock'
-import type { DetectionBox, DetectionProvider } from '../../src/modules/detection/provider'
+import type { DetectionBox, DetectionProviderImpl } from '../../src/modules/detection/provider'
 
 // A known image size on which every provider must operate. Boxes are pixel
 // space, top-left origin, and every returned box must lie fully inside these
@@ -80,7 +80,7 @@ describe('detection box in-bounds invariant (the seam contract)', () => {
     delete process.env.GEMINI_API_KEY
   })
 
-  const inBounds: { name: string; make: () => DetectionProvider }[] = [
+  const inBounds: { name: string; make: () => DetectionProviderImpl }[] = [
     { name: 'local', make: () => createLocalProvider(() => ({ model: 'rfdetr' }), { pipeline: localPipeline }) },
     { name: 'openai', make: () => createOpenAIProvider(() => ({ model: 'gpt-4o-mini' }), { client: openaiClient as never }) },
     { name: 'google', make: () => createGoogleProvider(() => ({ model: 'gemini-2.5-flash' }), { genai: googleGenai as never }) },
@@ -92,7 +92,7 @@ describe('detection box in-bounds invariant (the seam contract)', () => {
     expectInBounds(boxes)
   })
 
-  const overWide: { name: string; make: () => DetectionProvider; clamped: DetectionBox['box'] }[] = [
+  const overWide: { name: string; make: () => DetectionProviderImpl; clamped: DetectionBox['box'] }[] = [
     { name: 'local', make: () => createLocalProvider(() => ({ model: 'rfdetr' }), { pipeline: wideLocalPipeline }), clamped: { x: 250, y: 100, width: 50, height: 100 } },
     { name: 'openai', make: () => createOpenAIProvider(() => ({ model: 'gpt-4o-mini' }), { client: wideOpenaiClient as never }), clamped: { x: 250, y: 100, width: 50, height: 100 } },
     { name: 'google', make: () => createGoogleProvider(() => ({ model: 'gemini-2.5-flash' }), { genai: wideGoogleGenai as never }), clamped: { x: 0, y: 0, width: 300, height: 300 } },

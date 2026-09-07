@@ -4,12 +4,12 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import sharp, { type Metadata } from 'sharp'
 import type { DrizzleDb } from '@homebox/db'
-import type { DetectionProvider } from '../detection/provider.js'
+import type { DetectionProviderImpl } from '../detection/provider.js'
 import { UnpackError } from './errors.js'
 import { createItem } from '../items/repo.js'
 import { insertImage } from '../images/repo.js'
 
-export type UnpackContext = { db: DrizzleDb; dataDir: string; userId: number; provider: DetectionProvider }
+export type UnpackContext = { db: DrizzleDb; dataDir: string; userId: number; provider: DetectionProviderImpl }
 export type UnpackSource = { path: string; itemTypeId: number }
 export type UnpackResult = { detected: number; drafts: { id: number; name: string; imageId: number }[] }
 

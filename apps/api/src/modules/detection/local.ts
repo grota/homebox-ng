@@ -1,4 +1,4 @@
-import type { DetectionProvider } from './provider.js'
+import type { DetectionProviderImpl } from './provider.js'
 import { clampBox } from './coords.js'
 import { DetectionProviderError } from './errors.js'
 
@@ -10,7 +10,7 @@ const DEFAULT_MODEL = 'onnx-community/rfdetr_nano-ONNX'
 export const createLocalProvider = (
   getConfig: () => ProviderConfig,
   deps: { pipeline?: (name: string, model: string, opts: Record<string, unknown>) => Promise<Pipeline> } = {},
-): DetectionProvider => {
+): DetectionProviderImpl => {
   const loadPipeline = deps.pipeline ?? (async (_name: string, model: string, opts: Record<string, unknown>) => {
     // Lazy import: @huggingface/transformers drags onnxruntime-node which is
     // native and heavy; keep module load light and only load it on first use.
