@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import sharp from 'sharp'
+import sharp, { type Metadata } from 'sharp'
 import type { DrizzleDb } from '@homebox/db'
 import { getSettings } from '../instanceSettings/service.js'
 import { detectionRegistry } from '../detection/provider.js'
@@ -41,8 +41,15 @@ export const createItemsFromImage = async (ctx: UnpackContext, source: UnpackSou
 
   const buffer = await readFile(source.path)
   // `sharp().metadata()` rejects (rather than returning null dims) for a
-  // non-image or truncated file, so surface both cases as the typed error.
-  const meta = await sharp(buffer).metadata().catch(() => null)
+  // non-image or truncated file, so surface both cases as the typed error. We
+  // rethrow the reject as UnpackError with the original sharp error preserved
+  // as `cause` for diagnostics; the null-dims case stays a plain UnpackError.
+  let meta: Metadata | null
+  try {
+    meta = await sharp(buffer).metadata()
+  } catch (err) {
+    throw new UnpackError('image-not-decodable', undefined, err)
+  }
   if (!meta || !meta.width || !meta.height) throw new UnpackError('image-not-decodable')
   // The provider clamps every box to the bounds we pass here, so each box is
   // guaranteed in-bounds for sharp.extract. We only drop 0-area degenerate

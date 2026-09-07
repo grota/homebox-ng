@@ -57,7 +57,7 @@ describe('createItemsFromImage', () => {
     seed(db)
     const path = join(dataDir, 'src.png'); writeFileSync(path, Buffer.from('this is not an image'))
     await expect(createItemsFromImage({ db, dataDir, userId: 1 }, { path, itemTypeId: 1 }))
-      .rejects.toMatchObject({ code: 'image-not-decodable' })
+      .rejects.toMatchObject({ code: 'image-not-decodable', cause: expect.any(Error) })
   })
 })
 
