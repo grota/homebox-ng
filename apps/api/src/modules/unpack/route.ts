@@ -9,6 +9,7 @@ import { itemIdFrom } from '../../uploads.js'
 import { parseSessionCookie, type DbHolder } from '../../context.js'
 import { getSessionUser } from '../../auth/sessions.js'
 import { UnpackError } from './errors.js'
+import { resolveDetectionProvider } from '../detection/resolve.js'
 import * as service from './service.js'
 
 type RegisterUnpackRouteOptions = { dbHolder: DbHolder; dataDir: string }
@@ -47,7 +48,8 @@ export const registerUnpackRoute = (app: FastifyInstance, { dbHolder, dataDir }:
     await writeFile(tmpPath, buffer)
     try {
       try {
-        const result = await service.createItemsFromImage({ db, dataDir, userId: user.id }, { path: tmpPath, itemTypeId })
+        const provider = resolveDetectionProvider(db)
+        const result = await service.createItemsFromImage({ db, dataDir, userId: user.id, provider }, { path: tmpPath, itemTypeId })
         return reply.code(200).send(result)
       } catch (err) {
         if (err instanceof UnpackError) return reply.code(400).send({ error: 'not a decodable image' })

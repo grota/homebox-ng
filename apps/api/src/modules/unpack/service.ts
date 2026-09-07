@@ -4,14 +4,12 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import sharp, { type Metadata } from 'sharp'
 import type { DrizzleDb } from '@homebox/db'
-import { getSettings } from '../instanceSettings/service.js'
-import { detectionRegistry } from '../detection/provider.js'
-import { DetectionProviderError } from '../detection/errors.js'
+import type { DetectionProvider } from '../detection/provider.js'
 import { UnpackError } from './errors.js'
 import { createItem } from '../items/repo.js'
 import { insertImage } from '../images/repo.js'
 
-export type UnpackContext = { db: DrizzleDb; dataDir: string; userId: number }
+export type UnpackContext = { db: DrizzleDb; dataDir: string; userId: number; provider: DetectionProvider }
 export type UnpackSource = { path: string; itemTypeId: number }
 export type UnpackResult = { detected: number; drafts: { id: number; name: string; imageId: number }[] }
 
@@ -34,10 +32,7 @@ const saveCrop = async (buffer: Buffer, box: { x: number; y: number; width: numb
 }
 
 export const createItemsFromImage = async (ctx: UnpackContext, source: UnpackSource): Promise<UnpackResult> => {
-  const { db, dataDir, userId } = ctx
-  const settings = getSettings(db)
-  const provider = detectionRegistry.get(settings.detectionProvider)
-  if (!provider) throw new DetectionProviderError('not-configured', `no detection provider named '${settings.detectionProvider}'`)
+  const { db, dataDir, userId, provider } = ctx
 
   const buffer = await readFile(source.path)
   // `sharp().metadata()` rejects (rather than returning null dims) for a
