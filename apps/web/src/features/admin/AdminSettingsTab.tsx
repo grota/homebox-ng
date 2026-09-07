@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
-import type { DetectionProvider } from '@homebox/shared'
+import { DETECTION_PROVIDERS, type DetectionProvider } from '@homebox/shared'
 
 // Instance-wide settings: max upload size, detection provider, and the provider
 // sub-options persisted into the free-form `detectionConfig` object. The concrete
@@ -56,7 +56,7 @@ export function AdminSettingsTab() {
         <div className="flex flex-col gap-1">
           <span className="text-text-muted">{t('admin.settings.detectionProvider')}</span>
           <div className="flex gap-4">
-            {(['local', 'google', 'openai'] as DetectionProvider[]).map((p) => (
+            {DETECTION_PROVIDERS.map((p) => (
               <label key={p} className="flex items-center gap-1">
                 <input
                   type="radio"
