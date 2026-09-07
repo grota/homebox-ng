@@ -25,7 +25,7 @@ export const createOpenAIProvider = (
 
   return {
     name: 'openai',
-    async detectBoxes(image) {
+    async detectBoxes(image, bounds) {
       const apiKey = process.env.OPENAI_API_KEY
       if (!apiKey) throw new DetectionProviderError('not-configured', 'OPENAI_API_KEY is not set')
       const cfg = getConfig()
@@ -55,7 +55,7 @@ export const createOpenAIProvider = (
       return (result.detections ?? []).map((d) => ({
         label: d.label,
         confidence: d.confidence,
-        box: clampBox({ x: d.box[0], y: d.box[1], width: d.box[2], height: d.box[3] }, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
+        box: clampBox({ x: d.box[0], y: d.box[1], width: d.box[2], height: d.box[3] }, bounds.width, bounds.height),
       }))
     },
   }

@@ -6,7 +6,10 @@ export type DetectionBox = {
 
 export interface DetectionProvider {
   name: string
-  detectBoxes(image: Buffer): Promise<DetectionBox[]>
+  // `bounds` are the decoded image dims (pixel space, top-left origin). Every
+  // returned box is guaranteed to lie within those bounds: providers clamp here,
+  // so consumers (`runUnpack`) can trust the box before driving `sharp.extract`.
+  detectBoxes(image: Buffer, bounds: { width: number; height: number }): Promise<DetectionBox[]>
 }
 
 // Providers are registered at startup by `./register.ts` (built-in local/google/

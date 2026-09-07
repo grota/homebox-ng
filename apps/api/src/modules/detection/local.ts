@@ -20,7 +20,7 @@ export const createLocalProvider = (
 
   return {
     name: 'local',
-    async detectBoxes(image) {
+    async detectBoxes(image, bounds) {
       const cfg = getConfig()
       const model = cfg.model || DEFAULT_MODEL
       let run: Pipeline
@@ -36,7 +36,7 @@ export const createLocalProvider = (
       return raw.map((d) => ({
         label: d.label,
         confidence: d.score,
-        box: clampBox({ x: d.box.xmin, y: d.box.ymin, width: d.box.xmax - d.box.xmin, height: d.box.ymax - d.box.ymin }, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
+        box: clampBox({ x: d.box.xmin, y: d.box.ymin, width: d.box.xmax - d.box.xmin, height: d.box.ymax - d.box.ymin }, bounds.width, bounds.height),
       }))
     },
   }

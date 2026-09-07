@@ -1,4 +1,3 @@
-import sharp from 'sharp'
 import type { DetectionProvider } from './provider.js'
 import { clampBox } from './coords.js'
 import { DetectionProviderError } from './errors.js'
@@ -16,19 +15,15 @@ box_2d values are normalized to 0-1000. Only include confident detections.`
 
 export const createGoogleProvider = (
   getConfig: () => ProviderConfig,
-  deps: { genai?: (apiKey: string) => GenAILike; measure?: (buffer: Buffer) => Promise<{ width: number; height: number }> } = {},
+  deps: { genai?: (apiKey: string) => GenAILike } = {},
 ): DetectionProvider => {
   const makeGenai = deps.genai ?? ((apiKey: string) => {
     return new GoogleGenAI({ apiKey }) as unknown as GenAILike
   })
-  const measure = deps.measure ?? (async (buffer: Buffer) => {
-    const meta = await sharp(buffer).metadata()
-    return { width: meta.width ?? 0, height: meta.height ?? 0 }
-  })
 
   return {
     name: 'google',
-    async detectBoxes(image) {
+    async detectBoxes(image, bounds) {
       const apiKey = process.env.GEMINI_API_KEY
       if (!apiKey) throw new DetectionProviderError('not-configured', 'GEMINI_API_KEY is not set')
       const cfg = getConfig()
@@ -56,11 +51,10 @@ export const createGoogleProvider = (
       } catch (err) {
         throw new DetectionProviderError('api-error', `Gemini returned invalid JSON: ${(err as Error).message}`)
       }
-      // Gemini's box_2d is normalized 0-1000; scale to the decoded pixel dims and
-      // clamp so the box is real, in-bounds pixels. This keeps the
-      // DetectionProvider interface unchanged — no consumer ever sees a
-      // normalized space, per the spec's "normalized to pixels at the boundary".
-      const { width, height } = await measure(image)
+      // Gemini's box_2d is normalized 0-1000; scale to the decoded pixel dims
+      // (the bounds arrived over the interface) and clamp so the box is real,
+      // in-bounds pixels — the seam's in-bounds guarantee.
+      const { width, height } = bounds
       try {
         return (result.detections ?? []).map((d) => {
           const { box_2d } = d

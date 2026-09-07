@@ -7,7 +7,6 @@ import type { DrizzleDb } from '@homebox/db'
 import { getSettings } from '../instanceSettings/service.js'
 import { detectionRegistry } from '../detection/provider.js'
 import { DetectionProviderError } from '../detection/errors.js'
-import { clampBox } from '../detection/coords.js'
 import { createItem } from '../items/repo.js'
 import { insertImage } from '../images/repo.js'
 
@@ -40,11 +39,10 @@ export const runUnpack = async (ctx: UnpackContext, source: UnpackSource): Promi
   if (!provider) throw new DetectionProviderError('not-configured', `no detection provider named '${settings.detectionProvider}'`)
 
   const buffer = await readFile(source.path)
-  // Providers already normalize to pixel coords (transformers/OpenAI direct,
-  // Gemini rescaled internally), so the only consumer concern is clamping a
-  // malformed box to the decoded image bounds so sharp.extract can't crash.
-  const boxes = (await provider.detectBoxes(buffer))
-    .map((b) => ({ ...b, box: clampBox(b.box, source.width, source.height) }))
+  // The provider clamps every box to the bounds we pass here, so each box is
+  // guaranteed in-bounds for sharp.extract. We only drop 0-area degenerate
+  // boxes (unrelated to clamping).
+  const boxes = (await provider.detectBoxes(buffer, { width: source.width, height: source.height }))
     .filter((b) => b.box.width > 0 && b.box.height > 0)
 
   if (boxes.length === 0) return { detected: 0, drafts: [] }
