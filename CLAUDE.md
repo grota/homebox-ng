@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Issues and specs live as markdown files under `.scratch/<feature>/` in this repo. See `docs/agents/issue-tracker.md`.
+Issues and specs live as GitHub issues in `grota/homebox-ng`. See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 
