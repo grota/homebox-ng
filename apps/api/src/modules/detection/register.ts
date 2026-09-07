@@ -11,7 +11,7 @@ type GetSettings = () => InstanceSettingsDto
 
 // Register the built-in providers. `getSettings` reads instance settings through
 // a holder so per-request config (model/device/threshold) is available to each
-// provider's `detectBoxes` without widening the `DetectionProvider` interface.
+// provider's `detectBoxes` without widening the `DetectionProviderImpl` interface.
 // When `opts.mock` is set (e2e smoke), register a single deterministic provider.
 //
 // The mock is registered under EVERY known provider name (in addition to
