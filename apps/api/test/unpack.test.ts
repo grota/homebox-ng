@@ -60,7 +60,8 @@ describe('createItemsFromImage', () => {
 // createItemsFromImage unit fixture above: `buildApp` calls `registerDetectionProviders`,
 // which clears the registry and (with DETECTION_MOCK=1) registers only the
 // deterministic `mock` provider. The route tests therefore set DETECTION_MOCK=1
-// BEFORE buildApp and point instance settings at `mock`.
+// BEFORE buildApp; the mock is registered under every known provider name, so
+// the default `detectionProvider: 'google'` resolves to it — no settings mutation.
 describe('unpack routes', () => {
   let app: ReturnType<typeof buildApp>
   let adminCookie: string
