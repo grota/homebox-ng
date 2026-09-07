@@ -7,17 +7,18 @@ import type { DrizzleDb } from '@homebox/db'
 import { getSettings } from '../instanceSettings/service.js'
 import { detectionRegistry } from '../detection/provider.js'
 import { DetectionProviderError } from '../detection/errors.js'
+import { UnpackError } from './errors.js'
 import { createItem } from '../items/repo.js'
 import { insertImage } from '../images/repo.js'
 
 export type UnpackContext = { db: DrizzleDb; dataDir: string; userId: number }
-export type UnpackSource = { path: string; width: number; height: number; itemTypeId: number }
+export type UnpackSource = { path: string; itemTypeId: number }
 export type UnpackResult = { detected: number; drafts: { id: number; name: string; imageId: number }[] }
 
 // Write a cropped buffer as original+thumb under `dataDir`. Paths are stored
 // RELATIVE (uploads/originals/<uuid>.jpg / uploads/thumbs/<uuid>.jpg) so the
 // existing `GET /file/<relpath>` route can serve them.
-const writeCrop = async (buffer: Buffer, box: { x: number; y: number; width: number; height: number }, dataDir: string) => {
+const saveCrop = async (buffer: Buffer, box: { x: number; y: number; width: number; height: number }, dataDir: string) => {
   const uuid = randomUUID()
   const originalRel = `uploads/originals/${uuid}.jpg`
   const thumbRel = `uploads/thumbs/${uuid}.jpg`
@@ -32,17 +33,19 @@ const writeCrop = async (buffer: Buffer, box: { x: number; y: number; width: num
   return { originalRel, thumbRel, sizeBytes: original.length, width: meta.width ?? 0, height: meta.height ?? 0 }
 }
 
-export const runUnpack = async (ctx: UnpackContext, source: UnpackSource): Promise<UnpackResult> => {
+export const createItemsFromImage = async (ctx: UnpackContext, source: UnpackSource): Promise<UnpackResult> => {
   const { db, dataDir, userId } = ctx
   const settings = getSettings(db)
   const provider = detectionRegistry.get(settings.detectionProvider)
   if (!provider) throw new DetectionProviderError('not-configured', `no detection provider named '${settings.detectionProvider}'`)
 
   const buffer = await readFile(source.path)
+  const meta = await sharp(buffer).metadata()
+  if (!meta.width || !meta.height) throw new UnpackError('image-not-decodable')
   // The provider clamps every box to the bounds we pass here, so each box is
   // guaranteed in-bounds for sharp.extract. We only drop 0-area degenerate
   // boxes (unrelated to clamping).
-  const boxes = (await provider.detectBoxes(buffer, { width: source.width, height: source.height }))
+  const boxes = (await provider.detectBoxes(buffer, { width: meta.width, height: meta.height }))
     .filter((b) => b.box.width > 0 && b.box.height > 0)
 
   if (boxes.length === 0) return { detected: 0, drafts: [] }
@@ -62,7 +65,7 @@ export const runUnpack = async (ctx: UnpackContext, source: UnpackSource): Promi
       published: false,
       fieldValues: [],
     })
-    const crop = await writeCrop(buffer, box.box, dataDir)
+    const crop = await saveCrop(buffer, box.box, dataDir)
     const image = insertImage(db, {
       itemId: item.id,
       originalPath: crop.originalRel,

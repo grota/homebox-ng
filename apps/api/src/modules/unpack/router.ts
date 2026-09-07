@@ -15,13 +15,10 @@ export const unpackRouter = t.router({
     .mutation(async ({ ctx, input }) => {
       const image = ctx.db.select().from(images).where(eq(images.id, input.imageId)).get()
       if (!image) throw new TRPCError({ code: 'NOT_FOUND' })
-      if (image.width == null || image.height == null) throw new TRPCError({ code: 'BAD_REQUEST', message: 'image has no stored dimensions' })
       const sourceItem = ctx.db.select({ itemTypeId: items.itemTypeId }).from(items).where(eq(items.id, image.itemId)).get()
       if (!sourceItem) throw new TRPCError({ code: 'NOT_FOUND' })
-      return service.runUnpack({ db: ctx.db, dataDir: ctx.dataDir, userId: ctx.user!.id }, {
+      return service.createItemsFromImage({ db: ctx.db, dataDir: ctx.dataDir, userId: ctx.user!.id }, {
         path: join(ctx.dataDir, image.originalPath),
-        width: image.width,
-        height: image.height,
         itemTypeId: sourceItem.itemTypeId,
       })
     }),

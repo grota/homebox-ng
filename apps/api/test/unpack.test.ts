@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { createDb, runMigrations } from '@homebox/db'
 import { detectionRegistry } from '../src/modules/detection/provider'
-import { runUnpack, type UnpackContext } from '../src/modules/unpack/service'
+import { createItemsFromImage, type UnpackContext } from '../src/modules/unpack/service'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,7 +15,7 @@ const fakeProvider = { name: 'fake', detectBoxes: async () => [
   { label: 'plate', confidence: 0.8, box: { x: 200, y: 200, width: 100, height: 100 } },
 ] }
 
-describe('runUnpack', () => {
+describe('createItemsFromImage', () => {
   let dataDir: string
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'unpack-test-'))
@@ -34,7 +34,7 @@ describe('runUnpack', () => {
     seed(db)
     const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 200, g: 200, b: 200 } } }).png().toBuffer()
     const path = join(dataDir, 'src.png'); writeFileSync(path, png)
-    const result = await runUnpack({ db, dataDir, userId: 1 }, { path, width: 300, height: 300, itemTypeId: 1 })
+    const result = await createItemsFromImage({ db, dataDir, userId: 1 }, { path, itemTypeId: 1 })
     expect(result.detected).toBe(2)
     expect(result.drafts).toHaveLength(2)
     const draftRow = db.prepare('SELECT published, location_id AS locationId, item_type_id AS itemTypeId, created_by AS createdBy FROM items WHERE id = ?').get(result.drafts[0].id) as any
@@ -49,13 +49,13 @@ describe('runUnpack', () => {
     seed(db)
     const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 200, g: 200, b: 200 } } }).png().toBuffer()
     const path = join(dataDir, 'src.png'); writeFileSync(path, png)
-    const result = await runUnpack({ db, dataDir, userId: 1 }, { path, width: 300, height: 300, itemTypeId: 1 })
+    const result = await createItemsFromImage({ db, dataDir, userId: 1 }, { path, itemTypeId: 1 })
     expect(result).toEqual({ detected: 0, drafts: [] })
   })
 })
 
 // HTTP surfaces. These use a `buildApp`-driven app, so they do NOT share the
-// runUnpack unit fixture above: `buildApp` calls `registerDetectionProviders`,
+// createItemsFromImage unit fixture above: `buildApp` calls `registerDetectionProviders`,
 // which clears the registry and (with DETECTION_MOCK=1) registers only the
 // deterministic `mock` provider. The route tests therefore set DETECTION_MOCK=1
 // BEFORE buildApp and point instance settings at `mock`.

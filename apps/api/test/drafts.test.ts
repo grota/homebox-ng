@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createDb, runMigrations } from '@homebox/db'
 import { listDrafts, renameDraft, publishDraft, publishAll, discardDraft } from '../src/modules/drafts/service'
-import { runUnpack } from '../src/modules/unpack/service'
+import { createItemsFromImage } from '../src/modules/unpack/service'
 import { detectionRegistry } from '../src/modules/detection/provider'
 import { updateSettings } from '../src/modules/instanceSettings/service'
 import { mkdtempSync, writeFileSync } from 'node:fs'
@@ -9,9 +9,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
 
-// A real ≥100×100 PNG so `runUnpack`'s `writeCrop` (which extracts on the
-// actual decoded file) never overruns the image bounds. A 1×1 PNG collapses
-// every box and throws.
+// A real ≥100×100 PNG so `createItemsFromImage`'s `saveCrop` (which extracts
+// on the actual decoded file) never overruns the image bounds. A 1×1 PNG
+// collapses every box and throws.
 const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 200, g: 200, b: 200 } } }).png().toBuffer()
 
 const setup = () => {
@@ -29,7 +29,7 @@ describe('drafts lifecycle', () => {
   it('list returns only unpublished; publish hides it; rename; discard', async () => {
     const { db, dataDir } = setup()
     const path = join(dataDir, 's.png'); writeFileSync(path, png)
-    const { drafts } = await runUnpack({ db, dataDir, userId: 1 }, { path, width: 100, height: 100, itemTypeId: 1 })
+    const { drafts } = await createItemsFromImage({ db, dataDir, userId: 1 }, { path, itemTypeId: 1 })
     const id = drafts[0].id
     expect(listDrafts(db)).toHaveLength(1)
     renameDraft(db, id, 'Renamed Cup')
@@ -38,15 +38,15 @@ describe('drafts lifecycle', () => {
     expect(listDrafts(db)).toHaveLength(0)
     // second draft for discard
     const path2 = join(dataDir, 's2.png'); writeFileSync(path2, png)
-    const r2 = await runUnpack({ db, dataDir, userId: 1 }, { path: path2, width: 100, height: 100, itemTypeId: 1 })
+    const r2 = await createItemsFromImage({ db, dataDir, userId: 1 }, { path: path2, itemTypeId: 1 })
     expect(discardDraft(db, r2.drafts[0].id, dataDir)).toBe(true)
     expect(listDrafts(db)).toHaveLength(0)
   })
   it('publishAll publishes all or selected', async () => {
     const { db, dataDir } = setup()
     const path = join(dataDir, 's.png'); writeFileSync(path, png)
-    const a = await runUnpack({ db, dataDir, userId: 1 }, { path, width: 100, height: 100, itemTypeId: 1 })
-    const b = await (async () => { const p = join(dataDir, 's2.png'); writeFileSync(p, png); return await runUnpack({ db, dataDir, userId: 1 }, { path: p, width: 100, height: 100, itemTypeId: 1 }) })()
+    const a = await createItemsFromImage({ db, dataDir, userId: 1 }, { path, itemTypeId: 1 })
+    const b = await (async () => { const p = join(dataDir, 's2.png'); writeFileSync(p, png); return await createItemsFromImage({ db, dataDir, userId: 1 }, { path: p, itemTypeId: 1 }) })()
     publishAll(db, [a.drafts[0].id])
     expect(listDrafts(db)).toHaveLength(1)
     publishAll(db, [b.drafts[0].id])

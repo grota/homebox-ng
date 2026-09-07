@@ -3,12 +3,12 @@ import { writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
-import sharp from 'sharp'
 import { eq } from 'drizzle-orm'
 import { itemTypes } from '@homebox/db'
 import { itemIdFrom } from '../../uploads.js'
 import { parseSessionCookie, type DbHolder } from '../../context.js'
 import { getSessionUser } from '../../auth/sessions.js'
+import { UnpackError } from './errors.js'
 import * as service from './service.js'
 
 type RegisterUnpackRouteOptions = { dbHolder: DbHolder; dataDir: string }
@@ -43,14 +43,16 @@ export const registerUnpackRoute = (app: FastifyInstance, { dbHolder, dataDir }:
       if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'FST_REQ_FILE_TOO_LARGE') return reply.code(413).send({ error: 'file too large' })
       throw err
     }
-    const metadata = await sharp(buffer).metadata()
-    if (!metadata.width || !metadata.height) return reply.code(400).send({ error: 'not a decodable image' })
-
     const tmpPath = join(tmpdir(), `unpack-${randomUUID()}.jpg`)
     await writeFile(tmpPath, buffer)
     try {
-      const result = await service.runUnpack({ db, dataDir, userId: user.id }, { path: tmpPath, width: metadata.width, height: metadata.height, itemTypeId })
-      return reply.code(200).send(result)
+      try {
+        const result = await service.createItemsFromImage({ db, dataDir, userId: user.id }, { path: tmpPath, itemTypeId })
+        return reply.code(200).send(result)
+      } catch (err) {
+        if (err instanceof UnpackError) return reply.code(400).send({ error: 'not a decodable image' })
+        throw err
+      }
     } finally {
       await rm(tmpPath, { force: true }).catch(() => {})
     }
