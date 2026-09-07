@@ -4,7 +4,6 @@ import { createItemsFromImage } from '../src/modules/unpack/service'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { updateSettings } from '../src/modules/instanceSettings/service'
 import { buildApp } from '../src/server'
 import FormData from 'form-data'
 import sharp from 'sharp'
@@ -105,9 +104,6 @@ describe('unpack routes', () => {
     const up = await app.inject({ method: 'POST', url: '/upload/image', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
     expect(up.statusCode).toBe(200)
     imageId = up.json().id
-
-    // Point detection at the `mock` provider (registered by buildApp via DETECTION_MOCK=1).
-    updateSettings(db, { detectionProvider: 'mock' as never })
   })
 
   afterAll(async () => {
