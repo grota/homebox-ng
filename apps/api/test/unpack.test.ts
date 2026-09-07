@@ -52,6 +52,13 @@ describe('createItemsFromImage', () => {
     const result = await createItemsFromImage({ db, dataDir, userId: 1 }, { path, itemTypeId: 1 })
     expect(result).toEqual({ detected: 0, drafts: [] })
   })
+  it('rejects with image-not-decodable when the source file is not a decodable image', async () => {
+    const db = createDb(':memory:'); runMigrations(db)
+    seed(db)
+    const path = join(dataDir, 'src.png'); writeFileSync(path, Buffer.from('this is not an image'))
+    await expect(createItemsFromImage({ db, dataDir, userId: 1 }, { path, itemTypeId: 1 }))
+      .rejects.toMatchObject({ code: 'image-not-decodable' })
+  })
 })
 
 // HTTP surfaces. These use a `buildApp`-driven app, so they do NOT share the
@@ -122,6 +129,34 @@ describe('unpack routes', () => {
     expect(data.drafts).toHaveLength(2)
     expect(data.drafts[0]).toMatchObject({ name: 'chair' })
     expect(data.drafts[1]).toMatchObject({ name: 'table' })
+  })
+
+  it('unpack.run maps a non-decodable stored image to 400', async () => {
+    // Create a fresh item + image so the shared seeded image stays valid for
+    // the draft tests above, then corrupt the on-disk original.
+    const item = (await app.inject({ method: 'POST', url: '/trpc/items.create', headers: { cookie: adminCookie }, payload: { name: 'CorruptTarget', itemTypeId, locationId: null, quantity: 1 } })).json()?.result?.data
+    expect(item?.id).toBeTruthy()
+    const form = new FormData()
+    form.append('itemId', String(item.id))
+    form.append('file', await bigPng(), { filename: 'seed.png', contentType: 'image/png' })
+    const up = await app.inject({ method: 'POST', url: '/upload/image', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
+    expect(up.statusCode).toBe(200)
+    const { id, originalPath } = up.json()
+    writeFileSync(join(routeDataDir, originalPath), Buffer.from('this is not an image'))
+
+    const res = await app.inject({ method: 'POST', url: '/trpc/unpack.run', headers: { cookie: adminCookie }, payload: { kind: 'item', imageId: id } })
+    expect(res.statusCode).toBe(400)
+    expect(res.json()?.error?.data?.code).toBe('BAD_REQUEST')
+    expect(res.json()?.error?.message).toBe('not a decodable image')
+  })
+
+  it('POST /upload/unpack maps a non-decodable image to 400', async () => {
+    const form = new FormData()
+    form.append('itemTypeId', String(itemTypeId))
+    form.append('file', Buffer.from('this is not an image'), { filename: 'bad.png', contentType: 'image/png' })
+    const res = await app.inject({ method: 'POST', url: '/upload/unpack', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
+    expect(res.statusCode).toBe(400)
+    expect(res.json()).toEqual({ error: 'not a decodable image' })
   })
 
   it('POST /upload/unpack (raw multipart) creates drafts from an uploaded image', async () => {

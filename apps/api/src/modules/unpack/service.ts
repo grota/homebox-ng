@@ -40,8 +40,10 @@ export const createItemsFromImage = async (ctx: UnpackContext, source: UnpackSou
   if (!provider) throw new DetectionProviderError('not-configured', `no detection provider named '${settings.detectionProvider}'`)
 
   const buffer = await readFile(source.path)
-  const meta = await sharp(buffer).metadata()
-  if (!meta.width || !meta.height) throw new UnpackError('image-not-decodable')
+  // `sharp().metadata()` rejects (rather than returning null dims) for a
+  // non-image or truncated file, so surface both cases as the typed error.
+  const meta = await sharp(buffer).metadata().catch(() => null)
+  if (!meta || !meta.width || !meta.height) throw new UnpackError('image-not-decodable')
   // The provider clamps every box to the bounds we pass here, so each box is
   // guaranteed in-bounds for sharp.extract. We only drop 0-area degenerate
   // boxes (unrelated to clamping).
