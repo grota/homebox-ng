@@ -97,9 +97,14 @@ Two packages now, a third deferred. All styled with the existing tokens:
   accessible; Radix Select is a large component with a portal and a lot of
   behaviour to style. Revisit only if a native select proves inadequate.
 
-Replacing `window.confirm` with a styled Modal is in scope: a native browser
-confirm dialog is precisely the "raw" experience this work is about, and the
-Modal primitive exists either way.
+Replacing `window.confirm` is **deferred, not rejected.** Two call sites exist
+(`ItemDetail.tsx:83`, `:134`). Its real weakness is not mobile — iOS and Android
+render it as a native platform alert with proper touch targets, which is arguably
+better than a hand-rolled dialog — but that it offers only generic *OK / Cancel*:
+no way to label the destructive action, default to Cancel, or style it as danger.
+That matters for a destructive action. Deferring means `Modal` is designed
+against one real consumer (`PhotoEditor`) instead of two guesses, and swapping
+these two call sites later is ~20 lines once the primitive exists.
 
 ### 4. Layout (`app/Shell.tsx`)
 
@@ -124,7 +129,8 @@ Each step is independently shippable and reviewable.
 2. `ui/` primitives: `cn`, `Button`, `Field`, `Input`/`Select`/`Textarea`, `Card`, `Badge`.
 3. Convert pages to the primitives (checkpoint after the first).
 4. `Shell` container + `PageHeader`.
-5. Radix: `Modal` (PhotoEditor, confirmations), `Tabs` (AdminPage).
+5. Radix: `Modal` (`PhotoEditor`), `Tabs` (`AdminPage`). Confirmations stay on
+   `window.confirm` for now — see §3.
 
 ## Testing
 
@@ -132,8 +138,8 @@ Each step is independently shippable and reviewable.
   **unmodified**. That is the check that semantics survived.
 - New: one test per primitive that has real logic (Button variant → class,
   Field → label association, Modal → Escape closes and focus returns).
-- Update required: `apps/web/test/itemDetail.test.tsx` spies on `window.confirm`;
-  those assertions change when confirmations become Modals.
+- No existing test needs editing: the `window.confirm` spies in
+  `apps/web/test/itemDetail.test.tsx` stay valid while confirmations remain native.
 - Visual: before/after screenshots from the running dev server at 1440px in a
   light and a dark palette.
 
