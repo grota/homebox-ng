@@ -64,7 +64,7 @@ their own account.
 ## Repo layout
 
 ```
-homebox-bg/
+homebox-ng/
 ├── apps/
 │   ├── web/                       # React SPA
 │   │   └── src/

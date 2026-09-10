@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-06
 **Status:** Draft for review
-**Type:** Incremental design (extends `2026-09-04-homebox-bg-design.md`, `2026-09-06-phase5-admin-backup-design.md`)
+**Type:** Incremental design (extends `2026-09-04-homebox-ng-design.md`, `2026-09-06-phase5-admin-backup-design.md`)
 
 ## Overview
 

@@ -1,6 +1,6 @@
 # Phase 3 — FTS search + facets: design
 
-**Parent:** `docs/superpowers/specs/2026-09-04-homebox-bg-design.md` (master)
+**Parent:** `docs/superpowers/specs/2026-09-04-homebox-ng-design.md` (master)
 **Roadmap slot:** Phase 3 (FTS search + facets), per the phase1 plan's spec-coverage note.
 
 ## Goal

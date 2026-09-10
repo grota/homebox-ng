@@ -1,5 +1,5 @@
 {
-  "name": "homebox-bg",
+  "name": "homebox-ng",
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {

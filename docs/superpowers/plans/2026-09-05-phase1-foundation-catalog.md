@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node ≥20, pnpm ≥9, TypeScript (strict), Fastify, tRPC v11, zod, better-sqlite3, Drizzle ORM + drizzle-kit, React 18, Vite, Tailwind, react-query, react-router, Vitest, Playwright, sharp, argon2.
 
-**Spec:** `docs/superpowers/specs/2026-09-04-homebox-bg-design.md`
+**Spec:** `docs/superpowers/specs/2026-09-04-homebox-ng-design.md`
 
 ## Global Constraints
 

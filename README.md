@@ -1,4 +1,4 @@
-# homebox-bg
+# homebox-ng
 
 A self-hosted, household-shared inventory manager — a Homebox-inspired rebuild with a type-safe
 monorepo. Catalog items, photos, locations, types and tags; non-destructive photo editing; full-text

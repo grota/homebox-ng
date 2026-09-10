@@ -1,4 +1,4 @@
-# homebox-bg
+# homebox-ng
 
 ## Agent skills
 

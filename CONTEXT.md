@@ -1,11 +1,10 @@
 # Context
 
-**homebox-ng** (the local clone is spelled `homebox-bg`; "*ng*" = **next generation**, per the
-upstream repo `grota/homebox-ng`) is a self-hosted, household-shared inventory manager — a
-Homebox-inspired rebuild as a type-safe pnpm/Turbo monorepo. One Fastify server serves both the
-tRPC API and the built SPA over one SQLite DB. Every user shares one catalog of items. Its
-distinctive feature is a background object-detection path that turns a photo into proposed
-**drafts**.
+**homebox-ng** ("*ng*" = **next generation**, per the upstream repo `grota/homebox-ng`)
+is a self-hosted, household-shared inventory manager — a Homebox-inspired rebuild as a 
+type-safe pnpm/Turbo monorepo. One Fastify server serves both the tRPC API and the built 
+SPA over one SQLite DB. Every user shares one catalog of items.
+Its distinctive feature is a background object-detection path that turns a photo into proposed **drafts**.
 
 This is the project's **domain glossary** — the vocabulary the code already uses. When you name
 a domain concept (an issue title, a spec, a test name, a refactor proposal), use these terms;
