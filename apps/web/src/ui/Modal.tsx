@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 
 type ModalProps = {
@@ -12,11 +12,30 @@ type ModalProps = {
 // focus restore to the trigger, and `aria-modal` that is actually true. Styling
 // stays on our tokens.
 export function Modal({ open, onOpenChange, title, children }: ModalProps) {
+  // Radix restores focus to a `Dialog.Trigger`, but this Modal is controlled and its
+  // opener lives elsewhere in the tree (ItemDetail's per-photo "Edit" button), so
+  // Radix's `triggerRef` is empty and focus would fall to <body>. Remember the opener
+  // here rather than making every caller wrap its button in a Trigger.
+  const restoreRef = useRef<HTMLElement | null>(null)
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[100] bg-black/70" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[101] -translate-x-1/2 -translate-y-1/2 w-[min(92vw,64rem)] max-h-[92vh] overflow-auto rounded-lg border border-border bg-surface p-4 shadow-lg">
+        <Dialog.Content
+          className="fixed left-1/2 top-1/2 z-[101] -translate-x-1/2 -translate-y-1/2 w-[min(92vw,64rem)] max-h-[92vh] overflow-auto rounded-lg border border-border bg-surface p-4 shadow-lg"
+          // Radix dispatches this before it moves focus into the content, so
+          // `activeElement` is still the opener at this point.
+          onOpenAutoFocus={() => { restoreRef.current = document.activeElement as HTMLElement | null }}
+          // Ours is composed ahead of Radix's own handler, so preventDefault suppresses
+          // both the empty `triggerRef` lookup and FocusScope's fallback to <body>.
+          // Leaving either in play would race our focus() below.
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            const opener = restoreRef.current
+            if (opener?.isConnected) opener.focus()
+          }}
+        >
           {/* Radix requires a title for the accessible name; callers that render
               their own visible heading pass a descriptive one here. */}
           <Dialog.Title className="sr-only">{title}</Dialog.Title>
