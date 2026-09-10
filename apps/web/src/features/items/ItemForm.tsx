@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import type { FormEvent } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import { trpc } from '../../api/trpc'
+import { uploadImage } from '../upload/PhotoUpload'
 
 // The subset of an item DTO needed to prefill edit mode. Structurally compatible
 // with the hydrated `ItemDto` returned by `items.get`/`items.list`.
@@ -24,6 +25,10 @@ type ItemFormProps = {
 // Create/edit an item. Selecting an item type loads its custom-field
 // definitions (`fields`) and renders one input per field; those values are
 // submitted as `fieldValues: [{ fieldId, value }]`.
+//
+// The photo picker holds the file until submit, because the upload endpoint
+// needs the item's id — which only exists once `items.create`/`items.update`
+// returns. Picking a photo therefore means "save, then upload".
 export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
   const createItem = trpc.items.create.useMutation()
   const updateItem = trpc.items.update.useMutation()
@@ -41,6 +46,8 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
   const [fieldValues, setFieldValues] = useState<Record<number, string>>(
     Object.fromEntries((item?.customFields ?? []).map((f) => [f.fieldId, f.value ?? '']))
   )
+  const [photo, setPhoto] = useState<File | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const allTypes = types.data ?? []
   const selectedType = allTypes.find((t) => t.id === itemTypeId)
@@ -58,6 +65,7 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (itemTypeId === '') return
+    setError(null)
     const input = {
       name,
       description,
@@ -65,16 +73,34 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
       unit: unit.trim() === '' ? null : unit.trim(),
       itemTypeId: Number(itemTypeId),
       locationId: locationId === '' ? null : Number(locationId),
-      fieldValues: (selectedType?.fields ?? []).map((f) => ({ fieldId: f.id, value: fieldValues[f.id] ?? '' })),
+      // Omit `fieldValues` entirely until the selected type's definitions have
+      // loaded. In edit mode `itemTypeId` is prefilled, so `selectedType` is
+      // undefined until `itemTypes.list` resolves — and `items.update` treats a
+      // present `fieldValues` as a full replacement, so sending the `[]` we'd
+      // build during that window would wipe every custom-field value on the
+      // item. Omitting it leaves them untouched (create defaults to `[]`).
+      ...(selectedType
+        ? { fieldValues: selectedType.fields.map((f) => ({ fieldId: f.id, value: fieldValues[f.id] ?? '' })) }
+        : {}),
     }
 
-    const saved = item
-      ? await updateItem.mutateAsync({ id: item.id, ...input })
-      : await createItem.mutateAsync(input)
+    try {
+      const saved = item
+        ? await updateItem.mutateAsync({ id: item.id, ...input })
+        : await createItem.mutateAsync(input)
 
-    utils.items.list.invalidate()
-    if (item) utils.items.get.invalidate({ id: item.id })
-    onSaved?.(saved)
+      // Create/edit-then-upload: both mutations return the item DTO, so
+      // `saved.id` is the `itemId` the upload route needs. The item write has
+      // already committed at this point, so a failed upload reports the error
+      // but does not roll the item back.
+      if (photo) await uploadImage(saved.id, photo)
+
+      utils.items.list.invalidate()
+      if (item) utils.items.get.invalidate({ id: item.id })
+      onSaved?.(saved)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed')
+    }
   }
 
   return (
@@ -181,6 +207,19 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
           ))}
         </fieldset>
       )}
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="item-photo">{item ? 'Add photo' : 'Photo'}</label>
+        <input
+          id="item-photo"
+          type="file"
+          accept="image/*"
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setPhoto(e.target.files?.[0] ?? null)}
+          className="text-text"
+        />
+      </div>
+
+      {error && <p role="alert" className="text-red-600">{error}</p>}
 
       <div className="flex gap-2">
         <button

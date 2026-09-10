@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 // mock the tRPC module so hooks resolve deterministically without a backend.
 // `Provider` is a passthrough so <AppProviders> (which renders <trpc.Provider>)
@@ -46,11 +46,13 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
             isLoading: false,
           }),
         },
-        create: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
+        // Resolves with an id, like the real `items.create`, so the photo
+        // upload has an `itemId` to send.
+        create: { useMutation: () => ({ mutateAsync: vi.fn(async () => ({ id: 42 })), isPending: false, error: null }) },
         update: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
       },
       locations: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
-      itemTypes: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
+      itemTypes: { list: { useQuery: () => ({ data: [{ id: 1, name: 'Light', fields: [] }], isLoading: false }) } },
       tags: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
       // `<AppProviders>` renders `<SettingsProvider>`, which reads `settings.get`
       // and wires `settings.update`. Return `data: undefined` so the provider falls
@@ -72,5 +74,26 @@ describe('catalog pages', () => {
     expect(await screen.findByText(/Lamp/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /new item/i }))
     expect(screen.getByLabelText('Name')).toBeInTheDocument()
+  })
+
+  it('uploads the picked photo using the id returned by create', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    render(<AppProviders><ItemsPage /></AppProviders>)
+
+    fireEvent.click(screen.getByRole('button', { name: /new item/i }))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
+    const file = new File(['x'], 'a.png', { type: 'image/png' })
+    // The picker only exists in create mode; the file is held until submit.
+    fireEvent.change(screen.getByLabelText('Photo'), { target: { files: [file] } })
+    fireEvent.click(screen.getByRole('button', { name: /create item/i }))
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    const [url, init] = fetchSpy.mock.calls[0]
+    expect(url).toBe('/upload/image')
+    const body = init?.body as FormData
+    expect(body.get('itemId')).toBe('42')
+    expect(body.get('file')).toBe(file)
+    fetchSpy.mockRestore()
   })
 })
