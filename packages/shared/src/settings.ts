@@ -38,8 +38,9 @@ export const DEFAULT_USER_SETTINGS: UserSettingsDto = {
   darkThemeId: 'dark-default',
 }
 
-// Detection provider selection (Phase 5 ships the setting + interface only; the
-// concrete providers are wired in a later phase).
+// Detection provider selection. `DETECTION_PROVIDERS[number]` is the value stored
+// in `instance_settings.detection_provider` and the name `register.ts` registers
+// each built-in provider under.
 export const DETECTION_PROVIDERS = ['local', 'google', 'openai'] as const
 export type DetectionProvider = (typeof DETECTION_PROVIDERS)[number]
 

@@ -19,8 +19,6 @@ export const listLocations = (db: DrizzleDb): LocationRow[] => db.select(ROW_FIE
 export const getLocation = (db: DrizzleDb, id: number): LocationRow | undefined =>
   db.select(ROW_FIELDS).from(locations).where(eq(locations.id, id)).get()
 
-export const getParent = (db: DrizzleDb, parentId: number): LocationRow | undefined => getLocation(db, parentId)
-
 export type CreateLocationData = { name: string; parentId: number | null; description: string | null }
 
 export const createLocation = (db: DrizzleDb, data: CreateLocationData): LocationRow =>

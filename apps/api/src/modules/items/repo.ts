@@ -233,27 +233,14 @@ const runFtsSearch = (db: DrizzleDb, opts: SearchItemsOptions, term: string, pag
   return { rows: hydrateRows(db, idRows), total, facets }
 }
 
-const runLikeSearch = (db: DrizzleDb, opts: SearchItemsOptions, term: string, pageSize: number, offset: number) => {
-  const ctx = likeCtx(term)
-  const where = buildWhere(db, { locationId: opts.locationId, itemTypeId: opts.itemTypeId, tagIds: opts.tagIds }, ctx.predicate)
+// The two non-ranked paths (no term, and the LIKE fallback for a MATCH FTS5
+// rejects) differ only in their search context, so they share one body.
+const runPlainSearch = (db: DrizzleDb, opts: SearchItemsOptions, ctx: SearchCtx, pageSize: number, offset: number) => {
+  const filters = { locationId: opts.locationId, itemTypeId: opts.itemTypeId, tagIds: opts.tagIds }
+  const where = buildWhere(db, filters, ctx.predicate)
   const total = db.select({ c: count() }).from(items).where(where).get()?.c ?? 0
   const rows = db.select(ITEM_FIELDS).from(items).where(where).orderBy(desc(items.createdAt)).limit(pageSize).offset(offset).all()
-  return {
-    rows: rows.map((r) => ({ ...r, snippet: null })),
-    total,
-    facets: computeFacets(db, { locationId: opts.locationId, itemTypeId: opts.itemTypeId, tagIds: opts.tagIds }, ctx),
-  }
-}
-
-const runNoSearch = (db: DrizzleDb, opts: SearchItemsOptions, pageSize: number, offset: number) => {
-  const where = buildWhere(db, { locationId: opts.locationId, itemTypeId: opts.itemTypeId, tagIds: opts.tagIds })
-  const total = db.select({ c: count() }).from(items).where(where).get()?.c ?? 0
-  const rows = db.select(ITEM_FIELDS).from(items).where(where).orderBy(desc(items.createdAt)).limit(pageSize).offset(offset).all()
-  return {
-    rows: rows.map((r) => ({ ...r, snippet: null })),
-    total,
-    facets: computeFacets(db, { locationId: opts.locationId, itemTypeId: opts.itemTypeId, tagIds: opts.tagIds }, plainCtx),
-  }
+  return { rows: rows.map((r) => ({ ...r, snippet: null })), total, facets: computeFacets(db, filters, ctx) }
 }
 
 // Ranked FTS search (or plain filter when no term) with live facet counts and a
@@ -273,13 +260,13 @@ export const searchItems = (db: DrizzleDb, opts: SearchItemsOptions): { rows: Se
       // fall back to a literal name `LIKE` with the same relational filters and
       // the same facet composition. A non-FTS error is rethrown.
       if (isSqliteError(e)) {
-        return runLikeSearch(db, opts, term, pageSize, offset)
+        return runPlainSearch(db, opts, likeCtx(term), pageSize, offset)
       }
       throw e
     }
   }
 
-  return runNoSearch(db, opts, pageSize, offset)
+  return runPlainSearch(db, opts, plainCtx, pageSize, offset)
 }
 
 export type CreateFieldValueData = { fieldId: number; value: string | null }
@@ -356,8 +343,8 @@ export const replaceFieldValues = (db: DrizzleDb, itemId: number, fieldValues: C
 }
 
 // ---------------------------------------------------------------------------
-// Child-table queries. Each has a batch variant (used for `list` to avoid N+1);
-// the single-item variants delegate to the batch one so there is one query path.
+// Child-table queries. All batch: `list` hydrates many items without N+1, and
+// single-item hydration reuses them with a one-element id array.
 // ---------------------------------------------------------------------------
 
 // Custom-field values joined with their field definition rows to expose
@@ -376,17 +363,11 @@ export const listCustomFields = (db: DrizzleDb, itemIds: number[]): CustomFieldV
     .where(inArray(itemCustomFieldValues.itemId, itemIds))
     .all()
 
-export const getCustomFields = (db: DrizzleDb, itemId: number): CustomFieldValueRow[] => listCustomFields(db, [itemId])
-
 export const listTypeRefsById = (db: DrizzleDb, ids: number[]): TypeRefRow[] =>
   db.select({ id: itemTypes.id, name: itemTypes.name }).from(itemTypes).where(inArray(itemTypes.id, ids)).all()
 
-export const getType = (db: DrizzleDb, id: number): TypeRefRow | undefined => listTypeRefsById(db, [id])[0]
-
 export const listLocationRefsById = (db: DrizzleDb, ids: number[]): LocationRefRow[] =>
   db.select({ id: locations.id, name: locations.name }).from(locations).where(inArray(locations.id, ids)).all()
-
-export const getLocation = (db: DrizzleDb, id: number): LocationRefRow | undefined => listLocationRefsById(db, [id])[0]
 
 export const listTags = (db: DrizzleDb, itemIds: number[]): TagRow[] =>
   db
@@ -396,13 +377,9 @@ export const listTags = (db: DrizzleDb, itemIds: number[]): TagRow[] =>
     .where(inArray(itemTags.itemId, itemIds))
     .all()
 
-export const getTags = (db: DrizzleDb, itemId: number): TagRow[] => listTags(db, [itemId])
-
 export const listImages = (db: DrizzleDb, itemIds: number[]): ImageRow[] =>
   db
     .select({ itemId: images.itemId, id: images.id, originalPath: images.originalPath, editedPath: images.editedPath, thumbPath: images.thumbPath, isPrimary: images.isPrimary })
     .from(images)
     .where(inArray(images.itemId, itemIds))
     .all()
-
-export const getImages = (db: DrizzleDb, itemId: number): ImageRow[] => listImages(db, [itemId])

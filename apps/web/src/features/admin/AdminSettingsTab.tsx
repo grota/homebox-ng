@@ -5,8 +5,8 @@ import { trpc } from '../../api/trpc'
 import { DETECTION_PROVIDERS, type DetectionProvider } from '@homebox/shared'
 
 // Instance-wide settings: max upload size, detection provider, and the provider
-// sub-options persisted into the free-form `detectionConfig` object. The concrete
-// providers are wired in a later phase; here we edit + persist the config shape.
+// sub-options persisted into the free-form `detectionConfig` object (read back by
+// each provider in `apps/api/src/modules/detection`).
 export function AdminSettingsTab() {
   const utils = trpc.useUtils()
   const { t } = useTranslation()

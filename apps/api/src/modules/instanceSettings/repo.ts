@@ -2,7 +2,6 @@ import { eq } from 'drizzle-orm'
 import { instanceSettings } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import type { InstanceSettingsDto, InstanceSettingsInput } from '@homebox/shared'
-import { DEFAULT_INSTANCE_SETTINGS } from '@homebox/shared'
 
 const FIRST_ID = 1
 
@@ -30,7 +29,3 @@ export const update = (db: DrizzleDb, input: InstanceSettingsInput): InstanceSet
   const row = db.update(instanceSettings).set(data).where(eq(instanceSettings.id, FIRST_ID)).returning().get()
   return toDto(row)
 }
-
-// Escape hatch persisted defaults for callers (e.g. uploads) that must not
-// depend on `repo`.
-export { DEFAULT_INSTANCE_SETTINGS }

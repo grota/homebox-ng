@@ -2,11 +2,11 @@ import { createReadStream, existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { dirname, extname, join, resolve, sep } from 'node:path'
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import multipart from '@fastify/multipart'
 import sharp from 'sharp'
 import { eq, max } from 'drizzle-orm'
-import { images, items } from '@homebox/db'
+import { images, items, type DrizzleDb } from '@homebox/db'
 import { parseSessionCookie } from './context.js'
 import type { DbHolder } from './context.js'
 import { getSessionUser } from './auth/sessions.js'
@@ -57,6 +57,48 @@ export const itemIdFrom = (field: unknown): number => {
   return Number.isInteger(id) && id > 0 ? id : NaN
 }
 
+type ImageUpload = { id: number; buffer: Buffer; mimetype: string; filename: string | undefined }
+
+// Send an error reply and yield `null`, so a validation failure is one line.
+const fail = (reply: FastifyReply, code: number, error: string): null => {
+  reply.code(code).send({ error })
+  return null
+}
+
+// The shared head of both image routes: authenticate the session cookie, read the
+// single image part, validate the id field + mimetype, and enforce the effective
+// per-request cap from instance_settings. Returns null after having already sent
+// the error reply, so callers do `if (!upload) return reply`.
+const readImageUpload = async (
+  req: FastifyRequest,
+  reply: FastifyReply,
+  db: DrizzleDb,
+  idField: 'itemId' | 'imageId',
+): Promise<ImageUpload | null> => {
+  const token = parseSessionCookie(req.headers.cookie)
+  if (!token || !getSessionUser(db, token, process.env.SESSION_SECRET ?? '')) return fail(reply, 401, 'UNAUTHORIZED')
+
+  const part = await req.file()
+  if (!part) return fail(reply, 400, 'expected a file part')
+
+  const id = itemIdFrom((part.fields as Record<string, unknown>)[idField])
+  if (Number.isNaN(id)) return fail(reply, 400, `invalid ${idField}`)
+  if (typeof part.mimetype !== 'string' || !part.mimetype.startsWith('image/')) return fail(reply, 400, 'file must be an image')
+
+  let buffer: Buffer
+  try {
+    buffer = await part.toBuffer()
+  } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'FST_REQ_FILE_TOO_LARGE') {
+      return fail(reply, 413, 'file too large')
+    }
+    throw err
+  }
+  if (buffer.length > getInstanceSettings(db).maxUploadMb * 1024 * 1024) return fail(reply, 413, 'file too large')
+
+  return { id, buffer, mimetype: part.mimetype, filename: part.filename }
+}
+
 export const registerUploadRoutes = (app: FastifyInstance, { dbHolder, dataDir }: RegisterUploadRoutesOptions): void => {
   // Align busboy's own file-size limit with HARD_UPLOAD_CEILING_MB so uploads
   // over the hard ceiling are rejected by the multipart parser (surfaced as
@@ -68,41 +110,18 @@ export const registerUploadRoutes = (app: FastifyInstance, { dbHolder, dataDir }
   // to an item, which is itself auth-gated via the tRPC `items` router).
   app.post('/upload/image', async (req, reply) => {
     const db = dbHolder.current
-    const token = parseSessionCookie(req.headers.cookie)
-    const user = token ? getSessionUser(db, token, process.env.SESSION_SECRET ?? '') : null
-    if (!user) return reply.code(401).send({ error: 'UNAUTHORIZED' })
+    const upload = await readImageUpload(req, reply, db, 'itemId')
+    if (!upload) return reply
 
-    const part = await req.file()
-    if (!part) return reply.code(400).send({ error: 'expected a file part' })
-
-    const itemId = itemIdFrom((part.fields as Record<string, unknown>).itemId)
-    if (Number.isNaN(itemId)) return reply.code(400).send({ error: 'invalid itemId' })
-
-    if (typeof part.mimetype !== 'string' || !part.mimetype.startsWith('image/')) {
-      return reply.code(400).send({ error: 'file must be an image' })
-    }
-
-    const item = db.select({ id: items.id }).from(items).where(eq(items.id, itemId)).get()
+    const item = db.select({ id: items.id }).from(items).where(eq(items.id, upload.id)).get()
     if (!item) return reply.code(404).send({ error: 'item not found' })
 
-    let buffer: Buffer
-    try {
-      buffer = await part.toBuffer()
-    } catch (err) {
-      if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'FST_REQ_FILE_TOO_LARGE') {
-        return reply.code(413).send({ error: 'file too large' })
-      }
-      throw err
-    }
-    const effBytes = getInstanceSettings(db).maxUploadMb * 1024 * 1024
-    if (buffer.length > effBytes) return reply.code(413).send({ error: 'file too large' })
-
-    const metadata = await sharp(buffer).metadata()
+    const metadata = await sharp(upload.buffer).metadata()
     const width = metadata.width ?? null
     const height = metadata.height ?? null
 
     const uuid = randomUUID()
-    const ext = extFromFilename(part.filename) ?? extFromMime(part.mimetype) ?? 'bin'
+    const ext = extFromFilename(upload.filename) ?? extFromMime(upload.mimetype) ?? 'bin'
 
     // Paths are stored RELATIVE to dataDir so `GET /file/<relpath>` can serve
     // them without knowing where uploads live on disk.
@@ -112,22 +131,22 @@ export const registerUploadRoutes = (app: FastifyInstance, { dbHolder, dataDir }
     const originalAbs = join(dataDir, originalRel)
     const thumbAbs = join(dataDir, thumbRel)
     await mkdir(dirname(originalAbs), { recursive: true })
-    await writeFile(originalAbs, buffer)
+    await writeFile(originalAbs, upload.buffer)
 
-    const thumb = await sharp(buffer).resize({ width: 400 }).jpeg({ quality: 80 }).toBuffer()
+    const thumb = await sharp(upload.buffer).resize({ width: 400 }).jpeg({ quality: 80 }).toBuffer()
     await mkdir(dirname(thumbAbs), { recursive: true })
     await writeFile(thumbAbs, thumb)
 
     // `max(sortOrder)` is null when the item has no images yet → this is the
     // first image, so it becomes primary and starts at sortOrder 1.
-    const maxSort = db.select({ m: max(images.sortOrder) }).from(images).where(eq(images.itemId, itemId)).get()?.m
+    const maxSort = db.select({ m: max(images.sortOrder) }).from(images).where(eq(images.itemId, upload.id)).get()?.m
 
     const row = insertImage(db, {
-      itemId,
+      itemId: upload.id,
       originalPath: originalRel,
       thumbPath: thumbRel,
-      format: part.mimetype,
-      sizeBytes: buffer.length,
+      format: upload.mimetype,
+      sizeBytes: upload.buffer.length,
       width,
       height,
       sortOrder: (maxSort ?? 0) + 1,
@@ -143,40 +162,17 @@ export const registerUploadRoutes = (app: FastifyInstance, { dbHolder, dataDir }
   // `originalPath`, `sortOrder`, `isPrimary` and `itemId` untouched.
   app.post('/upload/image/edit', async (req, reply) => {
     const db = dbHolder.current
-    const token = parseSessionCookie(req.headers.cookie)
-    const user = token ? getSessionUser(db, token, process.env.SESSION_SECRET ?? '') : null
-    if (!user) return reply.code(401).send({ error: 'UNAUTHORIZED' })
+    const upload = await readImageUpload(req, reply, db, 'imageId')
+    if (!upload) return reply
 
-    const part = await req.file()
-    if (!part) return reply.code(400).send({ error: 'expected a file part' })
-
-    const imageId = itemIdFrom((part.fields as Record<string, unknown>).imageId)
-    if (Number.isNaN(imageId)) return reply.code(400).send({ error: 'invalid imageId' })
-
-    if (typeof part.mimetype !== 'string' || !part.mimetype.startsWith('image/')) {
-      return reply.code(400).send({ error: 'file must be an image' })
-    }
-
-    const existing = db.select().from(images).where(eq(images.id, imageId)).get()
+    const existing = db.select().from(images).where(eq(images.id, upload.id)).get()
     if (!existing) return reply.code(404).send({ error: 'image not found' })
-
-    let buffer: Buffer
-    try {
-      buffer = await part.toBuffer()
-    } catch (err) {
-      if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'FST_REQ_FILE_TOO_LARGE') {
-        return reply.code(413).send({ error: 'file too large' })
-      }
-      throw err
-    }
-    const effBytes = getInstanceSettings(db).maxUploadMb * 1024 * 1024
-    if (buffer.length > effBytes) return reply.code(413).send({ error: 'file too large' })
 
     let width: number | null = null
     let height: number | null = null
 
     const uuid = randomUUID()
-    const ext = extFromFilename(part.filename) ?? extFromMime(part.mimetype) ?? 'bin'
+    const ext = extFromFilename(upload.filename) ?? extFromMime(upload.mimetype) ?? 'bin'
     const editedRel = `uploads/edited/${uuid}.${ext}`
     const thumbRel = `uploads/thumbs/${uuid}.jpg`
 
@@ -188,16 +184,16 @@ export const registerUploadRoutes = (app: FastifyInstance, { dbHolder, dataDir }
     // leaves a partial file behind — return a clean 400 instead of a 500.
     let thumb: Buffer
     try {
-      const metadata = await sharp(buffer).metadata()
+      const metadata = await sharp(upload.buffer).metadata()
       width = metadata.width ?? null
       height = metadata.height ?? null
-      thumb = await sharp(buffer).resize({ width: 400 }).jpeg({ quality: 80 }).toBuffer()
+      thumb = await sharp(upload.buffer).resize({ width: 400 }).jpeg({ quality: 80 }).toBuffer()
     } catch {
       return reply.code(400).send({ error: 'not a decodable image' })
     }
 
     await mkdir(dirname(editedAbs), { recursive: true })
-    await writeFile(editedAbs, buffer)
+    await writeFile(editedAbs, upload.buffer)
     await mkdir(dirname(thumbAbs), { recursive: true })
     await writeFile(thumbAbs, thumb)
 
@@ -206,9 +202,9 @@ export const registerUploadRoutes = (app: FastifyInstance, { dbHolder, dataDir }
       thumbPath: thumbRel,
       width,
       height,
-      format: part.mimetype,
-      sizeBytes: buffer.length,
-    }).where(eq(images.id, imageId)).returning({
+      format: upload.mimetype,
+      sizeBytes: upload.buffer.length,
+    }).where(eq(images.id, upload.id)).returning({
       id: images.id,
       originalPath: images.originalPath,
       editedPath: images.editedPath,

@@ -3,7 +3,6 @@ import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from '@trpc/server/a
 import type { DrizzleDb } from '@homebox/db'
 import { appRouter, type AppRouter } from './router.js'
 import { createContext, type DbHolder } from './context.js'
-import { loadEnv } from './env.js'
 import { registerUploadRoutes } from './uploads.js'
 import { registerBackupRoutes } from './modules/backup/backupRoutes.js'
 import { registerUnpackRoute } from './modules/unpack/route.js'
@@ -45,18 +44,6 @@ export const buildApp = ({ db, dataDir = './data', dbPath }: BuildAppOptions) =>
   // gate (DETECTION_MOCK=1) lets e2e/smoke runs avoid real model/API calls.
   registerDetectionProviders(() => getSettings(dbHolder.current), { mock: process.env.DETECTION_MOCK === '1' })
 
-  return app
-}
-
-// Alias matching the Interfaces note that names `createApp`.
-export const createApp = buildApp
-
-// Standalone start helper: reads env (throws if SESSION_SECRET is missing) and
-// listens on the configured port.
-export const listen = async (opts: { db: DrizzleDb; port?: number; host?: string }) => {
-  const env = loadEnv()
-  const app = buildApp({ db: opts.db, dataDir: env.DATA_DIR, dbPath: env.DATABASE_PATH })
-  await app.listen({ port: opts.port ?? env.PORT, host: opts.host ?? '0.0.0.0' })
   return app
 }
 

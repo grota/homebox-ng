@@ -88,17 +88,6 @@ const groupByItemId = <T extends { itemId: number }>(rows: T[]): Map<number, T[]
 
 const distinct = (values: number[]): number[] => [...new Set(values)]
 
-// Hydrate a single item row (fetch each child table individually).
-const hydrateOne = (db: DrizzleDb, row: ItemRow): ItemDto =>
-  toDto(
-    row,
-    repo.getCustomFields(db, row.id),
-    row.itemTypeId ? repo.getType(db, row.itemTypeId) : undefined,
-    row.locationId != null ? repo.getLocation(db, row.locationId) : undefined,
-    repo.getTags(db, row.id),
-    repo.getImages(db, row.id)
-  )
-
 // Hydrate a batch of item rows with one query per child table (avoids N+1), then
 // group each table's rows back onto its item. Returns `ItemDto[]` WITHOUT the
 // live `snippet` (that is attached by the caller, e.g. `listItems`, by index).
@@ -114,6 +103,9 @@ export const hydrateRows = (db: DrizzleDb, rows: ItemRow[]): ItemDto[] => {
     toDto(row, fieldsByItem.get(row.id) ?? [], typeById.get(row.itemTypeId), row.locationId != null ? locationById.get(row.locationId) : undefined, tagsByItem.get(row.id) ?? [], imagesByItem.get(row.id) ?? [])
   )
 }
+
+// Hydrate a single item row (a one-item batch; same child-table queries as a list).
+const hydrateOne = (db: DrizzleDb, row: ItemRow): ItemDto => hydrateRows(db, [row])[0]
 
 export const getItem = (db: DrizzleDb, id: number): ItemDto => {
   const row = repo.getItem(db, id)

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { ThemeMode } from '@homebox/shared'
 import { getThemeById, type ThemePalette } from './registry'
-
-export type ThemeMode = 'auto' | 'light' | 'dark'
 
 // The OS preference is only visible client-side, so `auto` is resolved here.
 function currentSystemTheme(): 'light' | 'dark' {

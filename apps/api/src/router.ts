@@ -12,8 +12,6 @@ import { systemRouter } from './modules/system/router.js'
 import { unpackRouter } from './modules/unpack/router.js'
 import { draftsRouter } from './modules/drafts/router.js'
 
-export { publicProcedure }
-
 export const appRouter = t.router({
   ping: publicProcedure.query(() => 'pong'),
   auth: authRouter,

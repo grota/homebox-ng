@@ -1,8 +1,9 @@
 import { test, expect, type Page } from '@playwright/test'
 
 // Seeded admin account, shared with catalog.spec.ts and admin.spec.ts. The e2e
-// DB is wiped once per RUN (global-setup), so this account survives across the
-// spec files that run serially (workers: 1, alphabetical file order).
+// DB is minted once per RUN (see `webServer` in playwright.config.ts), so this
+// account survives across the spec files that run serially (workers: 1,
+// alphabetical file order).
 const ADMIN = { name: 'Admin', email: 'admin@b.co', password: 'password123' }
 
 // Make sure the admin exists. Idempotent: check `requiresSetup` and run /setup

@@ -102,7 +102,7 @@ export const listLocations = (db: DrizzleDb): LocationDto[] => buildTree(repo.li
 
 export const createLocation = (db: DrizzleDb, input: LocationInput): LocationDto => {
   if (input.parentId != null) {
-    const parent = repo.getParent(db, input.parentId)
+    const parent = repo.getLocation(db, input.parentId)
     if (!parent) throw new TRPCError({ code: 'NOT_FOUND' })
     const rows = repo.listLocations(db)
     const parentDepth = computeDepth(buildIndex(rows), parent)
@@ -123,7 +123,7 @@ export const updateLocation = (db: DrizzleDb, input: UpdateLocationInput): Locat
   // A move that targets a parent must be cycle-free and depth-legal.
   if (nextParentId != null) {
     if (nextParentId === input.id) throw new TRPCError({ code: 'CONFLICT' })
-    const parent = repo.getParent(db, nextParentId)
+    const parent = repo.getLocation(db, nextParentId)
     if (!parent) throw new TRPCError({ code: 'NOT_FOUND' })
     const rows = repo.listLocations(db)
     if (isDescendantOrSelf(rows, nextParentId, input.id)) throw new TRPCError({ code: 'CONFLICT' })

@@ -6,15 +6,15 @@ export function createFormatters(locale: string) {
   const currencyCache = new Map<string, Intl.NumberFormat>()
 
   return {
-    formatDate(value: Date | number | string, opts?: Intl.DateTimeFormatOptions): string {
+    formatDate(value: Date | number | string): string {
       return date.format(new Date(value))
     },
     // Currency-typed custom fields render through this using the field's currency
     // code; the formatter is cached per-currency so repeated calls don't rebuild.
-    formatCurrency(amount: number, currency: string, opts?: Intl.NumberFormatOptions): string {
+    formatCurrency(amount: number, currency: string): string {
       let fmt = currencyCache.get(currency)
       if (!fmt) {
-        fmt = new Intl.NumberFormat(locale, { style: 'currency', currency, ...opts })
+        fmt = new Intl.NumberFormat(locale, { style: 'currency', currency })
         currencyCache.set(currency, fmt)
       }
       return fmt.format(amount)

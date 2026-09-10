@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 // Load the repo-root `.env` (path is the same from `src/` and `dist/` — both are
@@ -6,17 +5,15 @@ import { fileURLToPath } from 'node:url'
 // API honors `.env` when started with `pnpm --filter @homebox/api start`, without
 // requiring the vars to be exported in the shell.
 //
-// - Existing environment variables take precedence (the e2e webServer sets its
-//   own `DATABASE_PATH`/`SESSION_SECRET`/… explicitly, and those must win).
+// - Existing environment variables take precedence (`process.loadEnvFile` never
+//   overwrites an already-set var, so the e2e webServer's own
+//   `DATABASE_PATH`/`SESSION_SECRET`/… win).
 // - A missing `.env` is a no-op (fresh checkouts, CI).
 export function loadDotEnv(): void {
-  const envFile = fileURLToPath(new URL('../../../.env', import.meta.url))
-  if (!existsSync(envFile)) return
-  for (const line of readFileSync(envFile, 'utf8').split('\n')) {
-    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line)
-    if (m && process.env[m[1]] === undefined) {
-      process.env[m[1]] = m[2].replace(/^['"]|['"]$/g, '')
-    }
+  try {
+    process.loadEnvFile(fileURLToPath(new URL('../../../.env', import.meta.url)))
+  } catch {
+    // no `.env` on disk
   }
 }
 
@@ -42,9 +39,9 @@ const DEFAULTS = {
 export const loadEnv = (env: NodeJS.ProcessEnv = process.env): Env => {
   // Fill gaps in `process.env` from the repo-root `.env` before validating, so a
   // plain `pnpm --filter @homebox/api start` honors `.env`. Callers that pass an
-  // explicit `env` (tests, the e2e webServer) still win — `loadDotEnv` only sets
-  // keys that are `undefined` in `process.env`, and the returned `Env` is built
-  // from the passed `env`.
+  // explicit `env` (tests, the e2e webServer) still win — `loadDotEnv` never
+  // overwrites an already-set var, and the returned `Env` is built from the
+  // passed `env`.
   loadDotEnv()
   const missing = REQUIRED.filter((key) => !env[key])
   if (missing.length > 0) {

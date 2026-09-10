@@ -1,4 +1,4 @@
-export type DetectionProviderErrorCode = 'not-configured' | 'model-unavailable' | 'api-error' | 'rate-limited'
+export type DetectionProviderErrorCode = 'not-configured' | 'model-unavailable' | 'api-error'
 
 export class DetectionProviderError extends Error {
   declare code: DetectionProviderErrorCode
