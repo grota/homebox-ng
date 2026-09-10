@@ -51,17 +51,24 @@ place. This is where the perceived improvement comes from: introducing a *primar
 gives the app a visual hierarchy it currently has zero of.
 
 **3. Use Radix primitives (headless) for behavior**, styled with the existing tokens:
-`@radix-ui/react-dialog` for `PhotoEditor` and `UnpackModal`, `@radix-ui/react-tabs` for
-`AdminPage`. Radix ships unstyled by design, so the token system and all 6 palettes are
-untouched, and focus trapping, Escape handling, focus restore, roving tabindex and correct
-ARIA come for free. Three packages, not a framework.
+`@radix-ui/react-dialog` for `PhotoEditor`, `@radix-ui/react-tabs` for `AdminPage`. Radix
+ships unstyled by design, so the token system and all 6 palettes are untouched, and focus
+trapping, Escape handling, focus restore, roving tabindex and correct ARIA come for free.
+Two packages, not a framework.
+
+`PhotoEditor` is the only consumer of `Modal`. `UnpackModal` is still a plain `<div>` with
+no dialog semantics — extending `Modal` to it is available now that the primitive exists,
+but is not done. Nor does `Modal` serve the delete confirmations: those are still
+`window.confirm` (`ItemDetail.tsx:83`, `:134`); replacing them is deferred (design spec §3).
+`Modal` is therefore designed against one real consumer rather than two guesses.
 
 **4. Do not adopt shadcn/ui's styled layer.** Deferred, not rejected on principle — see
 Consequences for the specific costs and the revisit trigger.
 
 **5. Fix the `color-scheme` bug and rewire the dead tokens** regardless of the above:
 replace the 5 `text-red-600` with `text-danger`, use `surface-raised` + elevation for
-cards, add hover/active states, use `text-success` where a positive state exists.
+cards, add hover/active states. `--color-success` had no consumer after the conversion and
+no page needed one, so it was deleted rather than invented into a use.
 
 **6. Add a content container and page-header pattern to `Shell.tsx`.**
 
@@ -93,12 +100,37 @@ not apply. It was rejected for these specific, verified reasons:
 
 ### Accepted costs
 
-- Three new dependencies (`@radix-ui/react-dialog`, `@radix-ui/react-tabs`, and later
-  `@radix-ui/react-select`). Roughly 15–25 KB gzip for the primitives actually used.
+- Two new dependencies (`@radix-ui/react-dialog`, `@radix-ui/react-tabs`; a third,
+  `@radix-ui/react-select`, is deferred). Roughly 15–25 KB gzip for the primitives
+  actually used.
 - The bundle is already 1,308 KB (382 KB gzip) and Vite warns about chunk size. This is
   pre-existing; a `manualChunks` pass is worth doing independently of this ADR.
-- The 6 palettes need `--color-danger`/`--color-success` to be *used* to be meaningful. If
-  they stay dead, palette switching remains mostly a background-color change.
+- The 6 palettes need `--color-danger` to be *used* to be meaningful. If it stays dead,
+  palette switching remains mostly a background-color change. (`--color-success` did stay
+  dead and was deleted — see §5 of the Decision.)
+
+### Accepted costs: accessibility
+
+Measured, not estimated, at the end of this work. These are deliberate trades, recorded so
+they are not rediscovered as bugs.
+
+- **Two palettes keep a sub-AA primary label.** The `primary` variant's label sits at
+  3.50:1 in `light-nord` and 3.48:1 in `dark-gruvbox`, below WCAG AA's 4.5:1. Accepted:
+  re-hueing a third-party palette's accent to fix our button stops it being that palette.
+  `dark-default` measured 3.68:1 and *was* fixed (→ 5.17:1), at the owner's request, because
+  it is our own palette and not a borrowed one.
+- **`danger` became harder to read on four of six palettes.** `text-danger` on `surface`
+  measures 3.36:1 (`light-nord`), 3.82:1 (`dark-gruvbox`), 4.13:1 (`dark-default`) and
+  4.46:1 (`light-catppuccin`). The hardcoded `text-red-600` on white it replaced passed at
+  4.83:1 — so a destructive action's label lost contrast in most palettes. This is the cost
+  of choosing an outline `danger` variant over adding a `--color-danger-contrast` token to
+  all six palettes for one variant. Known and accepted; the revisit trigger is a filled
+  `danger` variant actually being wanted.
+- **Escape while typing a text annotation closes the photo editor.** "Escape closes the
+  modal" is required behaviour and Radix listens in the capture phase, ahead of filerobot's
+  text tool, so the annotation is lost with the editor. Adjudicated in Task 8: the modal
+  contract wins. The alternative — letting the text tool swallow the first Escape — makes
+  Escape's behaviour depend on which sub-control has focus.
 
 ### When to revisit
 

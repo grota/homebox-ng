@@ -86,8 +86,9 @@ becomes the *non*-primary choice rather than the only one.
 
 Two packages now, a third deferred. All styled with the existing tokens:
 
-- `@radix-ui/react-dialog` → `ui/Modal.tsx`, used by `PhotoEditor` and by the
-  delete confirmations. `PhotoEditor` currently puts `role="dialog"
+- `@radix-ui/react-dialog` → `ui/Modal.tsx`, used by `PhotoEditor` — and by
+  nothing else. It is **not** used by the delete confirmations, which stay on
+  `window.confirm`. `PhotoEditor` currently puts `role="dialog"
   aria-modal="true"` on a plain `<div>` with no focus trap, no Escape handler and
   no focus restore — an `aria-modal` without a trap is worse than omitting it.
 - `@radix-ui/react-tabs` → `ui/Tabs.tsx`, used by `AdminPage`, whose tabs
@@ -112,8 +113,15 @@ these two call sites later is ~20 lines once the primitive exists.
 grid stretches edge to edge while forms sit pinned at `max-w-[30rem]`. Add a
 centered container (`mx-auto max-w-6xl px-4 py-6` — 1152px, which holds the
 4-column item grid at `lg` with room to spare) and give the header a
-`bg-surface` treatment so it reads as chrome rather than a hairline. Each page
-then opens with `PageHeader`.
+`bg-surface` treatment so it reads as chrome rather than a hairline.
+
+The page-title row is `PageHeader`, but not every page opens with it: three do
+(`ItemsPage`, `ItemDetail`, `AdminPage`, the ones with an actions slot or a tab
+row to place). The rest keep a plain `<h1>` and inherit the same visible result
+from the base heading scale in `@layer base` (index.css) — which is where the
+size, weight and margin live in either case, since `PageHeader`'s own heading
+carries no classes. The two are indistinguishable on screen; only the actions
+slot differs.
 
 ### 5. Page conversion
 
