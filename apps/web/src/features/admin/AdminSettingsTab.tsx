@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
 import { DETECTION_PROVIDERS, type DetectionProvider } from '@homebox/shared'
+import { Button, Field, Input } from '../../ui'
 
 // Instance-wide settings: max upload size, detection provider, and the provider
 // sub-options persisted into the free-form `detectionConfig` object (read back by
@@ -41,17 +42,15 @@ export function AdminSettingsTab() {
       <h2 className="text-lg font-semibold">{t('admin.settings.title')}</h2>
 
       <form className="flex flex-col gap-4 max-w-[30rem]" onSubmit={handleSave}>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="admin-settings-max-upload">{t('admin.settings.maxUploadMb')}</label>
-          <input
+        <Field label={t('admin.settings.maxUploadMb')} htmlFor="admin-settings-max-upload">
+          <Input
             id="admin-settings-max-upload"
             type="number"
             min={1}
             value={maxUploadMb}
             onChange={(e) => setMaxUploadMb(Number(e.target.value))}
-            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           />
-        </div>
+        </Field>
 
         <div className="flex flex-col gap-1">
           <span className="text-text-muted">{t('admin.settings.detectionProvider')}</span>
@@ -71,24 +70,18 @@ export function AdminSettingsTab() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="admin-settings-model">{t('admin.settings.model')}</label>
-          <input
+        <Field label={t('admin.settings.model')} htmlFor="admin-settings-model">
+          <Input
             id="admin-settings-model"
             type="text"
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           />
-        </div>
+        </Field>
 
-        <button
-          type="submit"
-          disabled={update.isPending}
-          className="px-3 py-1.5 rounded-md border border-border bg-surface text-text w-fit"
-        >
+        <Button type="submit" variant="primary" disabled={update.isPending} className="w-fit">
           {t('admin.settings.save')}
-        </button>
+        </Button>
         {saved && <p role="status">{t('admin.settings.saved')}</p>}
         {update.error && <p role="alert">{update.error.message}</p>}
       </form>

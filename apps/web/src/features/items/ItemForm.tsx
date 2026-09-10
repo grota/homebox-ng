@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { trpc } from '../../api/trpc'
 import { uploadImage } from '../upload/PhotoUpload'
+import { Button, Field, Input, Select, Textarea } from '../../ui'
 
 // The subset of an item DTO needed to prefill edit mode. Structurally compatible
 // with the hydrated `ItemDto` returned by `items.get`/`items.list`.
@@ -107,58 +108,50 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 max-w-[30rem] my-4">
       <h2>{item ? 'Edit item' : 'New item'}</h2>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="item-name">Name</label>
-        <input
+      <Field label="Name" htmlFor="item-name">
+        <Input
           id="item-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         />
-      </div>
+      </Field>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="item-description">Description</label>
-        <textarea
+      <Field label="Description" htmlFor="item-description">
+        <Textarea
           id="item-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
-          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         />
-      </div>
+      </Field>
 
       <div className="flex gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="item-quantity">Quantity</label>
-          <input
+        <Field label="Quantity" htmlFor="item-quantity">
+          <Input
             id="item-quantity"
             type="number"
             min="0"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
-            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
+            className="w-full"
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="item-unit">Unit</label>
-          <input
+        </Field>
+        <Field label="Unit" htmlFor="item-unit">
+          <Input
             id="item-unit"
             value={unit}
             onChange={(e) => setUnit(e.target.value)}
-            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
+            className="w-full"
           />
-        </div>
+        </Field>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="item-type">Type</label>
-        <select
+      <Field label="Type" htmlFor="item-type">
+        <Select
           id="item-type"
           value={itemTypeId === '' ? '' : String(itemTypeId)}
           onChange={(e) => handleTypeChange(e.target.value)}
-          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         >
           <option value="">Select a type</option>
           {allTypes.map((type) => (
@@ -166,16 +159,14 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
               {type.name}
             </option>
           ))}
-        </select>
-      </div>
+        </Select>
+      </Field>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="item-location">Location</label>
-        <select
+      <Field label="Location" htmlFor="item-location">
+        <Select
           id="item-location"
           value={locationId === '' ? '' : String(locationId)}
           onChange={(e) => setLocationId(e.target.value === '' ? '' : Number(e.target.value))}
-          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         >
           <option value="">No location</option>
           {(locations.data ?? []).map((loc) => (
@@ -183,60 +174,48 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
               {loc.name}
             </option>
           ))}
-        </select>
-      </div>
+        </Select>
+      </Field>
 
       {selectedType && selectedType.fields.length > 0 && (
         <fieldset className="border border-border rounded-lg p-3">
           <legend>Custom fields</legend>
           {selectedType.fields.map((field) => (
-            <div className="flex flex-col gap-1" key={field.id}>
-              <label htmlFor={`field-${field.id}`}>
-                {field.name}
-                {field.required ? ' *' : ''}
-              </label>
-              <input
+            // Both `required`s are needed: `Field`'s renders the asterisk, `Input`'s
+            // is the native constraint. The label was already `name *` before this
+            // conversion, so the accessible name is unchanged.
+            <Field key={field.id} label={field.name} htmlFor={`field-${field.id}`} required={field.required}>
+              <Input
                 id={`field-${field.id}`}
                 type={field.fieldType === 'number' || field.fieldType === 'currency' ? 'number' : field.fieldType === 'date' ? 'date' : field.fieldType === 'url' ? 'url' : 'text'}
                 value={fieldValues[field.id] ?? ''}
                 required={field.required}
                 onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }))}
-                className="px-2 py-1 border border-border rounded-md bg-surface text-text"
               />
-            </div>
+            </Field>
           ))}
         </fieldset>
       )}
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="item-photo">{item ? 'Add photo' : 'Photo'}</label>
-        <input
+      <Field label={item ? 'Add photo' : 'Photo'} htmlFor="item-photo">
+        <Input
           id="item-photo"
           type="file"
           accept="image/*"
           onChange={(e: ChangeEvent<HTMLInputElement>) => setPhoto(e.target.files?.[0] ?? null)}
-          className="text-text"
         />
-      </div>
+      </Field>
 
       {error && <p role="alert" className="text-danger">{error}</p>}
 
       <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={createItem.isPending || updateItem.isPending}
-          className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
-        >
+        <Button type="submit" variant="primary" disabled={createItem.isPending || updateItem.isPending}>
           {item ? 'Save' : 'Create item'}
-        </button>
+        </Button>
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
-          >
+          <Button type="button" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         )}
       </div>
     </form>

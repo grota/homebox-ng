@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
 import { useAuth, useSetupRequired } from '../../lib/auth'
+import { Button, Field, Input } from '../../ui'
 
 export function SetupPage() {
   const { user, isLoading } = useAuth()
@@ -37,46 +38,36 @@ export function SetupPage() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 max-w-[30rem] my-4">
       <h1>Setup</h1>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="name">Name</label>
-        <input
+      <Field label="Name" htmlFor="name">
+        <Input
           id="name"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         />
-      </div>
+      </Field>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="email">Email</label>
-        <input
+      <Field label="Email" htmlFor="email">
+        <Input
           id="email"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         />
-      </div>
+      </Field>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="password">Password</label>
-        <input
+      <Field label="Password" htmlFor="password">
+        <Input
           id="password"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         />
-      </div>
+      </Field>
 
-      <button
-        type="submit"
-        disabled={setup.isPending}
-        className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
-      >
+      <Button type="submit" variant="primary" disabled={setup.isPending}>
         Create account
-      </button>
+      </Button>
 
       {setup.error && <p role="alert" className="text-text-muted">{setup.error.message}</p>}
     </form>

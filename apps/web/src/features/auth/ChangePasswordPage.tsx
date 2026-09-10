@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
 import { useAuth } from '../../lib/auth'
+import { Button, Field, Input } from '../../ui'
 
 // Forced password-change screen. Shown to a user whose `auth.me` returns
 // `mustChangePassword: true` (a newly-created/invited account, or one whose
@@ -39,37 +40,29 @@ export function ChangePasswordPage() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 max-w-[30rem] my-4">
       <h1>Change password</h1>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="current-password">Current password</label>
-        <input
+      <Field label="Current password" htmlFor="current-password">
+        <Input
           id="current-password"
           type="password"
           autoComplete="current-password"
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
-          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         />
-      </div>
+      </Field>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="new-password">New password</label>
-        <input
+      <Field label="New password" htmlFor="new-password">
+        <Input
           id="new-password"
           type="password"
           autoComplete="new-password"
           value={next}
           onChange={(e) => setNext(e.target.value)}
-          className="px-2 py-1 border border-border rounded-md bg-surface text-text"
         />
-      </div>
+      </Field>
 
-      <button
-        type="submit"
-        disabled={changePassword.isPending}
-        className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
-      >
+      <Button type="submit" variant="primary" disabled={changePassword.isPending}>
         Change password
-      </button>
+      </Button>
 
       {changePassword.error && <p role="alert" className="text-text-muted">{changePassword.error.message}</p>}
     </form>

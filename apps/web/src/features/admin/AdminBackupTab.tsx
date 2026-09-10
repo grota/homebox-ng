@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button, Field, Input } from '../../ui'
 
 type BackupPreview = {
   dbBytes: number
@@ -93,26 +94,24 @@ export function AdminBackupTab() {
       <h2 className="text-lg font-semibold">{t('admin.backup.title')}</h2>
 
       <div className="flex flex-col gap-4 max-w-[30rem]">
-        <button
+        <Button
           type="button"
           onClick={() => void download()}
           disabled={busy}
-          className="px-3 py-1.5 rounded-md border border-border bg-surface text-text w-fit"
+          className="w-fit"
         >
           {t('admin.backup.download')}
-        </button>
+        </Button>
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="admin-backup-file">{t('admin.backup.uploadLabel')}</label>
-          <input
+        <Field label={t('admin.backup.uploadLabel')} htmlFor="admin-backup-file">
+          <Input
             id="admin-backup-file"
             type="file"
             accept=".tar.gz,application/gzip"
             onChange={(e) => void onFile(e)}
             disabled={busy}
-            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           />
-        </div>
+        </Field>
 
         {preview && (
           <div className="border border-border rounded-md p-3">
@@ -127,22 +126,21 @@ export function AdminBackupTab() {
             </p>
             <p className="text-text-muted">{t('admin.backup.replaceWarning')}</p>
             <div className="flex gap-2 mt-2">
-              <button
+              <Button
                 type="button"
+                variant="danger"
                 onClick={() => void confirmRestore()}
                 disabled={busy || !restoreId}
-                className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
               >
                 {t('admin.backup.confirm')}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={cancelRestore}
                 disabled={busy}
-                className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
               >
                 {t('admin.backup.cancel')}
-              </button>
+              </Button>
             </div>
           </div>
         )}

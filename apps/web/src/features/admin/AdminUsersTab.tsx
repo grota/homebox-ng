@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
 import type { Role } from '@homebox/shared'
+import { Button, Field, Input, Select } from '../../ui'
 
 // A generated one-time value for the "reset password" action. Reuse the create
 // flow's temp-password banner so the admin can copy it to the user.
@@ -61,59 +62,47 @@ export function AdminUsersTab() {
       <h2 className="text-lg font-semibold">{t('admin.users.title')}</h2>
 
       <form className="flex flex-col gap-3 max-w-[30rem]" onSubmit={handleCreate}>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="admin-user-name">{t('admin.users.name')}</label>
-          <input
+        <Field label={t('admin.users.name')} htmlFor="admin-user-name">
+          <Input
             id="admin-user-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="admin-user-email">{t('admin.users.email')}</label>
-          <input
+        </Field>
+        <Field label={t('admin.users.email')} htmlFor="admin-user-email">
+          <Input
             id="admin-user-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="admin-user-password">{t('admin.users.tempPassword')}</label>
-          <input
+        </Field>
+        <Field label={t('admin.users.tempPassword')} htmlFor="admin-user-password">
+          <Input
             id="admin-user-password"
             type="text"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={8}
-            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="admin-user-role">{t('admin.users.role')}</label>
-          <select
+        </Field>
+        <Field label={t('admin.users.role')} htmlFor="admin-user-role">
+          <Select
             id="admin-user-role"
             value={role}
             onChange={(e) => setRole(e.target.value as Role)}
-            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           >
             <option value="user">user</option>
             <option value="admin">admin</option>
-          </select>
-        </div>
-        <button
-          type="submit"
-          disabled={create.isPending}
-          className="px-3 py-1.5 rounded-md border border-border bg-surface text-text w-fit"
-        >
+          </Select>
+        </Field>
+        <Button type="submit" variant="primary" disabled={create.isPending} className="w-fit">
           {t('admin.users.create')}
-        </button>
+        </Button>
         {create.error && <p role="alert">{create.error.message}</p>}
       </form>
 
@@ -133,36 +122,37 @@ export function AdminUsersTab() {
               <span>{u.name} · {u.role}</span>
               <span className="flex gap-2">
                 {u.role === 'user' ? (
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
                     onClick={() => changeRole(u.id, 'admin')}
-                    className="px-2 py-1 border border-border rounded-md bg-surface text-text"
                   >
                     {t('admin.users.makeAdmin')}
-                  </button>
+                  </Button>
                 ) : (
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
                     onClick={() => changeRole(u.id, 'user')}
-                    className="px-2 py-1 border border-border rounded-md bg-surface text-text"
                   >
                     {t('admin.users.makeUser')}
-                  </button>
+                  </Button>
                 )}
-                <button
+                <Button
                   type="button"
+                  size="sm"
                   onClick={() => void resetPassword(u.id)}
-                  className="px-2 py-1 border border-border rounded-md bg-surface text-text"
                 >
                   {t('admin.users.resetPassword')}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  size="sm"
+                  variant="danger"
                   onClick={() => deleteUser(u.id)}
-                  className="px-2 py-1 border border-border rounded-md bg-surface text-text"
                 >
                   {t('admin.users.remove')}
-                </button>
+                </Button>
               </span>
             </li>
           ))}

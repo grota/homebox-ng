@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
+import { Button, Input } from '../../ui'
 import { UnpackModal } from './UnpackModal'
 
 export function DraftsPage() {
@@ -36,22 +37,22 @@ export function DraftsPage() {
           <input type="checkbox" checked={allSelected} onChange={() => { const ids = data.map((d) => d.id); setSelected(allSelected ? new Set() : new Set(ids)) }} />
           {t('drafts.selectAll')}
         </label>
-        <button className="px-3 py-1.5 rounded-md border border-border bg-surface text-text" disabled={selected.size === 0} onClick={() => void publishAll.mutateAsync({ ids: [...selected] })}>
+        <Button disabled={selected.size === 0} onClick={() => void publishAll.mutateAsync({ ids: [...selected] })}>
           {t('drafts.publishSelected')}
-        </button>
+        </Button>
       </div>
       <ul className="space-y-3">
         {data.map((d) => (
           <li key={d.id} className="flex items-center gap-3 border border-border rounded-md p-3">
             <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />
             <img src={`/file/${d.images.find((i) => i.isPrimary)?.thumbPath ?? d.images[0]?.thumbPath}`} className="w-16 h-16 object-cover rounded" alt="" />
-            <input
-              className="px-2 py-1 border border-border rounded-md bg-surface text-text flex-1"
+            <Input
+              className="flex-1"
               defaultValue={d.name}
               onBlur={(e) => { if (e.target.value.trim() && e.target.value !== d.name) void update.mutateAsync({ id: d.id, name: e.target.value.trim() }) }}
             />
-            <button className="px-3 py-1.5 rounded-md border border-border bg-surface text-text" onClick={() => void publish.mutateAsync({ id: d.id })}>{t('drafts.publish')}</button>
-            <button className="px-3 py-1.5 rounded-md border border-border text-danger" onClick={() => void discard.mutateAsync({ id: d.id })}>{t('drafts.discard')}</button>
+            <Button onClick={() => void publish.mutateAsync({ id: d.id })}>{t('drafts.publish')}</Button>
+            <Button variant="danger" onClick={() => void discard.mutateAsync({ id: d.id })}>{t('drafts.discard')}</Button>
           </li>
         ))}
       </ul>

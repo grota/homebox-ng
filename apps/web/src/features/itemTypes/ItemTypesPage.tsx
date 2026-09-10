@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { trpc } from '../../api/trpc'
+import { Button, Field, Input, Select, Textarea } from '../../ui'
 
 const FIELD_TYPES = ['text', 'number', 'currency', 'date', 'boolean', 'url'] as const
 
@@ -48,78 +49,62 @@ export function ItemTypesPage() {
       <h1>Item types</h1>
 
       <form className="flex flex-col gap-3 max-w-[30rem] my-4" onSubmit={handleSubmit}>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="type-name">Name</label>
-          <input
+        <Field label="Name" htmlFor="type-name">
+          <Input
             id="type-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           />
-        </div>
+        </Field>
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="type-description">Description</label>
-          <textarea
+        <Field label="Description" htmlFor="type-description">
+          <Textarea
             id="type-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="px-2 py-1 border border-border rounded-md bg-surface text-text"
           />
-        </div>
+        </Field>
 
         <div className="border border-border rounded-lg p-3">
           <div className="flex flex-col gap-1">
             <span className="text-text-muted">Custom fields</span>
-            <button
-              type="button"
-              onClick={addField}
-              className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
-            >
-              Add field
-            </button>
+            <Button type="button" onClick={addField}>Add field</Button>
           </div>
           {fields.map((field) => (
             <div className="flex gap-3" key={field.key}>
               <div className="flex flex-col gap-1">
-                <input
+                <Input
                   type="text"
                   placeholder="Field name"
                   value={field.name}
                   onChange={(e) => patchField(field.key, { name: e.target.value })}
-                  className="px-2 py-1 border border-border rounded-md bg-surface text-text"
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <select
+                <Select
                   value={field.fieldType}
                   onChange={(e) => patchField(field.key, { fieldType: e.target.value as DraftField['fieldType'] })}
-                  className="px-2 py-1 border border-border rounded-md bg-surface text-text"
                 >
                   {FIELD_TYPES.map((t) => (
                     <option key={t} value={t}>
                       {t}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
-              <button
-                type="button"
-                onClick={() => removeField(field.key)}
-                className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
-              >
+              <Button type="button" onClick={() => removeField(field.key)}>
                 Remove
-              </button>
+              </Button>
             </div>
           ))}
         </div>
 
         <div className="flex gap-2">
-          <button type="submit" disabled={create.isPending} className="px-3 py-1.5 rounded-md border border-border bg-surface text-text">
+          <Button type="submit" variant="primary" disabled={create.isPending}>
             Create type
-          </button>
+          </Button>
         </div>
         {create.error && <p role="alert">{create.error.message}</p>}
       </form>
