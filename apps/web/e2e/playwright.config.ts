@@ -1,11 +1,14 @@
 import { defineConfig, devices } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { E2E_BASE_URL, E2E_PORT } from './base-url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-const PORT = 3000
-const baseURL = `http://localhost:${PORT}`
+// Both come from `./base-url` so the port has exactly one definition — the specs
+// import the same module rather than repeating the URL.
+const PORT = E2E_PORT
+const baseURL = E2E_BASE_URL
 
 export default defineConfig({
   testDir: __dirname,

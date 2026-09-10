@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { E2E_BASE_URL } from './base-url'
 
 // Seeded admin account, shared with catalog.spec.ts. `auth.setup` only allows a
 // bootstrap when no user exists yet, so admin.spec.ts bootstraps it idempotently
@@ -53,10 +54,14 @@ test('admin invites a user who is forced to change their password on first login
   // Log in AS the invited user in a FRESH context (the admin session cookie must
   // not leak). Drive the real sign-in form so the app's forced-change navigation
   // runs: a must-change account is routed to /change-password.
-  const userCtx = await browser.newContext()
+  // `baseURL` is passed explicitly: a context created by hand does not inherit
+  // the project's `use`, so a relative path would not resolve without it. That
+  // is why the port has a single definition in `./base-url` for both this and
+  // the config, rather than a literal repeated here.
+  const userCtx = await browser.newContext({ baseURL: E2E_BASE_URL })
   const userPage = await userCtx.newPage()
   try {
-    await userPage.goto('http://localhost:3000/login')
+    await userPage.goto('/login')
     await userPage.fill('#email', inviting)
     await userPage.fill('#password', tempPw)
     await userPage.click('button:has-text("Sign in")')
@@ -71,7 +76,7 @@ test('admin invites a user who is forced to change their password on first login
 
     // Log out and log back in with the NEW password: no forced-change screen.
     await userPage.request.post('/trpc/auth.logout')
-    await userPage.goto('http://localhost:3000/login')
+    await userPage.goto('/login')
     await userPage.fill('#email', inviting)
     await userPage.fill('#password', newPw)
     await userPage.click('button:has-text("Sign in")')
