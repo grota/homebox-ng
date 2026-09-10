@@ -10,7 +10,6 @@ export type ThemeVar =
   | '--color-accent'
   | '--color-accent-contrast'
   | '--color-danger'
-  | '--color-success'
   | '--color-focus'
 
 export interface ThemePalette {
@@ -39,7 +38,6 @@ export const themes: ThemePalette[] = [
       '--color-accent': '#2563eb',
       '--color-accent-contrast': '#ffffff',
       '--color-danger': '#dc2626',
-      '--color-success': '#16a34a',
       '--color-focus': '#2563eb',
     },
   },
@@ -57,7 +55,6 @@ export const themes: ThemePalette[] = [
       '--color-accent': '#1e66f5',
       '--color-accent-contrast': '#ffffff',
       '--color-danger': '#d20f39',
-      '--color-success': '#40a02b',
       '--color-focus': '#04a5e5',
     },
   },
@@ -75,7 +72,6 @@ export const themes: ThemePalette[] = [
       '--color-accent': '#5e81ac',
       '--color-accent-contrast': '#eceff4',
       '--color-danger': '#bf616a',
-      '--color-success': '#a3be8c',
       '--color-focus': '#81a1c1',
     },
   },
@@ -93,7 +89,6 @@ export const themes: ThemePalette[] = [
       '--color-accent': '#2563eb',
       '--color-accent-contrast': '#ffffff',
       '--color-danger': '#ef4444',
-      '--color-success': '#22c55e',
       '--color-focus': '#3b82f6',
     },
   },
@@ -111,7 +106,6 @@ export const themes: ThemePalette[] = [
       '--color-accent': '#bd93f9',
       '--color-accent-contrast': '#282a36',
       '--color-danger': '#ff5555',
-      '--color-success': '#50fa7b',
       '--color-focus': '#8be9fd',
     },
   },
@@ -129,7 +123,6 @@ export const themes: ThemePalette[] = [
       '--color-accent': '#b16286',
       '--color-accent-contrast': '#282828',
       '--color-danger': '#fb4934',
-      '--color-success': '#b8bb26',
       '--color-focus': '#83a598',
     },
   },

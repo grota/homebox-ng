@@ -23,16 +23,21 @@
   --color-accent: #2563eb;
   --color-accent-contrast: #ffffff;
   --color-danger: #dc2626;
-  --color-success: #16a34a;
   --color-focus: #2563eb;
+}
+
+/* Pre-hydration default only. `color-scheme` itself is set by ThemeProvider from
+   the active palette's `dark` flag — see lib/theme/ThemeProvider.tsx — whose inline
+   style overrides this. Without it, a dark-OS user on a light palette gets one
+   frame of dark native scrollbars/selects before that effect runs. Deliberately
+   `:root`, never `[data-theme]`: those two tie on specificity and the later rule
+   wins, which is what forced dark controls onto every light palette before. */
+:root {
+  color-scheme: light;
 }
 
 /* The page background and default text come from the active palette's vars (they
    match the light-default `@theme` values until ThemeProvider swaps them). */
-/* `color-scheme` is set by ThemeProvider from the active palette's `dark` flag —
-   see lib/theme/ThemeProvider.tsx. It is deliberately not set here: a
-   `[data-theme]` selector has the same specificity as `:root` and would force
-   dark native controls onto every light palette. */
 body {
   background-color: var(--color-bg);
   color: var(--color-text);
