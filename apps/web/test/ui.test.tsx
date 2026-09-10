@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { cn, Button, Field, Input, Select } from '../src/ui'
+import { cn, Button, Card, Badge, Field, Input, PageHeader, Select } from '../src/ui'
 
 describe('cn', () => {
   it('joins truthy class names and drops falsy ones', () => {
@@ -88,5 +88,33 @@ describe('Select', () => {
     expect(screen.getByRole('option', { name: 'Tool' })).toBeInTheDocument()
     fireEvent.change(select, { target: { value: '2' } })
     expect(select).toHaveValue('2')
+  })
+})
+
+describe('Card', () => {
+  it('renders children on a raised surface', () => {
+    render(<Card>Body</Card>)
+    const card = screen.getByText('Body')
+    expect(card).toHaveClass('bg-surface', 'border-border', 'shadow-sm', 'rounded-lg')
+  })
+})
+
+describe('Badge', () => {
+  it('renders its label', () => {
+    render(<Badge>Primary</Badge>)
+    expect(screen.getByText('Primary')).toBeInTheDocument()
+  })
+
+  it('applies a user-supplied tag colour as an inline background', () => {
+    render(<Badge color="#ff0000">urgent</Badge>)
+    expect(screen.getByText('urgent')).toHaveStyle({ background: '#ff0000' })
+  })
+})
+
+describe('PageHeader', () => {
+  it('renders the title as a level-1 heading with an actions slot', () => {
+    render(<PageHeader title="Items" actions={<Button>New item</Button>} />)
+    expect(screen.getByRole('heading', { level: 1, name: 'Items' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New item' })).toBeInTheDocument()
   })
 })
