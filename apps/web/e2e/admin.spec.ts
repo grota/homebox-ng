@@ -86,7 +86,9 @@ test('admin downloads a backup and restores it (round-trip)', async ({ page }) =
 
   // Open the Backup & restore tab.
   await page.goto('/admin')
-  await page.getByRole('button', { name: 'Backup & restore' }).click()
+  // A tab, not a button, since AdminPage moved to a Radix-backed Tabs primitive —
+  // the tablist/tab semantics are the point of that change.
+  await page.getByRole('tab', { name: 'Backup & restore' }).click()
 
   // Download a fresh backup archive via the Download button (real blob download).
   const [download] = await Promise.all([
