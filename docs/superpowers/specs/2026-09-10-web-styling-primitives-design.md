@@ -99,7 +99,7 @@ Two packages now, a third deferred. All styled with the existing tokens:
   behaviour to style. Revisit only if a native select proves inadequate.
 
 Replacing `window.confirm` is **deferred, not rejected.** Two call sites exist
-(`ItemDetail.tsx:83`, `:134`). Its real weakness is not mobile — iOS and Android
+(`ItemDetail.tsx:72`, `:124`). Its real weakness is not mobile — iOS and Android
 render it as a native platform alert with proper touch targets, which is arguably
 better than a hand-rolled dialog — but that it offers only generic *OK / Cancel*:
 no way to label the destructive action, default to Cancel, or style it as danger.

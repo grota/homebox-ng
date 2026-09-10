@@ -59,7 +59,7 @@ Two packages, not a framework.
 `PhotoEditor` is the only consumer of `Modal`. `UnpackModal` is still a plain `<div>` with
 no dialog semantics — extending `Modal` to it is available now that the primitive exists,
 but is not done. Nor does `Modal` serve the delete confirmations: those are still
-`window.confirm` (`ItemDetail.tsx:83`, `:134`); replacing them is deferred (design spec §3).
+`window.confirm` (`ItemDetail.tsx:72`, `:124`); replacing them is deferred (design spec §3).
 `Modal` is therefore designed against one real consumer rather than two guesses.
 
 **4. Do not adopt shadcn/ui's styled layer.** Deferred, not rejected on principle — see
