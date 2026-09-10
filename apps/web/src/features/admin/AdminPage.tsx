@@ -18,7 +18,7 @@ export function AdminPage() {
   ]
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">{t('admin.title')}</h1>
+      <h1>{t('admin.title')}</h1>
       <div className="flex gap-1 border-b border-border">
         {tabs.map((x) => (
           <button key={x.id} onClick={() => setTab(x.id)}

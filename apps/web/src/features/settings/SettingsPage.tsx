@@ -19,7 +19,7 @@ export function SettingsPage() {
 
   return (
     <section className="flex flex-col gap-4 max-w-[32rem]">
-      <h1 className="text-2xl">{t('settings.title')}</h1>
+      <h1>{t('settings.title')}</h1>
 
       <Field label={t('settings.language')} htmlFor="settings-language">
         <Select id="settings-language" value="en" disabled>

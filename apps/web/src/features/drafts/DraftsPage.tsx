@@ -22,7 +22,7 @@ export function DraftsPage() {
   if (isLoading) return <p>Loading…</p>
   if (!data || data.length === 0) return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">{t('drafts.title')}</h1>
+      <h1>{t('drafts.title')}</h1>
       <UnpackModal onUnpacked={(n) => { void utils.drafts.list.invalidate(); navigate(`/drafts?detected=${n}`) }} />
       <p>{t('drafts.empty')}</p>
     </div>
@@ -30,7 +30,7 @@ export function DraftsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">{t('drafts.title')}</h1>
+      <h1>{t('drafts.title')}</h1>
       <UnpackModal onUnpacked={(n) => { void utils.drafts.list.invalidate(); navigate(`/drafts?detected=${n}`) }} />
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-1">
