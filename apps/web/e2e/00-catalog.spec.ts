@@ -152,6 +152,31 @@ test('search + tag facet narrows the item catalog', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Table Lamp', exact: true })).not.toBeVisible()
 })
 
+// A tag facet chip paints the tag's colour as an inline `background`, which beats
+// every `hover:` utility — so its hover state is a scrim element over the chip,
+// hidden until hover. Assert BOTH ends of that: permanently-tinted and
+// never-tinted are each a regression the rest of the suite cannot see (the chip's
+// colour and its accessible name are unchanged either way).
+//
+// The `vintage` tag was created above with no colour, so it takes the `#888888`
+// default from `tags.create` and genuinely carries a scrim.
+test('a coloured tag facet chip reveals its scrim on hover', async ({ page }) => {
+  // The main test's admin already exists. Log in directly.
+  const login = await page.request.post('/trpc/auth.login', {
+    data: { email: 'admin@b.co', password: 'password123' },
+  })
+  expect(login.ok()).toBeTruthy()
+
+  await page.goto('/items')
+  const chip = page.getByRole('button', { name: /^vintage/ })
+  await expect(chip).toBeVisible()
+  const scrim = chip.locator('span[aria-hidden="true"]')
+
+  await expect(scrim).toHaveCSS('opacity', '0')
+  await chip.hover()
+  await expect(scrim).toHaveCSS('opacity', '1')
+})
+
 // Settings persistence + locale formatting leg. The main test's admin already
 // exists (DB persists within a run), so log in directly, open `/settings`, switch
 // the locale to de-DE and the theme mode to dark, reload, and assert the choice

@@ -6,6 +6,11 @@
 // a white one over a dark colour, so the hover shifts the surface's brightness
 // whichever the user picked. A fixed overlay colour would be invisible on half
 // the tags in the catalog.
+//
+// Expects a value already validated by `hexColor` — the caller's guard is what
+// makes the colour safe to paint as well as parseable. Anything else (no `#`,
+// a non-hex string) parses to NaN, and `NaN > 0.5` is false, so it silently
+// yields the white veil rather than throwing.
 export function hoverScrim(color: string): string {
   const hex = color.slice(1)
   // `hexColor` also admits the short 3/4-digit forms: double each nibble.
