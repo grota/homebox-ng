@@ -90,7 +90,7 @@ export const themes: ThemePalette[] = [
       '--color-text': '#e5e5e5',
       '--color-text-muted': '#9ca3af',
       '--color-border': '#3a3a3a',
-      '--color-accent': '#3b82f6',
+      '--color-accent': '#2563eb',
       '--color-accent-contrast': '#ffffff',
       '--color-danger': '#ef4444',
       '--color-success': '#22c55e',
