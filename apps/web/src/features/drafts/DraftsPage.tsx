@@ -51,7 +51,7 @@ export function DraftsPage() {
               onBlur={(e) => { if (e.target.value.trim() && e.target.value !== d.name) void update.mutateAsync({ id: d.id, name: e.target.value.trim() }) }}
             />
             <button className="px-3 py-1.5 rounded-md border border-border bg-surface text-text" onClick={() => void publish.mutateAsync({ id: d.id })}>{t('drafts.publish')}</button>
-            <button className="px-3 py-1.5 rounded-md border border-border text-red-600" onClick={() => void discard.mutateAsync({ id: d.id })}>{t('drafts.discard')}</button>
+            <button className="px-3 py-1.5 rounded-md border border-border text-danger" onClick={() => void discard.mutateAsync({ id: d.id })}>{t('drafts.discard')}</button>
           </li>
         ))}
       </ul>

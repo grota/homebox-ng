@@ -40,7 +40,7 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
         {(types.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
       </select>
       <button className="px-3 py-1.5 rounded-md border border-border bg-surface text-text" disabled={busy || !file} onClick={() => void submit()}>{t('drafts.unpack')}</button>
-      {err && <p role="alert" className="text-red-600">{err}</p>}
+      {err && <p role="alert" className="text-danger">{err}</p>}
     </div>
   )
 }

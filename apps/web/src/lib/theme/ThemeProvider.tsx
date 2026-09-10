@@ -44,6 +44,10 @@ export function ThemeProvider({ themeMode, lightThemeId, darkThemeId, children }
     const root = document.documentElement
     for (const [key, value] of Object.entries(palette.vars)) root.style.setProperty(key, value)
     root.setAttribute('data-theme', palette.id)
+    // `color-scheme` drives native controls (select popups, scrollbars, date
+    // pickers). It must come from the palette's own `dark` flag: keying it off
+    // the presence of `data-theme` marks every light palette as dark.
+    root.style.colorScheme = palette.dark ? 'dark' : 'light'
   }, [palette])
 
   return <>{children}</>

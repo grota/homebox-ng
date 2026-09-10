@@ -76,7 +76,7 @@ export function ItemDetail() {
         <button
           type="button"
           disabled={deleteItem.isPending}
-          className="px-3 py-1.5 rounded-md border border-border bg-surface text-red-600"
+          className="px-3 py-1.5 rounded-md border border-border bg-surface text-danger"
           onClick={() => {
             // ponytail: native confirm — enough for a single-item delete; swap for a
             // styled dialog if this ever grows bulk/undo.
@@ -129,7 +129,7 @@ export function ItemDetail() {
             <button
               type="button"
               disabled={deleteImage.isPending}
-              className="px-3 py-1.5 rounded-md border border-border bg-surface text-red-600"
+              className="px-3 py-1.5 rounded-md border border-border bg-surface text-danger"
               onClick={() => {
                 if (confirm('Delete this photo?')) deleteImage.mutate({ id: img.id })
               }}

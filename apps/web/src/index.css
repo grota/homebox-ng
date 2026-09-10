@@ -22,12 +22,10 @@
 
 /* The page background and default text come from the active palette's vars (they
    match the light-default `@theme` values until ThemeProvider swaps them). */
-:root {
-  color-scheme: light;
-}
-[data-theme] {
-  color-scheme: dark;
-}
+/* `color-scheme` is set by ThemeProvider from the active palette's `dark` flag —
+   see lib/theme/ThemeProvider.tsx. It is deliberately not set here: a
+   `[data-theme]` selector has the same specificity as `:root` and would force
+   dark native controls onto every light palette. */
 body {
   background-color: var(--color-bg);
   color: var(--color-text);
@@ -40,4 +38,27 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+}
+
+/* Tailwind Preflight resets heading styles, which left every page title
+   rendering at body-text size and weight with no margins. Restore a scale here
+   rather than per-page, so page titles cannot drift apart again. */
+@layer base {
+  h1 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1.25;
+    margin-block: 0 1rem;
+  }
+  h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-block: 1.5rem 0.5rem;
+  }
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-block: 1.25rem 0.5rem;
+  }
 }

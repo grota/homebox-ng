@@ -219,7 +219,7 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
         />
       </div>
 
-      {error && <p role="alert" className="text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-danger">{error}</p>}
 
       <div className="flex gap-2">
         <button
