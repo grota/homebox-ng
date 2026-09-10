@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { Tabs } from '../src/ui/Tabs'
 
 const items = [
@@ -13,6 +13,17 @@ describe('Tabs', () => {
     expect(screen.getByRole('tablist')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Users' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'false')
+  })
+
+  // A wrapper that dropped `{children}` or hardcoded the panel's `value` passes
+  // every other assertion in this file — the tablist is all they look at.
+  it('renders its children inside the panel', () => {
+    render(
+      <Tabs value="users" onValueChange={() => {}} items={items}>
+        <p>Users panel</p>
+      </Tabs>,
+    )
+    expect(within(screen.getByRole('tabpanel')).getByText('Users panel')).toBeInTheDocument()
   })
 
   it('reports a change when another tab is clicked', () => {

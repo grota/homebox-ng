@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { cn, Button, Card, Badge, Field, Input, PageHeader, Select } from '../src/ui'
+import { cn, Button, Card, Badge, Field, Input, PageHeader, Select, Textarea } from '../src/ui'
 
 describe('cn', () => {
   it('joins truthy class names and drops falsy ones', () => {
@@ -22,6 +22,18 @@ describe('Button', () => {
   it('renders the primary variant with the accent background', () => {
     render(<Button variant="primary">Save</Button>)
     expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('bg-accent')
+  })
+
+  it('defaults to the secondary variant and applies the size scale', () => {
+    const { rerender } = render(<Button>Save</Button>)
+    const btn = () => screen.getByRole('button', { name: 'Save' })
+    // `secondary` is the variant a caller that passes none gets, and it must not
+    // be the primary one: the whole point of the variant is visual hierarchy.
+    expect(btn()).toHaveClass('bg-surface', 'text-text', 'border-border')
+    expect(btn()).not.toHaveClass('bg-accent')
+    expect(btn()).toHaveClass('px-3', 'py-1.5', 'text-sm')
+    rerender(<Button size="sm">Save</Button>)
+    expect(btn()).toHaveClass('px-2', 'py-1', 'text-xs')
   })
 
   it('renders the danger variant with the danger token, not a raw red', () => {
@@ -49,6 +61,19 @@ describe('Field', () => {
       </Field>,
     )
     expect(screen.getByLabelText('Name')).toHaveValue('Lamp')
+  })
+
+  // The wrapper is where a caller's sizing has to land: a class on the control
+  // cannot grow a content-sized flex-child wrapper, so `w-full` alone collapses
+  // the field. This silently shrank the search input from 416px to 249px and no
+  // test noticed.
+  it('keeps its layout classes when the caller passes its own', () => {
+    const { container } = render(
+      <Field label="Name" htmlFor="item-name" className="flex-1 min-w-0">
+        <Input id="item-name" />
+      </Field>,
+    )
+    expect(container.firstElementChild).toHaveClass('flex', 'flex-col', 'gap-1', 'flex-1', 'min-w-0')
   })
 
   it('marks a required field in the label text', () => {
@@ -91,6 +116,17 @@ describe('Select', () => {
   })
 })
 
+describe('Textarea', () => {
+  // A <textarea> swapped for an <input> typechecks against the shared props and
+  // would pass every other test in this file, so assert the element itself.
+  it('renders a real textarea with the shared styling and caller classes', () => {
+    render(<Textarea aria-label="notes" className="w-full" />)
+    const el = screen.getByLabelText('notes')
+    expect(el.tagName).toBe('TEXTAREA')
+    expect(el).toHaveClass('px-2', 'py-1', 'border-border', 'rounded-md', 'bg-surface', 'w-full')
+  })
+})
+
 describe('Card', () => {
   it('renders children on a raised surface', () => {
     render(<Card>Body</Card>)
@@ -108,6 +144,20 @@ describe('Badge', () => {
   it('applies a user-supplied tag colour as an inline background', () => {
     render(<Badge color="#ff0000">urgent</Badge>)
     expect(screen.getByText('urgent')).toHaveStyle({ background: '#ff0000' })
+  })
+})
+
+describe('rest-prop forwarding', () => {
+  // Both primitives spread `...rest` last, so a `data-*` or a handler has to
+  // survive the primitive's own className/style being applied.
+  it('forwards DOM props through Card and Badge', () => {
+    const onClick = vi.fn()
+    render(<Card data-testid="card" onClick={onClick}>Body</Card>)
+    fireEvent.click(screen.getByTestId('card'))
+    expect(onClick).toHaveBeenCalledTimes(1)
+
+    render(<Badge data-testid="badge" title="a tag">urgent</Badge>)
+    expect(screen.getByTestId('badge')).toHaveAttribute('title', 'a tag')
   })
 })
 
