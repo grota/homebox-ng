@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
+import { Badge, Button, Card, Field, Input, PageHeader } from '../../ui'
 import { ItemForm } from './ItemForm'
 
 // URL param → tRPC input mapping lives in ONE place on this page. The URL uses
@@ -149,34 +150,23 @@ export function ItemsPage() {
 
   return (
     <section>
-      <header className="flex items-center justify-between mb-4">
-        <h1>Items</h1>
-        <button
-          type="button"
-          className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
-          onClick={() => setShowForm((open) => !open)}
-        >
-          New item
-        </button>
-      </header>
+      <PageHeader
+        title="Items"
+        actions={<Button onClick={() => setShowForm((open) => !open)}>New item</Button>}
+      />
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <label htmlFor="item-search">Search</label>
-        <input
-          id="item-search"
-          type="search"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Search items"
-          className="flex-1 min-w-0 max-w-[26rem] px-2 py-1 border border-border rounded-md bg-surface text-text"
-        />
-        <button
-          type="button"
-          className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
-          onClick={clearFilters}
-        >
-          Clear filters
-        </button>
+        <Field label="Search" htmlFor="item-search">
+          <Input
+            id="item-search"
+            type="search"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search items"
+            className="w-full max-w-[26rem]"
+          />
+        </Field>
+        <Button onClick={clearFilters} className="self-end">Clear filters</Button>
       </div>
 
       {showForm && <ItemForm onSaved={handleSaved} onCancel={() => setShowForm(false)} />}
@@ -184,14 +174,14 @@ export function ItemsPage() {
       <div className="flex gap-4 items-start">
         {facets && (
           <>
-            <button
-              type="button"
-              className="relative z-[60] lg:hidden px-2 py-1 rounded border border-border bg-surface text-text"
+            <Button
+              size="sm"
+              className="relative z-[60] lg:hidden"
               onClick={() => setFacetsOpen((v) => !v)}
               aria-expanded={facetsOpen}
             >
               {facetsOpen ? 'Close' : 'Filters'}
-            </button>
+            </Button>
             <aside
               className={`${facetsOpen ? 'fixed inset-0 z-50 bg-bg p-4 overflow-y-auto' : 'hidden'} lg:static lg:z-auto lg:block lg:bg-transparent lg:p-0 lg:overflow-visible lg:flex lg:flex-col lg:gap-4 lg:w-60 lg:flex-shrink-0`}
             >
@@ -199,14 +189,15 @@ export function ItemsPage() {
                 <div className="flex flex-wrap gap-2">
                   <h2 className="w-full mb-0">Types</h2>
                   {facets.types.map((f) => (
-                    <button
+                    <Button
                       key={f.id}
-                      type="button"
-                      className={`inline-block rounded px-1.5 py-0.5 mr-1 text-xs${itemTypeId === f.id ? ' bg-accent text-accent-contrast' : ''}`}
+                      size="sm"
+                      variant={itemTypeId === f.id ? 'primary' : 'ghost'}
+                      className="rounded"
                       onClick={() => setTypeFilter(itemTypeId === f.id ? undefined : f.id)}
                     >
                       {f.name} ({f.count})
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
@@ -215,15 +206,19 @@ export function ItemsPage() {
                 <div className="flex flex-wrap gap-2">
                   <h2 className="w-full mb-0">Tags</h2>
                   {facets.tags.map((f) => (
-                    <button
+                    // A facet chip must stay a real <button> — `searchFacets.test.tsx`
+                    // clicks it by role — so the tag colour rides on the ghost Button
+                    // rather than on a <Badge> (a span, not interactive).
+                    <Button
                       key={f.id}
-                      type="button"
-                      className="inline-block rounded px-1.5 py-0.5 mr-1 text-xs"
+                      size="sm"
+                      variant="ghost"
+                      className="rounded"
                       style={f.color ? { background: f.color } : undefined}
                       onClick={() => toggleTag(f.id)}
                     >
                       {f.name} ({f.count})
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
@@ -231,18 +226,18 @@ export function ItemsPage() {
               {facets.locations.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   <h2 className="w-full mb-0">Locations</h2>
-                  <button type="button" className="inline-block rounded px-1.5 py-0.5 mr-1 text-xs" onClick={() => setLocationFilter(undefined)}>
+                  <Button size="sm" variant="ghost" className="rounded" onClick={() => setLocationFilter(undefined)}>
                     All locations
-                  </button>
+                  </Button>
                   {breadcrumb.map((loc) => (
-                    <button key={loc.id} type="button" className="inline-block rounded px-1.5 py-0.5 mr-1 text-xs" onClick={() => setLocationFilter(loc.id)}>
+                    <Button key={loc.id} size="sm" variant="ghost" className="rounded" onClick={() => setLocationFilter(loc.id)}>
                       {loc.name}
-                    </button>
+                    </Button>
                   ))}
                   {facets.locations.map((f) => (
-                    <button key={f.id} type="button" className="inline-block rounded px-1.5 py-0.5 mr-1 text-xs" onClick={() => setLocationFilter(f.id)}>
+                    <Button key={f.id} size="sm" variant="ghost" className="rounded" onClick={() => setLocationFilter(f.id)}>
                       {f.name} ({f.count})
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
@@ -255,28 +250,25 @@ export function ItemsPage() {
         ) : (
           <div className="flex-1 min-w-0 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             {items.map((item) => (
-              <Link
-                key={item.id}
-                to={`/items/${item.id}`}
-                className="block rounded-lg border border-border p-3 no-underline text-inherit hover:border-text-muted"
-              >
-                {item.images?.[0]?.thumbPath ? (
-                  <img src={'/file/' + item.images[0].thumbPath} alt={item.name} className="w-full h-32 object-cover rounded-md mb-2" />
-                ) : null}
-                <h2>{item.name}</h2>
-                <p>{item.location?.name}</p>
-                <p>{item.type?.name}</p>
-                {item.tags.map((tag) => (
-                  <span key={tag.id} className="inline-block rounded px-1.5 py-0.5 mr-1 text-xs">
-                    {tag.name}
-                  </span>
-                ))}
-                {q.trim() && item.snippet ? (
-                  <p className="mt-2 text-text-muted text-sm" data-testid="item-snippet">
-                    {item.snippet}
-                  </p>
-                ) : null}
-              </Link>
+              // `p-0!` and not `p-0`: Card bakes in `p-4`, and Tailwind emits
+              // same-property utilities in scale order, so a caller's plain `p-0`
+              // never wins — the image would sit 16px inside the card.
+              <Card key={item.id} className="p-0! overflow-hidden hover:border-text-muted">
+                <Link to={`/items/${item.id}`} className="block p-3 no-underline text-inherit">
+                  {item.images?.[0]?.thumbPath ? (
+                    <img src={'/file/' + item.images[0].thumbPath} alt={item.name} className="w-full h-32 object-cover rounded-md mb-2" />
+                  ) : null}
+                  <h2 className="mt-0">{item.name}</h2>
+                  <p>{item.location?.name}</p>
+                  <p>{item.type?.name}</p>
+                  {item.tags.map((tag) => (
+                    <Badge key={tag.id} color={tag.color} className="mr-1">{tag.name}</Badge>
+                  ))}
+                  {q.trim() && item.snippet ? (
+                    <p className="mt-2 text-text-muted text-sm" data-testid="item-snippet">{item.snippet}</p>
+                  ) : null}
+                </Link>
+              </Card>
             ))}
             {items.length === 0 && <p>No items yet.</p>}
           </div>
@@ -285,23 +277,13 @@ export function ItemsPage() {
 
       {data && data.total > 1 && (
         <div className="flex gap-2 items-center mt-4">
-          <button
-            type="button"
-            className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
-            onClick={() => setPage(Math.max(1, page - 1))}
-            disabled={page <= 1}
-          >
+          <Button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}>
             Prev
-          </button>
+          </Button>
           <span>Page {page}</span>
-          <button
-            type="button"
-            className="px-3 py-1.5 rounded-md border border-border bg-surface text-text"
-            onClick={() => setPage(page + 1)}
-            disabled={page * 20 >= data.total}
-          >
+          <Button onClick={() => setPage(page + 1)} disabled={page * 20 >= data.total}>
             Next
-          </button>
+          </Button>
         </div>
       )}
     </section>
