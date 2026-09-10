@@ -27,6 +27,11 @@ export function Modal({ open, onOpenChange, title, children }: ModalProps) {
           // Radix dispatches this before it moves focus into the content, so
           // `activeElement` is still the opener at this point.
           onOpenAutoFocus={() => { restoreRef.current = document.activeElement as HTMLElement | null }}
+          // Radix closes on outside pointer-down by default. Our only consumer is
+          // an image editor, where the margin around the content is a live
+          // "discard my crop, rotate and text edits" target with no confirmation.
+          // Escape (required) stays; a stray click must not destroy work.
+          onPointerDownOutside={(event) => event.preventDefault()}
           // Ours is composed ahead of Radix's own handler, so preventDefault suppresses
           // both the empty `triggerRef` lookup and FocusScope's fallback to <body>.
           // Leaving either in play would race our focus() below.

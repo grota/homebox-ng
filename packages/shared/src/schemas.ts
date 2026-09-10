@@ -21,7 +21,15 @@ export const itemInput = z.object({
   itemTypeId: z.number().int().positive(),
   locationId: z.number().int().positive().nullable(),
 })
-export const tagInput = z.object({ name: z.string().min(1), color: z.string().default('#888888') })
+// A tag colour is only ever rendered as an inline CSS `background`, so constrain
+// it to a hex literal. Unvalidated, any authenticated user could store
+// `url(//attacker/pixel.png)` — no script execution, React's CSSOM path blocks
+// that, but a stored beacon that leaks each viewer's IP and view timing to an
+// attacker-chosen URL, with no length bound. 3/4/6/8 digits covers every form
+// `<input type="color">` and the `#888888` default can produce.
+export const hexColor = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/
+
+export const tagInput = z.object({ name: z.string().min(1), color: z.string().regex(hexColor).default('#888888') })
 
 export const userInput = z.object({
   name: z.string().min(1),

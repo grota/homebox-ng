@@ -33,6 +33,32 @@ describe('Modal', () => {
     )
     fireEvent.keyDown(document, { key: 'Escape' })
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    // Exactly once: a double close is the risk this branch took Radix on to
+    // remove — a second `false` would run the caller's `onClose` twice. The
+    // `toHaveBeenCalledWith` above cannot see it.
+    expect(onOpenChange).toHaveBeenCalledTimes(1)
+  })
+
+  // Radix closes on outside pointer-down by default. For an unsaved-work editor
+  // that is a silent discard, so Modal suppresses it deliberately — this fails
+  // the moment the `onPointerDownOutside` handler is dropped.
+  it('stays open on an outside pointer-down', async () => {
+    const onOpenChange = vi.fn()
+    render(
+      <Modal open onOpenChange={onOpenChange} title="Edit photo">
+        <p>Editor</p>
+      </Modal>,
+    )
+    // Radix attaches its outside-pointerdown listener from a `setTimeout`, so the
+    // sequence has to land after a tick or it is never heard. And it defers the
+    // dismissal to the *click* that confirms the gesture, so a bare pointerdown
+    // is not enough to reproduce the behaviour being suppressed.
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Edit photo' })).toBeInTheDocument())
+    fireEvent.pointerDown(document.body, { button: 0 })
+    fireEvent.pointerUp(document.body, { button: 0 })
+    fireEvent.click(document.body)
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Edit photo' })).toBeInTheDocument())
+    expect(onOpenChange).not.toHaveBeenCalled()
   })
 
   // The opener is a sibling of the modal, not a `Dialog.Trigger`, so Radix has no
