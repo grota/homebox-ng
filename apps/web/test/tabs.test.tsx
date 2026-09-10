@@ -26,6 +26,18 @@ describe('Tabs', () => {
     expect(within(screen.getByRole('tabpanel')).getByText('Users panel')).toBeInTheDocument()
   })
 
+  // A tablist with no accessible name is announced as a bare "tab list"; a page
+  // with more than one of them (or a screen-reader user landing on it out of
+  // context) cannot tell which it is.
+  it('names the tablist when given a label', () => {
+    render(
+      <Tabs value="users" onValueChange={() => {}} items={items} ariaLabel="Admin sections">
+        Panel
+      </Tabs>,
+    )
+    expect(screen.getByRole('tablist', { name: 'Admin sections' })).toBeInTheDocument()
+  })
+
   it('reports a change when another tab is clicked', () => {
     const onValueChange = vi.fn()
     render(<Tabs value="users" onValueChange={onValueChange} items={items}>Panel</Tabs>)

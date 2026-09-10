@@ -176,4 +176,21 @@ describe('items search + facets', () => {
     expect(screen.getByRole('button', { name: 'vintage (1)' }).style.background).toBe('rgb(255, 0, 0)')
     expect(screen.getByRole('button', { name: 'evil (1)' }).style.background).toBe('')
   })
+
+  // The chip's inline `background` beats every `hover:` utility, so its hover
+  // state is a scrim element derived from the tag's colour. A chip that lost it
+  // would pass every other assertion here — the colour and the accessible name
+  // are both unchanged.
+  it('reveals a colour-derived scrim on a tag chip, and none without a colour', () => {
+    tagFacets = [
+      { id: 1, name: 'vintage', color: '#ff0000', count: 1 },
+      { id: 2, name: 'plain', color: null, count: 1 },
+    ]
+    renderPage(['/items'])
+
+    const chip = screen.getByRole('button', { name: 'vintage (1)' })
+    // Red is a dark colour, so the scrim lightens it.
+    expect(chip.querySelector('[aria-hidden]')).toHaveStyle({ background: 'rgba(255, 255, 255, 0.18)' })
+    expect(screen.getByRole('button', { name: 'plain (1)' }).querySelector('[aria-hidden]')).toBeNull()
+  })
 })

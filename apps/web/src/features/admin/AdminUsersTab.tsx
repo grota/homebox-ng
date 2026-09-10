@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
 import type { Role } from '@homebox/shared'
-import { Button, Field, Input, Select } from '../../ui'
+import { Button, Card, Field, Input, Select } from '../../ui'
 
 // A generated one-time value for the "reset password" action. Reuse the create
 // flow's temp-password banner so the admin can copy it to the user.
@@ -107,10 +107,10 @@ export function AdminUsersTab() {
       </form>
 
       {tempPassword && (
-        <div className="border border-border rounded-md p-3 max-w-[30rem]">
+        <Card className="max-w-[30rem]">
           <p>{t('admin.users.shareTempPassword', { name: tempPassword.name })}</p>
           <p className="font-mono font-semibold" data-testid="temp-password">{tempPassword.password}</p>
-        </div>
+        </Card>
       )}
 
       {isLoading ? (

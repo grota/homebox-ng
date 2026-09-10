@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Field, Input } from '../../ui'
+import { Button, Card, Field, Input } from '../../ui'
 
 type BackupPreview = {
   dbBytes: number
@@ -114,7 +114,7 @@ export function AdminBackupTab() {
         </Field>
 
         {preview && (
-          <div className="border border-border rounded-md p-3">
+          <Card>
             <p className="font-semibold">{t('admin.backup.preview')}</p>
             <p className="text-text-muted">
               {t('admin.backup.previewDetail', {
@@ -142,7 +142,7 @@ export function AdminBackupTab() {
                 {t('admin.backup.cancel')}
               </Button>
             </div>
-          </div>
+          </Card>
         )}
 
         {message && <p role="status">{message}</p>}

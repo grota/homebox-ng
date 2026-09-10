@@ -24,6 +24,7 @@ export function AdminPage() {
         value={tab}
         onValueChange={setTab}
         items={tabs}
+        ariaLabel={t('admin.tabsLabel')}
       >
         {tab === 'users' && <AdminUsersTab />}
         {tab === 'settings' && <AdminSettingsTab />}

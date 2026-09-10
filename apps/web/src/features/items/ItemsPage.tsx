@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { hexColor } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
-import { Badge, Button, Card, Field, Input, PageHeader } from '../../ui'
+import { Badge, Button, Card, Field, hoverScrim, Input, PageHeader } from '../../ui'
 import { ItemForm } from './ItemForm'
 
 // URL param → tRPC input mapping lives in ONE place on this page. The URL uses
@@ -205,24 +205,39 @@ export function ItemsPage() {
               {facets.tags.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   <h2 className="w-full mb-0">Tags</h2>
-                  {facets.tags.map((f) => (
-                    // A facet chip must stay a real <button> — `searchFacets.test.tsx`
-                    // clicks it by role — so the tag colour rides on the ghost Button
-                    // rather than on a <Badge> (a span, not interactive).
-                    //
+                  {facets.tags.map((f) => {
                     // Same sink and same guard as `ui/Badge.tsx`: defence in depth for
                     // rows written before `hexColor` on `tagInput` existed. A non-hex
                     // value is ignored rather than sanitised.
-                    <Button
-                      key={f.id}
-                      size="sm"
-                      variant="ghost"
-                      style={f.color && hexColor.test(f.color) ? { background: f.color } : undefined}
-                      onClick={() => toggleTag(f.id)}
-                    >
-                      {f.name} ({f.count})
-                    </Button>
-                  ))}
+                    const color = f.color && hexColor.test(f.color) ? f.color : null
+                    return (
+                      // A facet chip must stay a real <button> — `searchFacets.test.tsx`
+                      // clicks it by role — so the tag colour rides on the ghost Button
+                      // rather than on a <Badge> (a span, not interactive).
+                      <Button
+                        key={f.id}
+                        size="sm"
+                        variant="ghost"
+                        className="relative group"
+                        style={color ? { background: color } : undefined}
+                        onClick={() => toggleTag(f.id)}
+                      >
+                        {/* That inline `background` beats the ghost variant's
+                            `hover:bg-surface-raised`, so the chip's hover state has to
+                            be its own element: a wash derived from the tag's colour
+                            (`ui/scrim`), revealed on group-hover. Absolutely positioned,
+                            so adding it does not move the chip's box. */}
+                        {color && (
+                          <span
+                            aria-hidden
+                            className="absolute inset-0 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{ background: hoverScrim(color) }}
+                          />
+                        )}
+                        <span className="relative">{f.name} ({f.count})</span>
+                      </Button>
+                    )
+                  })}
                 </div>
               )}
 

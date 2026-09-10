@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
-import { Button, Input, Select } from '../../ui'
+import { Button, Card, Input, Select } from '../../ui'
 
 // Root unpack: upload a clustered photo to POST /upload/unpack, which returns
 // { detected, drafts }. The type is chosen from existing item types.
@@ -33,7 +33,7 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
   }
 
   return (
-    <div className="border border-border rounded-md p-4 space-y-3">
+    <Card className="space-y-3">
       <h2 className="font-semibold">{t('drafts.unpackTitle')}</h2>
       <Input type="file" accept="image/*" onChange={(e: ChangeEvent<HTMLInputElement>) => setFile(e.target.files?.[0] ?? null)} />
       <Select value={itemTypeId} onChange={(e) => setItemTypeId(e.target.value ? Number(e.target.value) : '')}>
@@ -42,6 +42,6 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
       </Select>
       <Button variant="primary" disabled={busy || !file} onClick={() => void submit()}>{t('drafts.unpack')}</Button>
       {err && <p role="alert" className="text-danger">{err}</p>}
-    </div>
+    </Card>
   )
 }
