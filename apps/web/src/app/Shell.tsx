@@ -13,7 +13,7 @@ const navItems = [
 ]
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
-  return `px-3 py-1.5 rounded-md text-sm no-underline ${isActive ? 'bg-accent text-accent-contrast' : 'text-text hover:bg-surface'}`
+  return `px-3 py-1.5 rounded-md text-sm no-underline ${isActive ? 'bg-accent text-accent-contrast' : 'text-text hover:bg-surface-raised'}`
 }
 
 // Responsive site shell for authenticated pages: a fixed header with a brand
@@ -44,7 +44,7 @@ export function Shell() {
           <button
             type="button"
             data-testid="drawer-toggle"
-            className="md:hidden px-2 py-1 rounded border border-border bg-surface text-text"
+            className="md:hidden px-2 py-1 rounded border border-border bg-bg text-text"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-label="Toggle navigation"

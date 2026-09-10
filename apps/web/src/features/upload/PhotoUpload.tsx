@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { trpc } from '../../api/trpc'
+import { inputClass } from '../../ui'
 
 type PhotoUploadProps = { itemId: number }
 
@@ -47,7 +48,9 @@ export function PhotoUpload({ itemId }: PhotoUploadProps) {
 
   return (
     <div className="my-4">
-      <input ref={inputRef} type="file" accept="image/*" aria-label="Upload photo" onChange={handleFile} />
+      {/* `inputClass` rather than the `Input` primitive: this needs a `ref` to the
+          element to clear its value after each pick, which `Input`'s props don't take. */}
+      <input ref={inputRef} type="file" accept="image/*" aria-label="Upload photo" onChange={handleFile} className={inputClass} />
       {uploading && <p>Uploading…</p>}
       {error && <p role="alert">{error}</p>}
     </div>
