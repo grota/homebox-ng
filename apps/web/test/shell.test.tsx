@@ -47,4 +47,10 @@ describe('Shell', () => {
     render(<MemoryRouter><Shell /></MemoryRouter>)
     expect(screen.queryByRole('link', { name: 'nav.admin' })).not.toBeInTheDocument()
   })
+
+  it('wraps routed content in a centered max-width container', () => {
+    render(<MemoryRouter><Shell /></MemoryRouter>)
+    const content = screen.getByTestId('content')
+    expect(content).toHaveClass('mx-auto', 'max-w-6xl', 'px-4')
+  })
 })

@@ -31,7 +31,7 @@ export function Shell() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <header className="border-b border-border">
+      <header className="border-b border-border bg-surface">
         <div className="flex items-center justify-between px-4 py-3">
           <Link to="/" className="font-semibold text-lg no-underline text-text">{t('app.title')}</Link>
           {/* Horizontal nav, hidden below md. */}
@@ -65,7 +65,9 @@ export function Shell() {
         )}
       </header>
 
-      <main className="p-4">
+      {/* Centered content column. Without a max-width the item grid stretches
+          edge to edge on wide displays while forms stay pinned narrow. */}
+      <main className="mx-auto w-full max-w-6xl px-4 py-6" data-testid="content">
         <Outlet />
       </main>
     </div>
