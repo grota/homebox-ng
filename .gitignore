@@ -11,3 +11,9 @@ data/
 test-results/
 playwright-report/
 blob-report/
+
+/docs/architecture/homebox-ng-*
+
+# Skills are being handled by the skills NPM package and we have a lock file in
+# this repository. I don't want to actually check in the skills themselves.
+/.agents/skills/
