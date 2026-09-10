@@ -89,4 +89,40 @@ describe('Modal', () => {
     // Radix dispatches its unmount autofocus from a setTimeout, so this lands late.
     await waitFor(() => expect(opener).toHaveFocus())
   })
+
+  // The shape production actually uses: PhotoEditor early-returns `null` when
+  // `!open`, so the whole `Modal` unmounts rather than staying mounted with its
+  // content removed. The test above keeps `Modal` mounted throughout, so it
+  // would not catch a restore that only works on Radix's own close path.
+  it('restores focus when the Modal itself unmounts', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <Button onClick={() => setOpen(true)}>Opener</Button>
+          {open && (
+            <Modal open onOpenChange={setOpen} title="Edit photo">
+              <p>Editor</p>
+            </Modal>
+          )}
+        </>
+      )
+    }
+    render(<Harness />)
+
+    const opener = screen.getByRole('button', { name: 'Opener' })
+    opener.focus()
+    expect(opener).toHaveFocus()
+
+    fireEvent.click(opener)
+    expect(screen.getByRole('dialog', { name: 'Edit photo' })).toBeInTheDocument()
+    // Radix moves focus into the dialog, so the opener genuinely loses it here —
+    // without this the restore assertion below could pass without anything to
+    // restore from.
+    await waitFor(() => expect(opener).not.toHaveFocus())
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(opener).toHaveFocus())
+  })
 })

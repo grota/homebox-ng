@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -6,6 +6,15 @@ import { MemoryRouter } from 'react-router-dom'
 // so tests can assert the URL-param → query-input mapping. The rest of the
 // module is mocked so the page renders without a backend or provider context
 // (Ruling T6-A: the page is rendered under a sole MemoryRouter, no AppProviders).
+//
+// The tag facet's colour is a stored value, so the test that guards the chip's
+// inline paint needs to control it. Mutable module state, reset in `beforeEach`;
+// the factory closes over the binding and reads it when the module is imported,
+// which is after this declaration has run.
+let tagFacets: { id: number; name: string; color: string | null; count: number }[] = [
+  { id: 1, name: 'vintage', color: null, count: 1 },
+]
+
 vi.mock('../src/api/trpc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/api/trpc')>()
   const listInput: any[] = []
@@ -37,7 +46,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         total: 1,
         facets: {
           types: [{ id: 1, name: 'Lighting', count: 1 }],
-          tags: [{ id: 1, name: 'vintage', color: null, count: 1 }],
+          tags: tagFacets,
           locations: [{ id: 1, name: 'Living Room', count: 1 }],
         },
       },
@@ -81,6 +90,10 @@ const lastListInput = async () => {
 }
 
 describe('items search + facets', () => {
+  beforeEach(() => {
+    tagFacets = [{ id: 1, name: 'vintage', color: null, count: 1 }]
+  })
+
   it('drives the query from URL params and renders a search box + facets', async () => {
     renderPage(['/items?q=lamp&typeId=1'])
 
@@ -147,5 +160,20 @@ describe('items search + facets', () => {
       expect(last.tagIds).toBeUndefined()
       expect(last.page).toBe(1)
     })
+  })
+
+  // The tag facet chip paints `f.color` as an inline background — the same sink
+  // `ui/Badge.tsx` guards. `hexColor` on `tagInput` is the real fix; this is the
+  // defence in depth for rows stored before it existed. Without the guard the
+  // chip would carry `background: url(//evil.example/x.png)`.
+  it('paints a hex tag colour but ignores a non-hex one', () => {
+    tagFacets = [
+      { id: 1, name: 'vintage', color: '#ff0000', count: 1 },
+      { id: 2, name: 'evil', color: 'url(//evil.example/x.png)', count: 1 },
+    ]
+    renderPage(['/items'])
+
+    expect(screen.getByRole('button', { name: 'vintage (1)' }).style.background).toBe('rgb(255, 0, 0)')
+    expect(screen.getByRole('button', { name: 'evil (1)' }).style.background).toBe('')
   })
 })

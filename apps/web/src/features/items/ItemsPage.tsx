@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { hexColor } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
 import { Badge, Button, Card, Field, Input, PageHeader } from '../../ui'
 import { ItemForm } from './ItemForm'
@@ -208,11 +209,15 @@ export function ItemsPage() {
                     // A facet chip must stay a real <button> — `searchFacets.test.tsx`
                     // clicks it by role — so the tag colour rides on the ghost Button
                     // rather than on a <Badge> (a span, not interactive).
+                    //
+                    // Same sink and same guard as `ui/Badge.tsx`: defence in depth for
+                    // rows written before `hexColor` on `tagInput` existed. A non-hex
+                    // value is ignored rather than sanitised.
                     <Button
                       key={f.id}
                       size="sm"
                       variant="ghost"
-                      style={f.color ? { background: f.color } : undefined}
+                      style={f.color && hexColor.test(f.color) ? { background: f.color } : undefined}
                       onClick={() => toggleTag(f.id)}
                     >
                       {f.name} ({f.count})

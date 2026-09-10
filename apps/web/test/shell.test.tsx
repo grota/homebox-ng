@@ -48,9 +48,13 @@ describe('Shell', () => {
     expect(screen.queryByRole('link', { name: 'nav.admin' })).not.toBeInTheDocument()
   })
 
-  it('wraps routed content in a centered max-width container', () => {
+  // Named for what it actually checks. This render has no route, so `<Outlet/>`
+  // renders nothing and no content assertion is possible here — the class list
+  // IS the subject. `w-full` is included because it is what makes `mx-auto`
+  // centre the container rather than a shrink-wrapped box.
+  it('gives the content container the centred max-width shell classes', () => {
     render(<MemoryRouter><Shell /></MemoryRouter>)
     const content = screen.getByTestId('content')
-    expect(content).toHaveClass('mx-auto', 'max-w-6xl', 'px-4')
+    expect(content).toHaveClass('mx-auto', 'max-w-6xl', 'px-4', 'w-full', 'py-6')
   })
 })

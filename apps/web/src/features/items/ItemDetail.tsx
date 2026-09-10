@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
-import { Badge, Button, Card, PageHeader } from '../../ui'
+import { Badge, Button, Card, PageHeader, buttonClasses, cn } from '../../ui'
 import { PhotoUpload } from '../upload/PhotoUpload'
 import { PhotoEditor } from '../upload/PhotoEditor'
 import { ItemForm } from './ItemForm'
@@ -105,14 +105,15 @@ export function ItemDetail() {
             <Button onClick={() => { unpack.mutate({ kind: 'item', imageId: img.id }); navigate('/drafts') }}>
               Unpack this photo
             </Button>
-            {/* ponytail: an <a>, not a <Button> — it opens the file in a new tab, which
-                a <button> cannot. The classes mirror the secondary variant; export a
-                shared buttonClass if a second anchor ever needs them. */}
+            {/* An <a>, not a <Button> — it opens the file in a new tab, which a <button>
+                cannot. `buttonClasses` is the single source of the button look;
+                `no-underline` is added here because the shared composition leaves it out
+                (it is dead on a real <button>, and Preflight only underlines anchors). */}
             <a
               href={'/file/' + (img.editedPath ?? img.originalPath)}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center justify-center rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text no-underline transition-colors hover:bg-surface-raised"
+              className={cn(buttonClasses(), 'no-underline')}
             >
               View
             </a>

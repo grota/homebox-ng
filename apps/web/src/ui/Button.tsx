@@ -5,7 +5,7 @@ export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost'
 export type ButtonSize = 'sm' | 'md'
 
 const base =
-  'inline-flex items-center justify-center gap-1.5 rounded-md border font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed no-underline'
+  'inline-flex items-center justify-center gap-1.5 rounded-md border font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
 
 // Composed with `base` and `sizes.md`, `secondary` covers every token of the
 // utility string the app's buttons used before this component existed
@@ -20,7 +20,7 @@ const variants: Record<ButtonVariant, string> = {
   primary: 'bg-accent text-accent-contrast border-accent hover:opacity-90',
   secondary: 'bg-surface text-text border-border hover:bg-surface-raised',
   danger: 'bg-surface text-danger border-danger hover:bg-surface-raised',
-  ghost: 'bg-transparent text-text border-transparent hover:bg-surface-raised',
+  ghost: 'text-text border-transparent hover:bg-surface-raised',
 }
 
 const sizes: Record<ButtonSize, string> = {
@@ -28,11 +28,21 @@ const sizes: Record<ButtonSize, string> = {
   md: 'px-3 py-1.5 text-sm',
 }
 
+// One definition of the button look, so a caller that needs it on something
+// other than a `<button>` (ItemDetail's `View` anchor — it opens a new tab,
+// which a button cannot) cannot drift from this component.
+//
+// `no-underline` is deliberately NOT in `base`: on a `<button>` it is dead
+// (Preflight's `text-decoration: inherit` applies to anchors), so an anchor
+// borrowing these classes adds it at its own call site.
+export const buttonClasses = (variant: ButtonVariant = 'secondary', size: ButtonSize = 'md') =>
+  cn(base, variants[variant], sizes[size])
+
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant
   size?: ButtonSize
 }
 
 export function Button({ variant = 'secondary', size = 'md', className, type = 'button', ...rest }: ButtonProps) {
-  return <button type={type} className={cn(base, variants[variant], sizes[size], className)} {...rest} />
+  return <button type={type} className={cn(buttonClasses(variant, size), className)} {...rest} />
 }

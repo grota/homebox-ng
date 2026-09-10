@@ -22,7 +22,7 @@ export function AdminPage() {
       <PageHeader title={t('admin.title')} />
       <Tabs
         value={tab}
-        onValueChange={(v) => setTab(v as AdminTab)}
+        onValueChange={setTab}
         items={tabs}
       >
         {tab === 'users' && <AdminUsersTab />}

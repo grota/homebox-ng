@@ -54,7 +54,13 @@ body {
 
 /* Tailwind Preflight resets heading styles, which left every page title
    rendering at body-text size and weight with no margins. Restore a scale here
-   rather than per-page, so page titles cannot drift apart again. */
+   rather than per-page, so page titles cannot drift apart again.
+
+   The `:first-child` rule below zeroes the start margin when such a heading sits
+   first inside a padded box (UnpackModal's `<h2>` in a `p-4` container): a
+   child's margin does not collapse against its parent's padding, so the
+   heading's 1.5rem/1.25rem landed on top of the padding and pushed the title
+   lower than intended. */
 @layer base {
   h1 {
     font-size: 1.75rem;
@@ -72,5 +78,9 @@ body {
     font-size: 1.05rem;
     font-weight: 600;
     margin-block: 1.25rem 0.5rem;
+  }
+  h2:first-child,
+  h3:first-child {
+    margin-block-start: 0;
   }
 }

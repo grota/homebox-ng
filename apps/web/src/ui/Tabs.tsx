@@ -1,18 +1,22 @@
 import type { ReactNode } from 'react'
 import * as RadixTabs from '@radix-ui/react-tabs'
 
-type TabsProps = {
-  value: string
-  onValueChange: (value: string) => void
-  items: { id: string; label: string }[]
+type TabsProps<T extends string> = {
+  value: T
+  onValueChange: (value: T) => void
+  items: { id: T; label: string }[]
   children: ReactNode
 }
 
 // Radix gives the roving tabindex, arrow-key navigation and the
 // tablist/tab/aria-selected wiring that a row of plain <button>s lacks.
-export function Tabs({ value, onValueChange, items, children }: TabsProps) {
+//
+// Generic in the tab id so callers keep their own union type (`AdminTab`) and
+// no `as` cast is needed at the call site. Radix types its handlers on `string`,
+// so the one cast that remains lives here rather than in every consumer.
+export function Tabs<T extends string>({ value, onValueChange, items, children }: TabsProps<T>) {
   return (
-    <RadixTabs.Root value={value} onValueChange={onValueChange}>
+    <RadixTabs.Root value={value} onValueChange={(v) => onValueChange(v as T)}>
       <RadixTabs.List className="flex gap-1 border-b border-border">
         {items.map((item) => (
           <RadixTabs.Trigger

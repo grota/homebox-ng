@@ -67,6 +67,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
 })
 
 import { ItemDetail } from '../src/features/items/ItemDetail'
+import { buttonClasses } from '../src/ui'
 
 const renderDetail = () =>
   render(
@@ -108,6 +109,18 @@ describe('item detail photos', () => {
     renderDetail()
     fireEvent.click(screen.getByRole('button', { name: 'Delete item' }))
     expect(mocks.deleteItem).toHaveBeenCalledWith({ id: 3 })
+  })
+
+  // `no-underline` is no longer part of Button's `base` (it is dead on a real
+  // <button>), so this anchor has to carry it itself or the link underlines.
+  // Comparing against `buttonClasses()` also fails if the anchor drifts back to a
+  // hand-written copy of the string, which is the point of the shared helper.
+  it('renders the photo View link with the shared button classes plus no-underline', () => {
+    renderDetail()
+    expect(screen.getAllByRole('link', { name: 'View' })[0]).toHaveClass(
+      ...buttonClasses().split(' '),
+      'no-underline',
+    )
   })
 
   it('omits fieldValues when the type definitions have not loaded', async () => {
