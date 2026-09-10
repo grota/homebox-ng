@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { cn, Button } from '../src/ui'
+import { cn, Button, Field, Input, Select } from '../src/ui'
 
 describe('cn', () => {
   it('joins truthy class names and drops falsy ones', () => {
@@ -38,5 +38,55 @@ describe('Button', () => {
     fireEvent.click(btn)
     expect(onClick).not.toHaveBeenCalled()
     expect(btn).toBeDisabled()
+  })
+})
+
+describe('Field', () => {
+  it('associates its label with the control so getByLabelText works', () => {
+    render(
+      <Field label="Name" htmlFor="item-name">
+        <Input id="item-name" defaultValue="Lamp" />
+      </Field>,
+    )
+    expect(screen.getByLabelText('Name')).toHaveValue('Lamp')
+  })
+
+  it('marks a required field in the label text', () => {
+    render(
+      <Field label="Serial" htmlFor="serial" required>
+        <Input id="serial" />
+      </Field>,
+    )
+    expect(screen.getByText('Serial *')).toBeInTheDocument()
+  })
+})
+
+describe('Input', () => {
+  it('forwards value and onChange', () => {
+    const onChange = vi.fn()
+    render(<Input aria-label="q" value="a" onChange={onChange} />)
+    fireEvent.change(screen.getByLabelText('q'), { target: { value: 'ab' } })
+    expect(onChange).toHaveBeenCalled()
+  })
+
+  it('applies the shared input styling and merges extra classes', () => {
+    render(<Input aria-label="q" className="w-full" />)
+    const input = screen.getByLabelText('q')
+    expect(input).toHaveClass('border-border', 'rounded-md', 'bg-surface', 'w-full')
+  })
+})
+
+describe('Select', () => {
+  it('renders options and forwards onChange', () => {
+    render(
+      <Select aria-label="type" defaultValue="1">
+        <option value="1">Light</option>
+        <option value="2">Tool</option>
+      </Select>,
+    )
+    const select = screen.getByLabelText('type')
+    expect(screen.getByRole('option', { name: 'Tool' })).toBeInTheDocument()
+    fireEvent.change(select, { target: { value: '2' } })
+    expect(select).toHaveValue('2')
   })
 })
