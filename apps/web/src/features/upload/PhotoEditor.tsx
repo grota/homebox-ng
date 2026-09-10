@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import FilerobotImageEditor from 'react-filerobot-image-editor'
 import { trpc } from '../../api/trpc'
+import { Modal } from '../../ui'
 
 type PhotoEditorProps = { image: { id: number; originalPath: string }; itemId: number; open: boolean; onClose: () => void }
 type SaveImageData = { imageCanvas?: HTMLCanvasElement; imageBase64?: string; mimeType?: string }
@@ -50,8 +51,8 @@ export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) 
   }
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black" role="dialog" aria-modal="true">
-      {error && <p role="alert">{error}</p>}
+    <Modal open={open} onOpenChange={(next) => { if (!next) onClose() }} title="Edit photo">
+      {error && <p role="alert" className="text-danger">{error}</p>}
       {saving && <p>Saving…</p>}
       <FilerobotImageEditor
         source={'/file/' + image.originalPath}
@@ -60,6 +61,6 @@ export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) 
         savingPixelRatio={4}
         previewPixelRatio={window.devicePixelRatio || 1}
       />
-    </div>
+    </Modal>
   )
 }
