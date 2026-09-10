@@ -4,6 +4,19 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        // `styled-components` and `konva` are transitive-only (pnpm does not hoist them
+        // into apps/web/node_modules), so match on resolved paths rather than package names.
+        manualChunks(id) {
+          if (/node_modules[/\\].*(filerobot-image-editor|react-konva|konva|styled-components)[/@]/.test(id)) {
+            return 'editor'
+          }
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/trpc': 'http://localhost:3000',
