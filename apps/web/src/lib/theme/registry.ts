@@ -32,7 +32,7 @@ export const themes: ThemePalette[] = [
     vars: {
       '--color-bg': '#f5f6fa',
       '--color-surface': '#ffffff',
-      '--color-surface-raised': '#ffffff',
+      '--color-surface-raised': '#f3f4f6',
       '--color-text': '#1a1a1a',
       '--color-text-muted': '#6b7280',
       '--color-border': '#e5e7eb',

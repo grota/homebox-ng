@@ -5,11 +5,18 @@
    runtime ThemeProvider overrides them by setting the same variables inline on
    document.documentElement (inline style beats this `:root` rule), so a palette
    switch re-colors the app without touching markup. Never put a raw palette hex
-   in markup — always a semantic token. */
+   in markup — always a semantic token.
+
+   `--color-surface-raised` deliberately steps *darker* here rather than lighter
+   as it does in Catppuccin Latte and Nord. Those palettes have a surface that is
+   already off-white, so a raised/hover state can step up to pure `#ffffff`; this
+   one's surface IS `#ffffff`, so going lighter is not available and the hover
+   state (Button's `hover:bg-surface-raised`) would be invisible. Stepping one
+   shade darker is the only direction left. */
 @theme {
   --color-bg: #f5f6fa;
   --color-surface: #ffffff;
-  --color-surface-raised: #ffffff;
+  --color-surface-raised: #f3f4f6;
   --color-text: #1a1a1a;
   --color-text-muted: #6b7280;
   --color-border: #e5e7eb;
