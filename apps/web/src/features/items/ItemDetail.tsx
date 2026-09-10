@@ -88,9 +88,7 @@ export function ItemDetail() {
 
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         {item.images.map((img) => (
-          // `p-2!` — see the note in ItemsPage: Card's own `p-4` wins over a plain
-          // `p-2`, and these photo tiles keep the 8px density they had before.
-          <Card key={img.id} className="p-2! flex flex-col gap-1">
+          <Card key={img.id} padding="sm" className="flex flex-col gap-1">
             <img src={'/file/' + img.thumbPath} alt={item.name} className="w-full h-32 object-cover rounded-md" />
             {img.isPrimary && <Badge>Primary</Badge>}
             <Button onClick={() => setEditingImage({ id: img.id, originalPath: img.originalPath })}>

@@ -156,14 +156,14 @@ export function ItemsPage() {
       />
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <Field label="Search" htmlFor="item-search">
+        <Field label="Search" htmlFor="item-search" className="flex-1 min-w-0 max-w-[26rem]">
           <Input
             id="item-search"
             type="search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search items"
-            className="w-full max-w-[26rem]"
+            className="w-full"
           />
         </Field>
         <Button onClick={clearFilters} className="self-end">Clear filters</Button>
@@ -193,7 +193,6 @@ export function ItemsPage() {
                       key={f.id}
                       size="sm"
                       variant={itemTypeId === f.id ? 'primary' : 'ghost'}
-                      className="rounded"
                       onClick={() => setTypeFilter(itemTypeId === f.id ? undefined : f.id)}
                     >
                       {f.name} ({f.count})
@@ -213,7 +212,6 @@ export function ItemsPage() {
                       key={f.id}
                       size="sm"
                       variant="ghost"
-                      className="rounded"
                       style={f.color ? { background: f.color } : undefined}
                       onClick={() => toggleTag(f.id)}
                     >
@@ -226,16 +224,16 @@ export function ItemsPage() {
               {facets.locations.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   <h2 className="w-full mb-0">Locations</h2>
-                  <Button size="sm" variant="ghost" className="rounded" onClick={() => setLocationFilter(undefined)}>
+                  <Button size="sm" variant="ghost" onClick={() => setLocationFilter(undefined)}>
                     All locations
                   </Button>
                   {breadcrumb.map((loc) => (
-                    <Button key={loc.id} size="sm" variant="ghost" className="rounded" onClick={() => setLocationFilter(loc.id)}>
+                    <Button key={loc.id} size="sm" variant="ghost" onClick={() => setLocationFilter(loc.id)}>
                       {loc.name}
                     </Button>
                   ))}
                   {facets.locations.map((f) => (
-                    <Button key={f.id} size="sm" variant="ghost" className="rounded" onClick={() => setLocationFilter(f.id)}>
+                    <Button key={f.id} size="sm" variant="ghost" onClick={() => setLocationFilter(f.id)}>
                       {f.name} ({f.count})
                     </Button>
                   ))}
@@ -250,10 +248,7 @@ export function ItemsPage() {
         ) : (
           <div className="flex-1 min-w-0 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             {items.map((item) => (
-              // `p-0!` and not `p-0`: Card bakes in `p-4`, and Tailwind emits
-              // same-property utilities in scale order, so a caller's plain `p-0`
-              // never wins — the image would sit 16px inside the card.
-              <Card key={item.id} className="p-0! overflow-hidden hover:border-text-muted">
+              <Card key={item.id} padding="none" className="overflow-hidden hover:border-text-muted">
                 <Link to={`/items/${item.id}`} className="block p-3 no-underline text-inherit">
                   {item.images?.[0]?.thumbPath ? (
                     <img src={'/file/' + item.images[0].thumbPath} alt={item.name} className="w-full h-32 object-cover rounded-md mb-2" />
