@@ -104,7 +104,9 @@ not apply. It was rejected for these specific, verified reasons:
   `@radix-ui/react-select`, is deferred). Roughly 15–25 KB gzip for the primitives
   actually used.
 - The bundle is already 1,308 KB (382 KB gzip) and Vite warns about chunk size. This is
-  pre-existing; a `manualChunks` pass is worth doing independently of this ADR.
+  pre-existing; a `manualChunks` pass was done in `4dca4be`, which splits the editor for
+  caching but does not reduce the initial payload (the 500 kB warning persists) — deferring
+  it needs a lazy `import()`.
 - The 6 palettes need `--color-danger` to be *used* to be meaningful. If it stays dead,
   palette switching remains mostly a background-color change. (`--color-success` did stay
   dead and was deleted — see §5 of the Decision.)
