@@ -147,7 +147,15 @@ Then append to the end of `apps/web/src/index.css`:
 
 - [ ] **Step 5: Replace the raw palette colour with the token**
 
-`text-red-600` bypasses the palette, so destructive text does not follow the theme. In `apps/web/src/features/items/ItemDetail.tsx`, `apps/web/src/features/drafts/DraftsPage.tsx` and `apps/web/src/features/drafts/UnpackModal.tsx`, replace every `text-red-600` with `text-danger` (5 occurrences total).
+`text-red-600` bypasses the palette, so destructive text does not follow the theme. Replace every `text-red-600` with `text-danger` — **5 occurrences across 4 files**: `features/items/ItemDetail.tsx` (lines 79, 132), `features/items/ItemForm.tsx` (line 222), `features/drafts/DraftsPage.tsx` (line 54), `features/drafts/UnpackModal.tsx` (line 43).
+
+Verify with:
+
+```bash
+cd apps/web/src && grep -rn 'text-red-' --include=*.tsx .
+```
+
+Expected: no output.
 
 - [ ] **Step 6: Run the full suite**
 
@@ -946,10 +954,12 @@ Note `type="submit"` is passed explicitly — `Button` defaults to `type="button
 - [ ] **Step 2: Verify no hand-written duplicates remain**
 
 ```bash
-cd apps/web/src && grep -rn 'border border-border rounded-md bg-surface text-text' --include=*.tsx . ; grep -rn 'px-3 py-1.5 rounded-md border border-border bg-surface text-text' --include=*.tsx .
+cd apps/web/src && grep -rn 'border border-border rounded-md bg-surface text-text' --include=*.tsx . ; grep -rn 'px-3 py-1.5 rounded-md border border-border bg-surface text-text' --include=*.tsx . ; grep -rnE '(text|bg|border)-red-[0-9]' --include=*.tsx .
 ```
 
-Expected: no output from either. Any remaining hit is a missed call site.
+Expected: no output from any of the three. Any remaining hit is a missed call site.
+
+The third grep matters: `DraftsPage.tsx:54` uses `px-3 py-1.5 rounded-md border border-border text-red-600` — no `bg-surface` — so it matches neither of the first two patterns and would sail past a two-grep check.
 
 - [ ] **Step 3: Run the full suite and typecheck**
 
