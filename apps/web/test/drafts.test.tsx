@@ -303,4 +303,27 @@ describe('drafts page', () => {
     fireEvent.click(screen.getByTestId('go-detected'))
     expect(screen.getByRole('status')).toHaveTextContent('Detected 2 item(s)')
   })
+
+  it('opens the photo viewer from a row thumbnail', () => {
+    draftData = [
+      {
+        id: 1,
+        name: 'Draft Lamp',
+        images: [{ id: 10, originalPath: 'uploads/originals/a.png', editedPath: null, thumbPath: 'uploads/thumbs/a.jpg', isPrimary: true }],
+      },
+    ]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'View photo of Draft Lamp' }))
+    const dialog = screen.getByRole('dialog', { name: 'Draft Lamp' })
+    // The thumbnail is a 400px upscale of the original, so the viewer shows the
+    // original, not the thumbnail.
+    expect(within(dialog).getByRole('img', { name: 'Draft Lamp' })).toHaveAttribute(
+      'src',
+      '/file/uploads/originals/a.png',
+    )
+  })
 })

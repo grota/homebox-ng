@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
-import { Button, Card, Input } from '../../ui'
+import { Button, Card, Input, PhotoViewer } from '../../ui'
 import { UnpackModal } from './UnpackModal'
 
 export function DraftsPage() {
@@ -29,6 +29,7 @@ export function DraftsPage() {
   const publishAll = trpc.drafts.publishAll.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const discard = trpc.drafts.discard.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null)
   const discardAll = trpc.drafts.discardAll.useMutation({
     onSuccess: () => {
       // `selected` is never pruned when the list refetches, so a discarded id
@@ -105,24 +106,42 @@ export function DraftsPage() {
         </Button>
       </div>
       <ul className="space-y-3">
-        {data.map((d) => (
+        {data.map((d) => {
           // The `<li>` stays the list item — `Card` renders a `<div>`, and a
           // `<div>` child of `<ul>` would drop the rows' list semantics.
-          <li key={d.id}>
-            <Card className="flex items-center gap-3">
-              <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />
-              <img src={`/file/${d.images.find((i) => i.isPrimary)?.thumbPath ?? d.images[0]?.thumbPath}`} className="w-16 h-16 object-cover rounded" alt="" />
-              <Input
-                className="flex-1"
-                defaultValue={d.name}
-                onBlur={(e) => { if (e.target.value.trim() && e.target.value !== d.name) void update.mutateAsync({ id: d.id, name: e.target.value.trim() }) }}
-              />
-              <Button onClick={() => void publish.mutateAsync({ id: d.id })}>{t('drafts.publish')}</Button>
-              <Button variant="danger" onClick={() => void discard.mutateAsync({ id: d.id })}>{t('drafts.discard')}</Button>
-            </Card>
-          </li>
-        ))}
+          //
+          // Picked once per row so the thumbnail and the full-size rendition the
+          // viewer opens cannot disagree about which image they describe.
+          const photo = d.images.find((i) => i.isPrimary) ?? d.images[0]
+          return (
+            <li key={d.id}>
+              <Card className="flex items-center gap-3">
+                <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />
+                {photo && (
+                  <button
+                    type="button"
+                    aria-label={`View photo of ${d.name}`}
+                    onClick={() => setViewing({ src: '/file/' + (photo.editedPath ?? photo.originalPath), alt: d.name })}
+                    className="shrink-0 cursor-zoom-in p-0"
+                  >
+                    <img src={`/file/${photo.thumbPath}`} className="w-16 h-16 object-cover rounded" alt="" />
+                  </button>
+                )}
+                <Input
+                  className="flex-1"
+                  defaultValue={d.name}
+                  onBlur={(e) => { if (e.target.value.trim() && e.target.value !== d.name) void update.mutateAsync({ id: d.id, name: e.target.value.trim() }) }}
+                />
+                <Button onClick={() => void publish.mutateAsync({ id: d.id })}>{t('drafts.publish')}</Button>
+                <Button variant="danger" onClick={() => void discard.mutateAsync({ id: d.id })}>{t('drafts.discard')}</Button>
+              </Card>
+            </li>
+          )
+        })}
       </ul>
+      {viewing && (
+        <PhotoViewer src={viewing.src} alt={viewing.alt} onClose={() => setViewing(null)} />
+      )}
     </div>
   )
 }
