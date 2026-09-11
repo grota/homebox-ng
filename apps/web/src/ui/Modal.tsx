@@ -1,17 +1,29 @@
 import { useRef, type ReactNode } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 
+// The two geometries Modal serves. `md` is the box this primitive has always
+// rendered, kept as one string so the default cannot drift; `full` is the
+// viewer's — edge to edge, no radius/border/padding, and `overflow-hidden`
+// rather than `overflow-auto` because a pan surface must not scroll (ADR-0002).
+const boxes = {
+  md: 'fixed left-1/2 top-1/2 z-[101] -translate-x-1/2 -translate-y-1/2 w-[min(92vw,64rem)] max-h-[92vh] overflow-auto rounded-lg border border-border bg-surface p-4 shadow-lg',
+  full: 'fixed inset-0 z-[101] overflow-hidden',
+} as const
+
 type ModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
+  // `keyof typeof boxes` is exactly `'md' | 'full'` and cannot drift from the
+  // table above.
+  size?: keyof typeof boxes
   children: ReactNode
 }
 
 // Radix supplies the behavior the app was faking: focus trap, Escape to close,
 // focus restore to the trigger, and `aria-modal` that is actually true. Styling
 // stays on our tokens.
-export function Modal({ open, onOpenChange, title, children }: ModalProps) {
+export function Modal({ open, onOpenChange, title, size = 'md', children }: ModalProps) {
   // Radix restores focus to a `Dialog.Trigger`, but this Modal is controlled and its
   // opener lives elsewhere in the tree (ItemDetail's per-photo "Edit" button), so
   // Radix's `triggerRef` is empty and focus would fall to <body>. Remember the opener
@@ -23,7 +35,7 @@ export function Modal({ open, onOpenChange, title, children }: ModalProps) {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[100] bg-black/70" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-[101] -translate-x-1/2 -translate-y-1/2 w-[min(92vw,64rem)] max-h-[92vh] overflow-auto rounded-lg border border-border bg-surface p-4 shadow-lg"
+          className={boxes[size]}
           // Radix dispatches this before it moves focus into the content, so
           // `activeElement` is still the opener at this point.
           onOpenAutoFocus={() => { restoreRef.current = document.activeElement as HTMLElement | null }}

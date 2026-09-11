@@ -125,4 +125,36 @@ describe('Modal', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     await waitFor(() => expect(opener).toHaveFocus())
   })
+
+  // The viewer's surface: edge to edge, no box chrome, and `overflow-hidden`
+  // rather than `overflow-auto` — a pan surface must not scroll (ADR-0002).
+  it('renders the full size as a bare full-viewport surface', () => {
+    render(
+      <Modal open onOpenChange={() => {}} title="Photo" size="full">
+        <p>Photo</p>
+      </Modal>,
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Photo' })
+    expect(dialog).toHaveClass('fixed', 'inset-0', 'overflow-hidden')
+    expect(dialog.className).not.toMatch(/rounded-lg|border-border|max-h-\[92vh\]|overflow-auto|w-\[min/)
+  })
+
+  // The default is the contract ADR-0002 bought: every existing Modal keeps the
+  // box it has always rendered. `size` is omitted here on purpose — passing
+  // `size="md"` would test the branch, not the default.
+  it('defaults to the medium box', () => {
+    render(
+      <Modal open onOpenChange={() => {}} title="Photo">
+        <p>Photo</p>
+      </Modal>,
+    )
+    expect(screen.getByRole('dialog', { name: 'Photo' })).toHaveClass(
+      'w-[min(92vw,64rem)]',
+      'max-h-[92vh]',
+      'overflow-auto',
+      'rounded-lg',
+      'border-border',
+      'p-4',
+    )
+  })
 })
