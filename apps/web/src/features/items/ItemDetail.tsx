@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
-import { Badge, Button, Card, PageHeader, buttonClasses, cn } from '../../ui'
+import { Badge, Button, Card, PageHeader, PhotoViewer } from '../../ui'
 import { PhotoUpload } from '../upload/PhotoUpload'
 import { PhotoEditor } from '../upload/PhotoEditor'
 import { ItemForm } from './ItemForm'
@@ -19,6 +19,7 @@ export function ItemDetail() {
   const { data: item, isLoading } = trpc.items.get.useQuery({ id: itemId })
   const unpack = trpc.unpack.run.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const [editingImage, setEditingImage] = useState<{ id: number; originalPath: string } | null>(null)
+  const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null)
   const [editingItem, setEditingItem] = useState(false)
 
   // Every mutation below re-reads the item, which is what the gallery renders.
@@ -89,7 +90,19 @@ export function ItemDetail() {
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         {item.images.map((img) => (
           <Card key={img.id} padding="sm" className="flex flex-col gap-1">
-            <img src={'/file/' + img.thumbPath} alt={item.name} className="w-full h-32 object-cover rounded-md" />
+            {/* The thumbnail is the control: a real <button> carries the accessible
+                name, so the <img> inside it is `alt=""` — with alt text a screen
+                reader would read the item name twice. */}
+            <button
+              type="button"
+              aria-label={`View photo of ${item.name}`}
+              onClick={() =>
+                setViewing({ src: '/file/' + (img.editedPath ?? img.originalPath), alt: item.name })
+              }
+              className="block w-full cursor-zoom-in p-0"
+            >
+              <img src={'/file/' + img.thumbPath} alt="" className="w-full h-32 object-cover rounded-md" />
+            </button>
             {img.isPrimary && <Badge>Primary</Badge>}
             <Button onClick={() => setEditingImage({ id: img.id, originalPath: img.originalPath })}>
               Edit
@@ -105,18 +118,9 @@ export function ItemDetail() {
             <Button onClick={() => { unpack.mutate({ kind: 'item', imageId: img.id }); navigate('/drafts') }}>
               Unpack this photo
             </Button>
-            {/* An <a>, not a <Button> — it opens the file in a new tab, which a <button>
-                cannot. `buttonClasses` is the single source of the button look;
-                `no-underline` is added here because the shared composition leaves it out
-                (it is dead on a real <button>, and Preflight only underlines anchors). */}
-            <a
-              href={'/file/' + (img.editedPath ?? img.originalPath)}
-              target="_blank"
-              rel="noreferrer"
-              className={cn(buttonClasses(), 'no-underline')}
-            >
-              View
-            </a>
+            {/* The "View" anchor lived here. Its job — seeing the full photo — is now
+                the thumbnail's, and its one unique capability (opening the file in a
+                new tab) moved into the viewer as "Open original". */}
             <Button
               variant="danger"
               disabled={deleteImage.isPending}
@@ -133,6 +137,10 @@ export function ItemDetail() {
 
       {editingImage && (
         <PhotoEditor image={editingImage} itemId={item.id} open onClose={() => setEditingImage(null)} />
+      )}
+
+      {viewing && (
+        <PhotoViewer src={viewing.src} alt={viewing.alt} onClose={() => setViewing(null)} />
       )}
     </section>
   )

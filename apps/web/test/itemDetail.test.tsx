@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 vi.mock('react-filerobot-image-editor', () => ({
@@ -67,7 +67,6 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
 })
 
 import { ItemDetail } from '../src/features/items/ItemDetail'
-import { buttonClasses } from '../src/ui'
 
 const renderDetail = () =>
   render(
@@ -111,15 +110,27 @@ describe('item detail photos', () => {
     expect(mocks.deleteItem).toHaveBeenCalledWith({ id: 3 })
   })
 
-  // `no-underline` is no longer part of Button's `base` (it is dead on a real
-  // <button>), so this anchor has to carry it itself or the link underlines.
-  // Comparing against `buttonClasses()` also fails if the anchor drifts back to a
-  // hand-written copy of the string, which is the point of the shared helper.
-  it('renders the photo View link with the shared button classes plus no-underline', () => {
+  // The thumbnail used to be inert; the View anchor's job (seeing the full photo)
+  // is now its job, and the anchor's other job (opening the file) moved inside
+  // the viewer as "Open original".
+  it('opens the viewer on the edited rendition from a photo thumbnail', () => {
     renderDetail()
-    expect(screen.getAllByRole('link', { name: 'View' })[0]).toHaveClass(
-      ...buttonClasses().split(' '),
-      'no-underline',
+    fireEvent.click(screen.getAllByRole('button', { name: 'View photo of Lamp' })[0])
+    const dialog = screen.getByRole('dialog', { name: 'Lamp' })
+    expect(within(dialog).getByRole('img', { name: 'Lamp' })).toHaveAttribute(
+      'src',
+      '/file/uploads/edited/e.png',
+    )
+  })
+
+  it('falls back to the original rendition when the image has no edit', () => {
+    renderDetail()
+    // Image 11 is the one with `editedPath: null`.
+    fireEvent.click(screen.getAllByRole('button', { name: 'View photo of Lamp' })[1])
+    const dialog = screen.getByRole('dialog', { name: 'Lamp' })
+    expect(within(dialog).getByRole('img', { name: 'Lamp' })).toHaveAttribute(
+      'src',
+      '/file/uploads/originals/b.png',
     )
   })
 
