@@ -15,6 +15,16 @@ export function DraftsPage() {
   const publishAll = trpc.drafts.publishAll.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const discard = trpc.drafts.discard.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  const discardAll = trpc.drafts.discardAll.useMutation({
+    onSuccess: () => {
+      // `selected` is never pruned when the list refetches, so a discarded id
+      // survives in the set and would be sent again by the next bulk action.
+      // Clearing here is the first of the two layers that keep a bulk discard
+      // from being half-applied; `discardAll`'s tolerance is the second.
+      setSelected(new Set())
+      void utils.drafts.list.invalidate()
+    },
+  })
 
   const toggle = (id: number) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const allSelected = (data?.length ?? 0) > 0 && selected.size === data?.length
@@ -39,6 +49,15 @@ export function DraftsPage() {
         </label>
         <Button disabled={selected.size === 0} onClick={() => void publishAll.mutateAsync({ ids: [...selected] })}>
           {t('drafts.publishSelected')}
+        </Button>
+        <Button
+          variant="danger"
+          disabled={selected.size === 0}
+          onClick={() => {
+            if (window.confirm(t('drafts.discardSelectedConfirm', { count: selected.size }))) void discardAll.mutateAsync({ ids: [...selected] })
+          }}
+        >
+          {t('drafts.discardSelected')}
         </Button>
       </div>
       <ul className="space-y-3">

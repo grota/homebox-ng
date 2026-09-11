@@ -18,6 +18,8 @@
     "discard": "Discard",
     "selectAll": "Select all",
     "publishSelected": "Publish selected",
+    "discardSelected": "Discard selected",
+    "discardSelectedConfirm": "Discard {{count}} draft(s) and their photos?",
     "unpacked": "Detected {count} item(s)"
   },
   "settings": {
