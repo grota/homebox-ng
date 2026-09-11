@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import en from '../public/locales/en/translation.json'
 
 vi.mock('react-i18next', () => ({
@@ -37,6 +37,20 @@ const draft = (id: number, name: string) => ({
   name,
   images: [{ id: id * 10, originalPath: 'uploads/originals/a.png', editedPath: null, thumbPath: 'uploads/thumbs/a.jpg', isPrimary: true }],
 })
+
+// Sits beside `DraftsPage` under the same router to make the URL observable from
+// a case, and to drive the navigation `UnpackModal.onUnpacked` performs — which
+// matters because the modal lives *on* the drafts page, so that navigation lands
+// on an already-mounted `DraftsPage` rather than a fresh one.
+function RouterProbe() {
+  const navigate = useNavigate()
+  return (
+    <>
+      <span data-testid="search">{useLocation().search}</span>
+      <button type="button" data-testid="go-detected" onClick={() => navigate('/drafts?detected=2')}>unpack</button>
+    </>
+  )
+}
 
 // Stub the tRPC router so `DraftsPage` renders without a backend. The page also
 // renders `UnpackModal`, so `itemTypes.list` is stubbed to an empty list too.
@@ -250,5 +264,43 @@ describe('drafts page', () => {
       </MemoryRouter>,
     )
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('keeps the notice after the parameter is consumed', () => {
+    draftData = []
+    render(
+      <MemoryRouter initialEntries={['/drafts?detected=3']}>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    // The page rewrites the URL on mount, so this renders at all only because the
+    // value was captured before the parameter went away.
+    expect(screen.getByRole('status')).toHaveTextContent('Detected 3 item(s)')
+  })
+
+  it('drops the parameter from the URL, so a reload starts clean', () => {
+    draftData = []
+    render(
+      <MemoryRouter initialEntries={['/drafts?detected=3']}>
+        <RouterProbe />
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('search').textContent).toBe('')
+  })
+
+  it('reports the count for an unpack that lands on an already-mounted page', () => {
+    // Every real unpack takes this path: the modal lives on the drafts page, so
+    // its navigation is a search change on a mounted `DraftsPage` — no remount,
+    // and nothing for a mount-time read of the parameter to see.
+    draftData = [draft(1, 'Draft Lamp')]
+    render(
+      <MemoryRouter initialEntries={['/drafts']}>
+        <RouterProbe />
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByTestId('go-detected'))
+    expect(screen.getByRole('status')).toHaveTextContent('Detected 2 item(s)')
   })
 })

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
@@ -9,17 +9,20 @@ export function DraftsPage() {
   const { t } = useTranslation()
   const utils = trpc.useUtils()
   const navigate = useNavigate()
-  // `UnpackModal.onUnpacked` below writes `?detected=<n>`; reading it here is the
-  // other half of that handshake. The value is read, never consumed: no effect,
-  // no URL rewrite — the message persists while it is in the URL and goes away
-  // with the page, which is all one line of feedback needs.
+  // `UnpackModal.onUnpacked` below writes `?detected=<n>`, and this is the other
+  // half of that handshake — read, then dropped from the URL, so the notice
+  // describes an event rather than the address bar.
   //
   // `null` when the parameter is absent and `NaN` when it is not a number: the
   // two cases that render nothing. A real `0` stays distinct from both — the
   // unpack ran and found nothing, which is the outcome that carries the most
   // information, so it must not be swallowed by an absent case's `?? 0`.
+  //
+  // Capture on mount: the notice must survive the URL rewrite below, which is
+  // what removes the parameter from the URL so a reload does not re-trigger it.
   const [params] = useSearchParams()
-  const detected = params.has('detected') ? Number(params.get('detected')) : null
+  const [detected, setDetected] = useState(() => params.get('detected'))
+  const count = detected === null ? null : Number(detected)
   const { data, isLoading } = trpc.drafts.list.useQuery()
   const update = trpc.drafts.update.useMutation()
   const publish = trpc.drafts.publish.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
@@ -40,6 +43,21 @@ export function DraftsPage() {
   const toggle = (id: number) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const allSelected = (data?.length ?? 0) > 0 && selected.size === data?.length
 
+  // Dropping the parameter is what makes the notice describe an event rather than
+  // the address bar: a reload starts clean. `replace` keeps the pre-rewrite URL
+  // out of history, so Back does not land on it and re-show the notice.
+  //
+  // The unpack runs *on this page*, so its navigation is a search change on a
+  // mounted `DraftsPage`, not a fresh mount — the initial state above cannot see
+  // that one, and capturing here too is what covers it. Both paths then rewrite
+  // the URL, and the captured value is what keeps the notice on screen after it.
+  useEffect(() => {
+    const value = params.get('detected')
+    if (value === null) return
+    setDetected(value)
+    navigate('/drafts', { replace: true })
+  }, [params, navigate])
+
   // `false` renders nothing, so one definition serves both branches: the notice
   // sits directly under the heading — above the Unpack modal in the empty state,
   // above the select-all toolbar once drafts exist — so the page does not reflow
@@ -49,8 +67,8 @@ export function DraftsPage() {
   // the one result the user has to act on, since a photo that yields nothing
   // otherwise leaves no error and no file to look at.
   const detectedNotice =
-    detected === null || Number.isNaN(detected) ? false
-    : detected > 0 ? <p role="status">{t('drafts.unpacked', { count: detected })}</p>
+    count === null || Number.isNaN(count) ? false
+    : count > 0 ? <p role="status">{t('drafts.unpacked', { count })}</p>
     : <p role="status" className="text-danger">{t('drafts.unpackedNone')}</p>
 
   if (isLoading) return <p>Loading…</p>
