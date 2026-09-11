@@ -29,9 +29,9 @@
 - `apps/api/src/modules/drafts/service.ts` — add `discardAll` (Task 1), add its stale-id guard (Task 2)
 - `apps/api/src/modules/drafts/router.ts` — add the `discardAll` procedure, rename the shared input schema (Task 1)
 - `apps/api/test/drafts.test.ts` — a draft factory, plus 3 new cases (Tasks 1-2)
-- `apps/web/public/locales/en/translation.json` — two `drafts.*` keys (Task 3)
-- `apps/web/test/drafts.test.tsx` — extend the tRPC and i18n stubs, add 4 cases (Task 3)
-- `apps/web/src/features/drafts/DraftsPage.tsx` — the mutation and the button (Task 3)
+- `apps/web/public/locales/en/translation.json` — two `drafts.*` keys (Task 3), the `drafts.unpacked` placeholder (Task 4)
+- `apps/web/test/drafts.test.tsx` — extend the tRPC and i18n stubs, add 4 cases (Task 3); add 4 more (Task 4)
+- `apps/web/src/features/drafts/DraftsPage.tsx` — the mutation and the button (Task 3); the detected notice (Task 4)
 
 ---
 
@@ -497,6 +497,230 @@ git commit -m "feat(web): add Discard selected bulk action to the drafts page"
 
 ---
 
+### Task 4: Interpolation and the unpack count
+
+Two things that belong together because they share one root cause — i18next's `{{...}}` prefix — and one line of feedback the app never delivered.
+
+Unpacking a clustered photo navigates to `/drafts?detected=3`, but nothing reads that parameter: `UnpackModal`'s `onUnpacked` writes it and `DraftsPage` never looks for it, so you land on the drafts list and the UI never says how many items were found. The key meant to say it, `drafts.unpacked`, is called from nowhere in `apps/web/src` and its value uses single braces — `"Detected {count} item(s)"` — which i18next does not interpolate, so it would render the literal `{count}` even once wired up. Both halves are fixed here. The key's single-brace form and the `?detected=` navigation were both added by the phase-6 plan (`docs/superpowers/plans/2026-09-06-phase6-unpack-drafts-publish.md`, steps 1 and 6) and neither half was ever connected, so this is a loose end of that plan rather than a regression against it.
+
+**The parameter's lifetime is "persist while it is in the URL".** Reading `?detected=N` on render is the whole mechanism: no `useEffect`, no `navigate(..., { replace: true })`, no second render, and a refresh re-reads the same answer from the same URL. The message stays until the user leaves the page, which is right — it describes what just happened, and the only way onto this page that carries a query string is the unpack flow itself, so the nav link to Drafts clears it. Consuming it would cost an effect that fires after paint plus a URL rewrite, more machinery than one line of feedback is worth.
+
+**A second instance of the same defect, which is live.** `apps/web/public/locales/en/admin.json:58` has `"rebuilt": "Reindexed {count} items"`, and `AdminSystemTab.tsx:36` *does* call it — `t('admin.system.rebuilt', { count: result })` — so the admin system tab renders the literal text `Reindexed {count} items` after a rebuild today. Unlike `drafts.unpacked`, this one is wired up and simply never interpolated. Both keys are one-character-class fixes, so they are fixed together here rather than filed separately.
+
+**Files:**
+- Modify: `apps/web/public/locales/en/translation.json:21` — the `drafts.unpacked` value only
+- Modify: `apps/web/public/locales/en/admin.json:58` — the `admin.system.rebuilt` value only
+- Modify: `apps/web/src/features/drafts/DraftsPage.tsx:2,11,23-34` — read the parameter, render the notice in both return branches
+- Test: `apps/web/test/drafts.test.tsx`
+- Test: `apps/web/test/admin.test.tsx` (or whichever admin test file covers `AdminSystemTab`) — the rebuild path must render the number, not `{count}`
+
+**Interfaces:**
+- Consumes: `useSearchParams` from `react-router-dom` (already a dependency; `ItemsPage` reads its params the same way); the `drafts.unpacked` key; the `?detected=<n>` query `UnpackModal`'s `onUnpacked` already writes (lines 26 and 34 of `DraftsPage.tsx`).
+- Produces: no new interfaces. One `<p role="status">`, the same shape `AdminSystemTab` uses for `admin.system.rebuilt`.
+
+`en` is still the only locale directory under `apps/web/public/locales/`, and `en/admin.json` has no `drafts` block, so `en/translation.json` is the only file holding this key and the only one to fix.
+
+- [ ] **Step 1: Fix the interpolation**
+
+In `apps/web/public/locales/en/translation.json:21`, change the value to:
+
+```json
+    "unpacked": "Detected {{count}} item(s)"
+```
+
+And in `apps/web/public/locales/en/admin.json:58`:
+
+```json
+      "rebuilt": "Reindexed {{count}} items"
+```
+
+`{{count}}` is i18next's default interpolation syntax (`apps/web/src/lib/i18n.ts:19` sets only `escapeValue`, so the prefix is the stock `{{`) and is what lets the count reach the message. A single brace is passed through verbatim, which is why the admin tab currently prints the braces.
+
+`item(s)` stays as written: the neighbouring keys deliberately avoid plural-rules keys, and this is one line of feedback, not a sentence that needs a plural form.
+
+The `drafts.unpacked` half is inert on its own — nothing calls the key yet, so no test can go red for it — but it is not optional. Step 3's assertion reads the message out of this real file, so a single-brace value renders the literal `Detected {count} item(s)` and fails it.
+
+The `admin.system.rebuilt` half **is** testable red-first, because it is already called: write a test asserting the system tab renders the actual number after a rebuild, watch it fail against the current `{count}`, then fix the value. Do that test first, before the `drafts.unpacked` value change, so the red is real rather than assumed.
+
+- [ ] **Step 2: Extend the i18n stub**
+
+In `apps/web/test/drafts.test.tsx`, replace the `react-i18next` mock (Task 3's, which interpolates only the confirmation) so that both value-carrying messages are interpolated from the real locale file:
+
+```tsx
+vi.mock('react-i18next', () => ({
+  // Everything still returns its key — that is what the existing assertions
+  // expect. The two messages that carry a value are the exception: both are
+  // interpolated from the real locale file, so a case can read the rendered
+  // count, and a single-brace placeholder fails the assertion instead of
+  // silently rendering `{count}`.
+  useTranslation: () => ({
+    t: (k: string, opts?: { count?: number }) => {
+      const message =
+        k === 'drafts.discardSelectedConfirm' ? en.drafts.discardSelectedConfirm
+        : k === 'drafts.unpacked' ? en.drafts.unpacked
+        : null
+      return message ? message.replace('{{count}}', String(opts?.count)) : k
+    },
+  }),
+}))
+```
+
+The fallback (`return k`) is unchanged, which is what keeps the key-returning assertions green. **The six cases already in this file must pass untouched after this step** — the mock is the only thing that changed, and it changed nothing about what the other keys resolve to.
+
+- [ ] **Step 3: Write the failing tests**
+
+Append these four cases to `describe('drafts page', ...)`:
+
+```tsx
+  it('reports how many items the unpack detected, in the empty state', () => {
+    draftData = []
+    render(
+      <MemoryRouter initialEntries={['/drafts?detected=3']}>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('Detected 3 item(s)')
+  })
+
+  it('reports the detected count above the list when drafts exist', () => {
+    draftData = [draft(1, 'Draft Lamp')]
+    render(
+      <MemoryRouter initialEntries={['/drafts?detected=2']}>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('Detected 2 item(s)')
+    expect(screen.getByRole('textbox')).toHaveValue('Draft Lamp')
+  })
+
+  it('shows no unpack message when the parameter is absent', () => {
+    draftData = [draft(1, 'Draft Lamp')]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('shows no unpack message when the parameter is not a count', () => {
+    draftData = []
+    render(
+      <MemoryRouter initialEntries={['/drafts?detected=nope']}>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+```
+
+The first two cases are the two return branches: after unpacking you land on whichever the drafts list happens to be, and the empty one is where the feedback matters most. The second case asks for `2` while the list holds a single row, so the number is provably read from the URL and not counted from `data.length`. `role="status"` is chosen because `DraftsPage` renders no other one (`UnpackModal`'s error is `role="alert"`), so `getByRole('status')` is unambiguous. The last case pins the `> 0` guard below: `Number('nope')` is `NaN`, and a page that rendered on `detected !== 0` would say "Detected NaN item(s)".
+
+- [ ] **Step 4: Run the tests to verify they fail**
+
+```bash
+pnpm --filter @homebox/web test drafts
+```
+
+Expected: FAIL — the first two new cases error with `Unable to find an accessible element with the role "status"`; `DraftsPage` never reads the parameter and renders no such element. The last two already pass (there is nothing to find yet), and the six pre-existing cases pass — which is what confirms the stub change was correct and inert. The single-brace value is *not* what fails here; Step 6 is what pins it.
+
+- [ ] **Step 5: Read the parameter and render the notice**
+
+In `apps/web/src/features/drafts/DraftsPage.tsx`, add `useSearchParams` to the router import on line 2:
+
+```tsx
+import { useNavigate, useSearchParams } from 'react-router-dom'
+```
+
+Read the parameter with the other hooks, directly after `navigate`:
+
+```tsx
+  const navigate = useNavigate()
+  // `UnpackModal.onUnpacked` below writes `?detected=<n>`; reading it here is the
+  // other half of that handshake. The value is read, never consumed: no effect,
+  // no URL rewrite — see the lifetime note above the Files list.
+  const [params] = useSearchParams()
+  const detected = Number(params.get('detected') ?? 0)
+```
+
+Then, after the `isLoading` early return and before the empty-list branch, define the notice once:
+
+```tsx
+  // `false` renders nothing, so one definition serves both branches: the notice
+  // sits directly under the heading — above the Unpack modal in the empty state,
+  // above the select-all toolbar once drafts exist — so the page does not reflow
+  // as the list fills or empties. A missing parameter becomes `0` and a
+  // non-numeric one `NaN`, and both fail this `> 0` test, so a malformed query
+  // renders nothing.
+  const detectedNotice = detected > 0 && (
+    <p role="status">{t('drafts.unpacked', { count: detected })}</p>
+  )
+```
+
+Finally, insert `{detectedNotice}` on the line directly after `<h1>{t('drafts.title')}</h1>` — the same slot in **both** return branches, so the empty-list branch becomes:
+
+```tsx
+    <div className="space-y-4">
+      <h1>{t('drafts.title')}</h1>
+      {detectedNotice}
+      <UnpackModal onUnpacked={(n) => { void utils.drafts.list.invalidate(); navigate(`/drafts?detected=${n}`) }} />
+      <p>{t('drafts.empty')}</p>
+    </div>
+```
+
+and the list branch:
+
+```tsx
+    <div className="space-y-4">
+      <h1>{t('drafts.title')}</h1>
+      {detectedNotice}
+      <UnpackModal onUnpacked={(n) => { void utils.drafts.list.invalidate(); navigate(`/drafts?detected=${n}`) }} />
+      <div className="flex items-center gap-3">
+```
+
+Neither `UnpackModal` line changes; `detected` is read above the early returns because `useSearchParams` is a hook, while the JSX sits below them because the loading state shows no notice.
+
+- [ ] **Step 6: Run the tests to verify they pass**
+
+```bash
+pnpm --filter @homebox/web test drafts
+```
+
+Expected: PASS — `Tests 10 passed` in `test/drafts.test.tsx` (the six from Task 3 plus these four). This run is also what proves the Step 1 fix: had the key kept its single braces, the first two cases would fail on `Detected {count} item(s)`.
+
+- [ ] **Step 7: Typecheck the workspace**
+
+```bash
+pnpm -r typecheck
+```
+
+Expected: clean. No `pnpm --filter @homebox/api build` is needed here, because this task adds no procedure and leaves `AppRouter` exactly as Task 3 built it. (Executing this task on its own, out of order, does need that build — `apps/web` resolves `AppRouter` from `apps/api/dist/server.d.ts`.)
+
+- [ ] **Step 8: Run the whole web suite**
+
+```bash
+pnpm --filter @homebox/web test
+```
+
+Expected: PASS — `Tests 87 passed` (83 before this task), with no existing assertion edited.
+
+- [ ] **Step 9: Check the e2e suite still passes**
+
+```bash
+pnpm --filter @homebox/web test:e2e
+```
+
+Expected: PASS. `e2e/unpack.spec.ts` is the one spec that drives this flow, and it is the reason to run the suite: the modal navigates it to `/drafts?detected=2`. It does not break, because the spec reloads to a bare `/drafts` (`page.goto('/drafts')`, line 73) before every assertion, and the two assertions that could have been disturbed by a new paragraph — `getByRole('textbox')` and `getByText('No drafts. …')` — match neither a `<p role="status">`'s role nor its text. No e2e case is added for the message: the unit cases above are its acceptance criteria, and the spec never asserts on the parameterised URL it lands on. The suite runs on port 3100 and starts its own server, so **nothing needs to be stopped first**.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add apps/web/public/locales/en/translation.json apps/web/src/features/drafts/DraftsPage.tsx apps/web/test/drafts.test.tsx
+git commit -m "fix(web): render the detected item count after an unpack"
+```
+
+---
+
 ## Not in this plan
 
 - **Per-row discard keeps its immediate, unconfirmed behaviour.** It is the page's existing power-tool shape, and the spec keeps it deliberately. No confirmation is added to any other action either.
@@ -504,3 +728,4 @@ git commit -m "feat(web): add Discard selected bulk action to the drafts page"
 - **No new e2e spec.** The bulk path is covered by API and web unit cases; `unpack.spec.ts` is run as a regression gate, not extended.
 - **No transaction around the batch, and no change to `discardDraft` or `drafts.discard`.** Tolerance lives in the bulk loop only.
 - **A bulk discard cannot be undone.** The confirmation names the count and nothing else; no undo, no soft delete.
+- **The detected notice is neither consumed nor dismissable.** It persists while `?detected=N` is in the URL and goes away when the user leaves the page (Task 4's lifetime decision). Clearing it on render and a dismiss button would both need state the URL already carries, and the message is only ever stale on a page the user has stopped acting on.
