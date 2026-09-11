@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
 import { Button, Card, Input } from '../../ui'
@@ -9,6 +9,12 @@ export function DraftsPage() {
   const { t } = useTranslation()
   const utils = trpc.useUtils()
   const navigate = useNavigate()
+  // `UnpackModal.onUnpacked` below writes `?detected=<n>`; reading it here is the
+  // other half of that handshake. The value is read, never consumed: no effect,
+  // no URL rewrite — the message persists while it is in the URL and goes away
+  // with the page, which is all one line of feedback needs.
+  const [params] = useSearchParams()
+  const detected = Number(params.get('detected') ?? 0)
   const { data, isLoading } = trpc.drafts.list.useQuery()
   const update = trpc.drafts.update.useMutation()
   const publish = trpc.drafts.publish.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
@@ -29,10 +35,21 @@ export function DraftsPage() {
   const toggle = (id: number) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   const allSelected = (data?.length ?? 0) > 0 && selected.size === data?.length
 
+  // `false` renders nothing, so one definition serves both branches: the notice
+  // sits directly under the heading — above the Unpack modal in the empty state,
+  // above the select-all toolbar once drafts exist — so the page does not reflow
+  // as the list fills or empties. A missing parameter becomes `0` and a
+  // non-numeric one `NaN`, and both fail this `> 0` test, so a malformed query
+  // renders nothing.
+  const detectedNotice = detected > 0 && (
+    <p role="status">{t('drafts.unpacked', { count: detected })}</p>
+  )
+
   if (isLoading) return <p>Loading…</p>
   if (!data || data.length === 0) return (
     <div className="space-y-4">
       <h1>{t('drafts.title')}</h1>
+      {detectedNotice}
       <UnpackModal onUnpacked={(n) => { void utils.drafts.list.invalidate(); navigate(`/drafts?detected=${n}`) }} />
       <p>{t('drafts.empty')}</p>
     </div>
@@ -41,6 +58,7 @@ export function DraftsPage() {
   return (
     <div className="space-y-4">
       <h1>{t('drafts.title')}</h1>
+      {detectedNotice}
       <UnpackModal onUnpacked={(n) => { void utils.drafts.list.invalidate(); navigate(`/drafts?detected=${n}`) }} />
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-1">

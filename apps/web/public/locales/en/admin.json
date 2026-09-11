@@ -55,7 +55,7 @@
     "system": {
       "title": "System",
       "rebuildFts": "Rebuild search index",
-      "rebuilt": "Reindexed {count} items"
+      "rebuilt": "Reindexed {{count}} items"
     },
     "tabsLabel": "Admin sections"
   }

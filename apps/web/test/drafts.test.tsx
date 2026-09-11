@@ -5,11 +5,18 @@ import en from '../public/locales/en/translation.json'
 
 vi.mock('react-i18next', () => ({
   // Everything still returns its key — that is what the existing assertions
-  // expect. The confirmation is the exception: it is the only observable string
-  // that carries a value, so it is interpolated from the real locale file.
+  // expect. The two messages that carry a value are the exception: both are
+  // interpolated from the real locale file, so a case can read the rendered
+  // count, and a single-brace placeholder fails the assertion instead of
+  // silently rendering `{count}`.
   useTranslation: () => ({
-    t: (k: string, opts?: { count?: number }) =>
-      k === 'drafts.discardSelectedConfirm' ? en.drafts.discardSelectedConfirm.replace('{{count}}', String(opts?.count)) : k,
+    t: (k: string, opts?: { count?: number }) => {
+      const message =
+        k === 'drafts.discardSelectedConfirm' ? en.drafts.discardSelectedConfirm
+        : k === 'drafts.unpacked' ? en.drafts.unpacked
+        : null
+      return message ? message.replace('{{count}}', String(opts?.count)) : k
+    },
   }),
 }))
 
@@ -173,5 +180,46 @@ describe('drafts page', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
     expect(confirmSpy).toHaveBeenCalledWith('Discard 1 draft(s) and their photos?')
     expect(discardAllMutate).toHaveBeenCalledWith({ ids: [1] })
+  })
+
+  it('reports how many items the unpack detected, in the empty state', () => {
+    draftData = []
+    render(
+      <MemoryRouter initialEntries={['/drafts?detected=3']}>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('Detected 3 item(s)')
+  })
+
+  it('reports the detected count above the list when drafts exist', () => {
+    draftData = [draft(1, 'Draft Lamp')]
+    render(
+      <MemoryRouter initialEntries={['/drafts?detected=2']}>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('Detected 2 item(s)')
+    expect(screen.getByRole('textbox')).toHaveValue('Draft Lamp')
+  })
+
+  it('shows no unpack message when the parameter is absent', () => {
+    draftData = [draft(1, 'Draft Lamp')]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('shows no unpack message when the parameter is not a count', () => {
+    draftData = []
+    render(
+      <MemoryRouter initialEntries={['/drafts?detected=nope']}>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })
