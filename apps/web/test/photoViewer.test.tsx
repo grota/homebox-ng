@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { PhotoViewer } from '../src/ui/PhotoViewer'
 
 const VIEWPORT = { width: 800, height: 600 }
@@ -56,9 +56,50 @@ describe('PhotoViewer initial zoom', () => {
 
   it('shows a loading frame until the image has loaded, never a wrong-zoom flash', () => {
     render(<PhotoViewer src={SRC} alt="Lamp" onClose={vi.fn()} />)
-    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    const loading = screen.getByText('Loading…')
+    expect(loading).toBeInTheDocument()
+    // Never a pointer target: the backdrop's dismissal is a positive check on
+    // the container, so an intercepting loading frame would kill it.
+    expect(loading).toHaveClass('pointer-events-none')
     expect(screen.getByRole('img', { name: 'Lamp' })).toHaveClass('invisible')
     expect(screen.getByRole('img', { name: 'Lamp' }).style.transform).toBe('')
+  })
+})
+
+// A rendition can 404 — a stale `images` row outlives the file on disk, and
+// `/file/*` sets no cache headers, so a re-open re-fetches and can fail — and
+// without a failure state the viewer would sit on "Loading…" over black forever.
+describe('PhotoViewer load failure', () => {
+  // `openViewer` fires `load`, so this case renders raw.
+  function openFailedViewer() {
+    const onClose = vi.fn()
+    render(<PhotoViewer src={SRC} alt="Lamp" onClose={onClose} />)
+    const container = screen.getByTestId('photo-viewer')
+    container.getBoundingClientRect = box(VIEWPORT.width, VIEWPORT.height)
+    const image = screen.getByRole('img', { name: 'Lamp' })
+    fireEvent.error(image)
+    return { onClose, container, image }
+  }
+
+  it('replaces the loading frame with a failure message', () => {
+    const { image } = openFailedViewer()
+    expect(screen.getByText('Could not load this photo')).toBeInTheDocument()
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
+    // The image never got a scene, so it stays hidden rather than drawing a
+    // broken-image box.
+    expect(image).toHaveClass('invisible')
+  })
+
+  it('keeps the message out of the way of the backdrop, which still dismisses', () => {
+    const { container, onClose } = openFailedViewer()
+    // The message covers the whole container and `onPointerDown` refuses any
+    // target that is not the container or the image, so a message that took
+    // pointers would make backdrop-closing dead for as long as it is up. jsdom
+    // does no hit-testing, so the class is the assertable half of that; the
+    // click below pins the resulting behaviour.
+    expect(screen.getByText('Could not load this photo')).toHaveClass('pointer-events-none')
+    click(container)
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -120,6 +161,47 @@ describe('PhotoViewer dismissal', () => {
     const { image } = openViewer(SMALL)
     click(image)
     expectTransform(image, { scale: 1, x: 200, y: 150 })
+  })
+
+  // A trackpad pinch is a `wheel` event with `ctrlKey`, whose default action is
+  // the browser's page zoom. React's own `onWheel` is registered passively (it
+  // cannot `preventDefault`) and Radix's scroll lock lets pinch events through on
+  // purpose, so the container carries a native, non-passive listener for it.
+  // Dispatched natively rather than through `fireEvent`, because the listener —
+  // not React — is what is under test here; a real browser pinch is the e2e's
+  // job. `act` only because the state update React's own handler queues from a
+  // native dispatch is not flushed by `fireEvent`'s batching.
+  it('cancels the page zoom a pinch would trigger, and still zooms the photo', () => {
+    const { container, image } = openViewer(LARGE)
+    const event = new WheelEvent('wheel', {
+      deltaY: -100,
+      ctrlKey: true,
+      clientX: 400,
+      clientY: 300,
+      bubbles: true,
+      cancelable: true,
+    })
+    act(() => container.dispatchEvent(event))
+    expect(event.defaultPrevented).toBe(true)
+    // Cancelled, not swallowed: no `stopPropagation`, so the zoom still happens.
+    const scale = 0.2 * Math.exp(0.25)
+    expectTransform(image, { scale, x: 400 - (scale / 0.2) * 400, y: 300 - (scale / 0.2) * 300 })
+  })
+})
+
+describe('PhotoViewer non-primary buttons', () => {
+  it('ignores a right-click on the backdrop', () => {
+    const { container, onClose } = openViewer(LARGE)
+    fireEvent.pointerDown(container, { pointerId: 1, button: 2 })
+    fireEvent.pointerUp(container, { pointerId: 1, button: 2 })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('ignores a right-click on the photo', () => {
+    const { image } = openViewer(LARGE)
+    fireEvent.pointerDown(image, { pointerId: 1, button: 2 })
+    fireEvent.pointerUp(image, { pointerId: 1, button: 2 })
+    expectTransform(image, { scale: 0.2, x: 0, y: 0 })
   })
 })
 

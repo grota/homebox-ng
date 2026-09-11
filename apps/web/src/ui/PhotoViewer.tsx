@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent, SyntheticEvent, WheelEvent } from 'react'
 import { Button, buttonClasses } from './Button'
 import { cn } from './cn'
@@ -34,6 +34,10 @@ const ARROW_PAN: Record<string, Point> = {
   ArrowDown: { x: 0, y: -KEY_PAN_STEP },
 }
 
+// A pinch's `wheel` event, stopped before the browser can turn it into page
+// zoom. Module-level so the ref callback below is stable.
+const stopPageZoom = (event: Event) => event.preventDefault()
+
 // The distance between the two fingers of a pinch.
 const spread = (pointers: Map<number, Point>): number => {
   const [a, b] = [...pointers.values()]
@@ -56,6 +60,9 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   const [scene, setScene] = useState<Scene | null>(null)
+  // A rendition row can outlive the file on disk, and `/file/*` sets no cache
+  // headers, so a 404 on re-open is a real state rather than a theoretical one.
+  const [failed, setFailed] = useState(false)
   // The pointer-down that may still turn out to be a click: where it started,
   // whether it has moved past the threshold, and what it landed on.
   const drag = useRef<{ x: number; y: number; moved: boolean; on: EventTarget | null } | null>(null)
@@ -63,6 +70,28 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
   // had on the previous move.
   const pointers = useRef(new Map<number, Point>())
   const pinch = useRef<number | null>(null)
+
+  // A trackpad pinch arrives as a `wheel` event with `ctrlKey`, whose default
+  // action is the browser's own page zoom — and nothing else can cancel it:
+  // React registers `onWheel` passively on the root (verified in
+  // react-dom@19.2.8's `listenToNativeEvent`), so the JSX handler below can
+  // never `preventDefault`, and Radix passes `allowPinchZoom: true` to
+  // react-remove-scroll, whose `shouldCancelEvent` returns false for exactly
+  // this event. This native, non-passive listener runs first and only cancels
+  // the default action — no `stopPropagation` — so the zoom handler fires too.
+  //
+  // Installed from the ref callback rather than an effect, and that is not a
+  // style choice: `Modal` renders `Dialog.Content`, whose Radix `Presence`
+  // mounts its subtree in a *later* commit than this component's, so a
+  // mount-time effect here runs before the container exists — and with `[]`
+  // deps it never runs again. A callback ref fires when the node actually
+  // attaches, whenever that is; React 19 calls the returned cleanup on detach.
+  const setContainer = useCallback((node: HTMLDivElement | null) => {
+    containerRef.current = node
+    if (!node) return
+    node.addEventListener('wheel', stopPageZoom, { passive: false })
+    return () => node.removeEventListener('wheel', stopPageZoom)
+  }, [])
 
   const measure = () => containerRef.current?.getBoundingClientRect()
 
@@ -86,6 +115,10 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
     setScene((current) => (current ? { ...current, transform: next(current) } : current))
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // Primary button only: a right-click on the backdrop would otherwise arm a
+    // click that the `pointerup` dismisses on, and one on the photo would toggle
+    // the zoom.
+    if (event.button !== 0) return
     const { target } = event
     // Only the image and the backdrop itself are gesture surfaces. The chrome —
     // close button, navigator, open-original — is neither, which is what makes
@@ -181,7 +214,7 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
           on it — see Task 4. `bg-black/90` is painted here rather than on the
           dialog because a full-viewport content hides the dialog's own overlay. */}
       <div
-        ref={containerRef}
+        ref={setContainer}
         data-testid="photo-viewer"
         // Focusable but not a tab stop. Without this, clicking the non-focusable
         // <img> sends focus to the nearest focusable ancestor — Radix's
@@ -198,7 +231,14 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
         onKeyDown={onKeyDown}
       >
         {scene ? null : (
-          <p className="absolute inset-0 grid place-items-center text-sm text-white/70">Loading…</p>
+          // `pointer-events-none` is what keeps backdrop dismissal alive: this
+          // element covers the whole container, and `onPointerDown` refuses any
+          // target that is not the container or the image, so a clickable
+          // message here would swallow every click for as long as it is up —
+          // i.e. for good if the image never loads.
+          <p className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-white/70">
+            {failed ? 'Could not load this photo' : 'Loading…'}
+          </p>
         )}
         <img
           ref={imageRef}
@@ -206,6 +246,7 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
           alt={alt}
           draggable={false}
           onLoad={onLoad}
+          onError={() => setFailed(true)}
           // Preflight caps every <img> at `max-width: 100%`, which would defeat
           // the natural-size maths; `max-w-none` restores the intrinsic box, and
           // the explicit width/height make the drawn size exactly `natural`
