@@ -88,8 +88,19 @@ export const toggleZoom = (natural: Size, viewport: Size, transform: Transform):
 
 // True when the image is bigger than the viewport at this scale — the condition
 // for showing the navigator, and false at fit by construction.
+//
+// Compare scales rather than drawn pixels. The obvious form — `natural.width *
+// scale > viewport.width` — multiplies after `fitScale` has already divided, and
+// the product can round a hair *above* the viewport: 800×600 in a 411×600
+// viewport fits at 411/800, yet `800 * (411/800)` is 411.00000000000006, so a
+// strict `>` there calls a fully-visible image an overflow and renders the
+// navigator over a photo that has none. `scale > fitScale` compares two floats
+// that are equal at fit, so it is exactly the mathematical condition: `scale` is
+// capped at 1, and `> min(a, b)` holds iff `> a` or `> b` — i.e. iff some axis
+// really is drawn larger than the viewport. Do not "simplify" this back to the
+// product form.
 export const overflows = (natural: Size, viewport: Size, scale: number): boolean =>
-  natural.width * scale > viewport.width || natural.height * scale > viewport.height
+  scale > fitScale(natural, viewport)
 
 // The part of the image on screen, in natural image pixels — the navigator's own
 // units. Clamped to the image, because an axis the image does not fill is

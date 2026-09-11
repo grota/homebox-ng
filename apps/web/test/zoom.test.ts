@@ -132,6 +132,15 @@ describe('overflows', () => {
     expect(overflows(LARGE, VIEWPORT, fitScale(LARGE, VIEWPORT))).toBe(false)
   })
 
+  it('is false at fit even when the drawn size rounds a hair above the viewport', () => {
+    // 800×600 in a 411×600 viewport: fit is 411/800, and 800 * (411/800) lands one
+    // ulp ABOVE 411 in binary floating point. A strict `>` on that product calls a
+    // fully-visible image an overflow and shows the navigator over it.
+    const natural = { width: 800, height: 600 }
+    const viewport = { width: 411, height: 600 }
+    expect(overflows(natural, viewport, fitScale(natural, viewport))).toBe(false)
+  })
+
   it('is true at 1:1 for an image larger than the viewport', () => {
     expect(overflows(LARGE, VIEWPORT, 1)).toBe(true)
   })
