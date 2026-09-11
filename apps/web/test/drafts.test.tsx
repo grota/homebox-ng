@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import en from '../public/locales/en/translation.json'
 
@@ -155,5 +155,23 @@ describe('drafts page', () => {
     fireEvent.click(btn)
     expect(discardAllMutate).toHaveBeenCalledWith({ ids: [1] })
     expect(btn).toBeDisabled()
+  })
+
+  it('takes the confirmed count from the selection, not from the list', () => {
+    // Two drafts, one selected: the count must come from the selection, not the list.
+    // Selecting through the select-all checkbox cannot tell those two apart, which
+    // is why this case ticks a single row instead.
+    draftData = [draft(1, 'Draft Lamp'), draft(2, 'Draft Cup')]
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    fireEvent.click(within(screen.getAllByRole('listitem')[0]).getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: 'drafts.discardSelected' }))
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    expect(confirmSpy).toHaveBeenCalledWith('Discard 1 draft(s) and their photos?')
+    expect(discardAllMutate).toHaveBeenCalledWith({ ids: [1] })
   })
 })
