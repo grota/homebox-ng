@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { hexColor } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
-import { Badge, Button, Card, Field, hoverScrim, Input, PageHeader } from '../../ui'
+import { Badge, Button, Card, Field, hoverScrim, Input, PageHeader, PhotoViewer } from '../../ui'
 import { ItemForm } from './ItemForm'
 
 // URL param → tRPC input mapping lives in ONE place on this page. The URL uses
@@ -42,6 +42,7 @@ const flattenLocations = (nodes: any[]): FlatLocation[] =>
 export function ItemsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [showForm, setShowForm] = useState(false)
+  const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null)
   const [facetsOpen, setFacetsOpen] = useState(false)
   const utils = trpc.useUtils()
 
@@ -269,11 +270,25 @@ export function ItemsPage() {
           <div className="flex-1 min-w-0 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             {items.map((item) => (
               <Card key={item.id} padding="none" className="overflow-hidden hover:border-text-muted">
-                <Link to={`/items/${item.id}`} className="block p-3 no-underline text-inherit">
+                <div className="p-3">
                   {item.images?.[0]?.thumbPath ? (
-                    <img src={'/file/' + item.images[0].thumbPath} alt={item.name} className="w-full h-32 object-cover rounded-md mb-2" />
+                    <button
+                      type="button"
+                      aria-label={`View photo of ${item.name}`}
+                      onClick={() =>
+                        setViewing({
+                          src: '/file/' + (item.images[0].editedPath ?? item.images[0].originalPath),
+                          alt: item.name,
+                        })
+                      }
+                      className="block w-full cursor-zoom-in p-0 mb-2"
+                    >
+                      <img src={'/file/' + item.images[0].thumbPath} alt="" className="w-full h-32 object-cover rounded-md" />
+                    </button>
                   ) : null}
-                  <h2 className="mt-0">{item.name}</h2>
+                  <Link to={`/items/${item.id}`} className="no-underline text-inherit">
+                    <h2 className="mt-0">{item.name}</h2>
+                  </Link>
                   <p>{item.location?.name}</p>
                   <p>{item.type?.name}</p>
                   {item.tags.map((tag) => (
@@ -282,7 +297,7 @@ export function ItemsPage() {
                   {q.trim() && item.snippet ? (
                     <p className="mt-2 text-text-muted text-sm" data-testid="item-snippet">{item.snippet}</p>
                   ) : null}
-                </Link>
+                </div>
               </Card>
             ))}
             {items.length === 0 && <p>No items yet.</p>}
@@ -300,6 +315,10 @@ export function ItemsPage() {
             Next
           </Button>
         </div>
+      )}
+
+      {viewing && (
+        <PhotoViewer src={viewing.src} alt={viewing.alt} onClose={() => setViewing(null)} />
       )}
     </section>
   )

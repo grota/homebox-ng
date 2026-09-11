@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
 // mock the tRPC module so hooks resolve deterministically without a backend.
 // `Provider` is a passthrough so <AppProviders> (which renders <trpc.Provider>)
@@ -95,5 +95,19 @@ describe('catalog pages', () => {
     expect(body.get('itemId')).toBe('42')
     expect(body.get('file')).toBe(file)
     fetchSpy.mockRestore()
+  })
+
+  // The card used to be one <Link> wrapping everything. It now splits: the photo
+  // opens the viewer, the name navigates. Both are siblings with unambiguous
+  // names — an interactive element inside an anchor is invalid HTML.
+  it('opens the viewer from the card photo and links the name to the item', () => {
+    render(<AppProviders><ItemsPage /></AppProviders>)
+    expect(screen.getByRole('link', { name: 'Lamp' })).toHaveAttribute('href', '/items/1')
+    fireEvent.click(screen.getByRole('button', { name: 'View photo of Lamp' }))
+    const dialog = screen.getByRole('dialog', { name: 'Lamp' })
+    expect(within(dialog).getByRole('img', { name: 'Lamp' })).toHaveAttribute(
+      'src',
+      '/file/uploads/originals/a.png',
+    )
   })
 })
