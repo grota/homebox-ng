@@ -189,3 +189,54 @@ describe('PhotoViewer zoom and keyboard pan', () => {
     expect(container).toHaveAttribute('tabindex', '-1')
   })
 })
+
+describe('PhotoViewer navigator', () => {
+  it('is absent while the whole image is visible', () => {
+    openViewer(LARGE)
+    // At fit there is nothing off-screen, so a navigator would be a second copy
+    // of an image with nothing to navigate.
+    expect(screen.queryByRole('img', { name: 'Photo navigator' })).not.toBeInTheDocument()
+  })
+
+  it('appears once the image overflows the viewport', () => {
+    const { image } = openViewer(LARGE)
+    click(image)
+    expect(screen.getByRole('img', { name: 'Photo navigator' })).toBeInTheDocument()
+  })
+
+  it('stays absent for an image that cannot be zoomed past the viewport', () => {
+    const { image } = openViewer(SMALL)
+    click(image)
+    expect(screen.queryByRole('img', { name: 'Photo navigator' })).not.toBeInTheDocument()
+  })
+
+  // The dismissal rule is a positive check on the backdrop element, not a
+  // negative "the target is not the image". This is the test that tells them
+  // apart: the navigator is neither the image nor the backdrop, so under the
+  // negative rule the pointer sequence below would arm a click and dismiss the
+  // viewer on the release.
+  it('jumps the view when clicked, and does not dismiss the viewer', () => {
+    const { image, onClose } = openViewer(LARGE)
+    click(image)
+    const navigator = screen.getByRole('img', { name: 'Photo navigator' })
+    navigator.getBoundingClientRect = box(120, 120)
+    // The 4000×3000 image is contained as 120×90 in a 120×120 box, 15px down, so
+    // (120, 60) is the image's right edge at half its height.
+    fireEvent.pointerDown(navigator, { pointerId: 1, clientX: 120, clientY: 60 })
+    fireEvent.pointerUp(navigator, { pointerId: 1, clientX: 120, clientY: 60 })
+    expectTransform(image, { scale: 1, x: -3200, y: -1200 })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('jumps the view when dragged inside it', () => {
+    const { image, onClose } = openViewer(LARGE)
+    click(image)
+    const navigator = screen.getByRole('img', { name: 'Photo navigator' })
+    navigator.getBoundingClientRect = box(120, 120)
+    fireEvent.pointerDown(navigator, { pointerId: 1, clientX: 60, clientY: 60 })
+    fireEvent.pointerMove(navigator, { pointerId: 1, clientX: 120, clientY: 60, buttons: 1 })
+    fireEvent.pointerUp(navigator, { pointerId: 1, clientX: 120, clientY: 60 })
+    expectTransform(image, { scale: 1, x: -3200, y: -1200 })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+})

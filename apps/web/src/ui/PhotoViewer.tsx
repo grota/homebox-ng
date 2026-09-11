@@ -5,9 +5,13 @@ import { cn } from './cn'
 import { Modal } from './Modal'
 import {
   KEY_PAN_STEP,
+  centerOn,
+  containedRect,
   initialView,
+  overflows,
   panBy,
   toggleZoom,
+  visibleRect,
   zoomAt,
   type Point,
   type Size,
@@ -232,7 +236,95 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
         <Button className="absolute right-3 top-3" onClick={onClose}>
           Close
         </Button>
+        {scene && overflows(scene.natural, scene.viewport, scene.transform.scale) ? (
+          <PhotoNavigator
+            src={src}
+            natural={scene.natural}
+            viewport={scene.viewport}
+            transform={scene.transform}
+            onJump={(at) =>
+              apply((current) => centerOn(current.natural, current.viewport, current.transform, at))
+            }
+          />
+        ) : null}
       </div>
     </Modal>
+  )
+}
+
+// The navigator: the whole image in the corner with the visible region outlined,
+// click or drag to jump the view.
+//
+// The picture is an SVG whose viewBox *is* the image, so `preserveAspectRatio`
+// does the containing for free and the outline is drawn in image pixels — no
+// measurement and no scaling maths of its own. `containedRect` is needed only to
+// turn a pointer position back into an image coordinate.
+function PhotoNavigator({
+  src,
+  natural,
+  viewport,
+  transform,
+  onJump,
+}: {
+  src: string
+  natural: Size
+  viewport: Size
+  transform: Transform
+  onJump: (at: Point) => void
+}) {
+  const region = visibleRect(natural, viewport, transform)
+
+  const jump = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const contained = containedRect(natural, { width: rect.width, height: rect.height })
+    if (!contained.width || !contained.height) return
+    onJump({
+      x: (event.clientX - rect.left - contained.x) / contained.width,
+      y: (event.clientY - rect.top - contained.y) / contained.height,
+    })
+  }
+
+  return (
+    <svg
+      viewBox={`0 0 ${natural.width} ${natural.height}`}
+      preserveAspectRatio="xMidYMid meet"
+      role="img"
+      aria-label="Photo navigator"
+      // Smaller and more transparent on a narrow viewport, per the spec — never
+      // absent, because on a phone it is the only way to orient inside a photo.
+      className="absolute bottom-3 right-3 h-20 w-20 touch-none rounded border border-white/30 bg-black/40 opacity-60 sm:h-32 sm:w-32 sm:opacity-90"
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture?.(event.pointerId)
+        jump(event)
+      }}
+      onPointerMove={(event) => {
+        if (event.buttons === 1) jump(event)
+      }}
+    >
+      <image href={src} width={natural.width} height={natural.height} />
+      {/* Two strokes, white under black. The outline sits over a photo of
+          arbitrary colour, so no token can supply it and a single colour would
+          vanish on the half of the images that match it. */}
+      <rect
+        x={region.x}
+        y={region.y}
+        width={region.width}
+        height={region.height}
+        fill="none"
+        stroke="white"
+        strokeWidth={3}
+        vectorEffect="non-scaling-stroke"
+      />
+      <rect
+        x={region.x}
+        y={region.y}
+        width={region.width}
+        height={region.height}
+        fill="none"
+        stroke="black"
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
   )
 }
