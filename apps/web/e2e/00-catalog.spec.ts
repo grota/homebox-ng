@@ -207,3 +207,29 @@ test('settings persist across reload and drive locale formatting', async ({ page
   await expect(page.locator('#settings-theme-mode')).toHaveValue('dark')
   await expect(page.locator('#settings-locale')).toHaveValue('de-DE')
 })
+
+// The viewer in a real browser. jsdom never loads an image and measures nothing,
+// so the intrinsic-size read, the fit decision and the backdrop hit test are all
+// stubbed in the unit tests; this is the leg that fails if the real DOM
+// disagrees with those stubs.
+test('opens the photo viewer from a catalog card and closes on the backdrop', async ({ page }) => {
+  const login = await page.request.post('/trpc/auth.login', {
+    data: { email: 'admin@b.co', password: 'password123' },
+  })
+  expect(login.ok()).toBeTruthy()
+
+  await page.goto('/items')
+  await page.getByRole('button', { name: 'View photo of Lamp', exact: true }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Lamp', exact: true })
+  await expect(dialog).toBeVisible()
+  // The thumbnail is a 400px upscale of a 1×1 source, so the rendition the card
+  // hands the viewer has to be the original: it must paint at all.
+  await expect(dialog.getByRole('img', { name: 'Lamp', exact: true })).toBeVisible()
+
+  // A 1×1 PNG at 1:1 is one pixel at the centre, so there is backdrop everywhere
+  // else — including the very corner, which the Open original link (top-left) and
+  // the navigator (bottom-right) do not occupy.
+  await page.mouse.click(4, 4)
+  await expect(dialog).not.toBeVisible()
+})
