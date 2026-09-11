@@ -1,9 +1,18 @@
 import { useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent, SyntheticEvent } from 'react'
+import type { KeyboardEvent, PointerEvent as ReactPointerEvent, SyntheticEvent, WheelEvent } from 'react'
 import { Button, buttonClasses } from './Button'
 import { cn } from './cn'
 import { Modal } from './Modal'
-import { initialView, panBy, toggleZoom, type Size, type Transform } from './zoom'
+import {
+  KEY_PAN_STEP,
+  initialView,
+  panBy,
+  toggleZoom,
+  zoomAt,
+  type Point,
+  type Size,
+  type Transform,
+} from './zoom'
 
 type Scene = { natural: Size; viewport: Size; transform: Transform }
 
@@ -11,6 +20,21 @@ type Scene = { natural: Size; viewport: Size; transform: Transform }
 // click, not a drag. Without it a pan that happens to end on the backdrop would
 // dismiss the viewer.
 const DRAG_THRESHOLD = 4
+
+// Arrow keys move the *view*, so the image travels the other way: ArrowRight
+// reveals what is off-screen to the right.
+const ARROW_PAN: Record<string, Point> = {
+  ArrowLeft: { x: KEY_PAN_STEP, y: 0 },
+  ArrowRight: { x: -KEY_PAN_STEP, y: 0 },
+  ArrowUp: { x: 0, y: KEY_PAN_STEP },
+  ArrowDown: { x: 0, y: -KEY_PAN_STEP },
+}
+
+// The distance between the two fingers of a pinch.
+const spread = (pointers: Map<number, Point>): number => {
+  const [a, b] = [...pointers.values()]
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
 
 type PhotoViewerProps = {
   /** The full-size rendition — `editedPath ?? originalPath`. */
@@ -31,6 +55,10 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
   // The pointer-down that may still turn out to be a click: where it started,
   // whether it has moved past the threshold, and what it landed on.
   const drag = useRef<{ x: number; y: number; moved: boolean; on: EventTarget | null } | null>(null)
+  // Every finger currently down, for the two-finger pinch, and the spread they
+  // had on the previous move.
+  const pointers = useRef(new Map<number, Point>())
+  const pinch = useRef<number | null>(null)
 
   const measure = () => containerRef.current?.getBoundingClientRect()
 
@@ -59,6 +87,14 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
     // close button, navigator, open-original — is neither, which is what makes
     // `drag.on` provably one of exactly two elements.
     if (target !== containerRef.current && target !== imageRef.current) return
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (pointers.current.size === 2) {
+      // A second finger means a pinch, and ends the pan — and any click the
+      // first finger might still have become.
+      drag.current = null
+      pinch.current = spread(pointers.current)
+      return
+    }
     drag.current = { x: event.clientX, y: event.clientY, moved: false, on: target }
     // jsdom does not implement pointer capture; the drag still works without it,
     // it just stops tracking once the pointer leaves the element.
@@ -66,6 +102,21 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
   }
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (pointers.current.has(event.pointerId)) {
+      pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    }
+    if (pointers.current.size === 2 && pinch.current != null) {
+      const next = spread(pointers.current)
+      const [a, b] = [...pointers.current.values()]
+      const box = measure()
+      const at = box
+        ? { x: (a.x + b.x) / 2 - box.left, y: (a.y + b.y) / 2 - box.top }
+        : { x: 0, y: 0 }
+      const factor = next / pinch.current
+      pinch.current = next
+      apply((current) => zoomAt(current.natural, current.viewport, current.transform, factor, at))
+      return
+    }
     const start = drag.current
     if (!start) return
     const dx = event.clientX - start.x
@@ -79,7 +130,9 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
     apply((current) => panBy(current.natural, current.viewport, current.transform, dx, dy))
   }
 
-  const onPointerUp = () => {
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    pointers.current.delete(event.pointerId)
+    if (pointers.current.size < 2) pinch.current = null
     const start = drag.current
     drag.current = null
     // A drag is not a click: a pan that happens to end on the backdrop must not
@@ -92,8 +145,30 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
     else apply((current) => toggleZoom(current.natural, current.viewport, current.transform))
   }
 
-  const onPointerCancel = () => {
+  const onPointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
+    pointers.current.delete(event.pointerId)
+    pinch.current = null
     drag.current = null
+  }
+
+  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
+    const box = measure()
+    if (!box) return
+    const at = { x: event.clientX - box.left, y: event.clientY - box.top }
+    // Exponential, so the gesture is scale-free: the same swipe changes the zoom
+    // by the same factor at any magnification, and scrolling up zooms in.
+    apply((current) =>
+      zoomAt(current.natural, current.viewport, current.transform, Math.exp(-event.deltaY / 400), at),
+    )
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const delta = ARROW_PAN[event.key]
+    if (!delta) return
+    // Inside the dialog the arrow keys are ours: there is nothing else for them
+    // to scroll, and the focus trap guarantees focus is already in here.
+    event.preventDefault()
+    apply((current) => panBy(current.natural, current.viewport, current.transform, delta.x, delta.y))
   }
 
   return (
@@ -109,6 +184,8 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
+        onWheel={onWheel}
+        onKeyDown={onKeyDown}
       >
         {scene ? null : (
           <p className="absolute inset-0 grid place-items-center text-sm text-white/70">Loading…</p>

@@ -133,3 +133,49 @@ describe('PhotoViewer pan', () => {
     expectTransform(image, { scale: 1, x: -1500, y: -1150 })
   })
 })
+
+describe('PhotoViewer zoom and keyboard pan', () => {
+  it('pans with the arrow keys, so the feature works without a pointer', () => {
+    const { container, image } = openViewer(LARGE)
+    click(image) // 1:1, where panning has somewhere to go
+    fireEvent.keyDown(container, { key: 'ArrowRight' })
+    expectTransform(image, { scale: 1, x: -1600 - 48, y: -1200 })
+    fireEvent.keyDown(container, { key: 'ArrowDown' })
+    expectTransform(image, { scale: 1, x: -1648, y: -1200 - 48 })
+  })
+
+  it('ignores keys it does not pan with', () => {
+    const { container, image } = openViewer(LARGE)
+    click(image)
+    fireEvent.keyDown(container, { key: 'a' })
+    expectTransform(image, { scale: 1, x: -1600, y: -1200 })
+  })
+
+  it('zooms about the pointer on wheel', () => {
+    const { container, image } = openViewer(LARGE)
+    fireEvent.wheel(container, { clientX: 400, clientY: 300, deltaY: -100 })
+    // exp(100 / 400): exponential, so the gesture is scale-free — the same swipe
+    // changes the zoom by the same factor at any magnification. A wheel notch
+    // (deltaY -100) is one step of exactly that.
+    const scale = 0.2 * Math.exp(0.25)
+    expectTransform(image, { scale, x: 400 - (scale / 0.2) * 400, y: 300 - (scale / 0.2) * 300 })
+  })
+
+  it('zooms on a two-finger pinch', () => {
+    const { container, image } = openViewer(LARGE)
+    fireEvent.pointerDown(container, { pointerId: 1, clientX: 300, clientY: 300 })
+    fireEvent.pointerDown(container, { pointerId: 2, clientX: 500, clientY: 300 })
+    // Fingers 200px apart move to 300px: a factor of 1.5 about their midpoint.
+    fireEvent.pointerMove(container, { pointerId: 2, clientX: 600, clientY: 300 })
+    expectTransform(image, { scale: 0.3, x: -225, y: -150 })
+  })
+
+  it('does not treat the second finger of a pinch as a click', () => {
+    const { container, onClose } = openViewer(LARGE)
+    fireEvent.pointerDown(container, { pointerId: 1, clientX: 300, clientY: 300 })
+    fireEvent.pointerDown(container, { pointerId: 2, clientX: 500, clientY: 300 })
+    fireEvent.pointerUp(container, { pointerId: 2, clientX: 500, clientY: 300 })
+    fireEvent.pointerUp(container, { pointerId: 1, clientX: 300, clientY: 300 })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+})
