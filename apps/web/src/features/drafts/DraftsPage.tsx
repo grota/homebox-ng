@@ -13,8 +13,13 @@ export function DraftsPage() {
   // other half of that handshake. The value is read, never consumed: no effect,
   // no URL rewrite — the message persists while it is in the URL and goes away
   // with the page, which is all one line of feedback needs.
+  //
+  // `null` when the parameter is absent and `NaN` when it is not a number: the
+  // two cases that render nothing. A real `0` stays distinct from both — the
+  // unpack ran and found nothing, which is the outcome that carries the most
+  // information, so it must not be swallowed by an absent case's `?? 0`.
   const [params] = useSearchParams()
-  const detected = Number(params.get('detected') ?? 0)
+  const detected = params.has('detected') ? Number(params.get('detected')) : null
   const { data, isLoading } = trpc.drafts.list.useQuery()
   const update = trpc.drafts.update.useMutation()
   const publish = trpc.drafts.publish.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
@@ -38,12 +43,15 @@ export function DraftsPage() {
   // `false` renders nothing, so one definition serves both branches: the notice
   // sits directly under the heading — above the Unpack modal in the empty state,
   // above the select-all toolbar once drafts exist — so the page does not reflow
-  // as the list fills or empties. A missing parameter becomes `0` and a
-  // non-numeric one `NaN`, and both fail this `> 0` test, so a malformed query
-  // renders nothing.
-  const detectedNotice = detected > 0 && (
-    <p role="status">{t('drafts.unpacked', { count: detected })}</p>
-  )
+  // as the list fills or empties. Three outcomes, spelled out rather than folded
+  // into one comparison: an absent or malformed parameter renders nothing, a
+  // positive count names the number, and a zero takes the danger colour — it is
+  // the one result the user has to act on, since a photo that yields nothing
+  // otherwise leaves no error and no file to look at.
+  const detectedNotice =
+    detected === null || Number.isNaN(detected) ? false
+    : detected > 0 ? <p role="status">{t('drafts.unpacked', { count: detected })}</p>
+    : <p role="status" className="text-danger">{t('drafts.unpackedNone')}</p>
 
   if (isLoading) return <p>Loading…</p>
   if (!data || data.length === 0) return (

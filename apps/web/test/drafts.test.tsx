@@ -5,15 +5,17 @@ import en from '../public/locales/en/translation.json'
 
 vi.mock('react-i18next', () => ({
   // Everything still returns its key — that is what the existing assertions
-  // expect. The two messages that carry a value are the exception: both are
-  // interpolated from the real locale file, so a case can read the rendered
-  // count, and a single-brace placeholder fails the assertion instead of
-  // silently rendering `{count}`.
+  // expect. The messages that carry copy are the exception: all three are read
+  // from the real locale file, so a case can read the rendered text, and a
+  // single-brace placeholder fails the assertion instead of silently rendering
+  // `{count}`. `unpackedNone` has no count to interpolate, so it is passed
+  // through the same `replace` unchanged.
   useTranslation: () => ({
     t: (k: string, opts?: { count?: number }) => {
       const message =
         k === 'drafts.discardSelectedConfirm' ? en.drafts.discardSelectedConfirm
         : k === 'drafts.unpacked' ? en.drafts.unpacked
+        : k === 'drafts.unpackedNone' ? en.drafts.unpackedNone
         : null
       return message ? message.replace('{{count}}', String(opts?.count)) : k
     },
@@ -217,6 +219,33 @@ describe('drafts page', () => {
     draftData = []
     render(
       <MemoryRouter initialEntries={['/drafts?detected=nope']}>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('says nothing was detected when the unpack found nothing', () => {
+    draftData = []
+    render(
+      <MemoryRouter initialEntries={['/drafts?detected=0']}>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    // A real zero is not the same answer as no parameter at all: the unpack ran
+    // and found nothing, which is the one outcome worth a second look.
+    const notice = screen.getByRole('status')
+    expect(notice).toHaveTextContent('No items detected')
+    expect(notice).toHaveClass('text-danger')
+  })
+
+  it('shows no unpack message in the empty state when the parameter is absent', () => {
+    // The counterweight to the case above, in the branch a zero lands in: with
+    // no parameter there is nothing to report, so the empty state must stay
+    // bare rather than inherit the zero message.
+    draftData = []
+    render(
+      <MemoryRouter>
         <DraftsPage />
       </MemoryRouter>,
     )
