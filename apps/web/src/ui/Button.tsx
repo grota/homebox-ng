@@ -29,12 +29,13 @@ const sizes: Record<ButtonSize, string> = {
 }
 
 // One definition of the button look, so a caller that needs it on something
-// other than a `<button>` (ItemDetail's `View` anchor — it opens a new tab,
-// which a button cannot) cannot drift from this component.
+// other than a `<button>` (PhotoViewer's "Open original" — an `<a>` because it
+// opens a new tab, which a button cannot) cannot drift from this component.
 //
 // `no-underline` is deliberately NOT in `base`: on a `<button>` it is dead
 // (Preflight's `text-decoration: inherit` applies to anchors), so an anchor
-// borrowing these classes adds it at its own call site.
+// borrowing these classes adds it at its own call site — PhotoViewer's "Open
+// original" does exactly that.
 export const buttonClasses = (variant: ButtonVariant = 'secondary', size: ButtonSize = 'md') =>
   cn(base, variants[variant], sizes[size])
 

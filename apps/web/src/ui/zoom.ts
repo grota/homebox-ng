@@ -79,10 +79,14 @@ export const zoomAt = (
   })
 }
 
-// Click-to-toggle between the two states the spec names. `scale < 1` can only
-// mean "currently fitted" — 1:1 is the ceiling — so the branch needs no epsilon.
-// When the image already fits, `fitScale` is 1, the branch is not taken, and
-// this returns the same centred 1:1 view it was given: the specified no-op.
+// Click-to-toggle between the two states the spec names, by scale alone: at 1:1
+// the click returns to fit, anywhere else it goes to 1:1. `scale < 1` is
+// therefore not "currently fitted" but "not at 1:1" — a wheel notch down to 0.5
+// and a click lands on 1:1 from a view that was neither end of the toggle, which
+// is the intended reading of "click toggles fit ↔ 1:1". No epsilon is needed
+// because 1:1 is the ceiling `zoomAt` clamps to and `fitScale` is 1 for an image
+// that already fits: that image's branch is not taken, and the click returns the
+// same centred view it was given — the specified no-op.
 export const toggleZoom = (natural: Size, viewport: Size, transform: Transform): Transform =>
   centered(natural, viewport, transform.scale < 1 ? 1 : fitScale(natural, viewport))
 
