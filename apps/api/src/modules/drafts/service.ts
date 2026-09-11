@@ -21,6 +21,14 @@ export const publishAll = (db: DrizzleDb, ids?: number[]): void => {
   for (const id of targets) itemsRepo.setItemPublished(db, id, true)
 }
 
+// Bulk discard, mirroring `publishAll`: an omitted or empty `ids` means every
+// draft. A loop of independent single-row deletes, each of which commits on its
+// own — there is no transaction around them.
+export const discardAll = (db: DrizzleDb, ids: number[] | undefined, dataDir: string): void => {
+  const targets = ids && ids.length > 0 ? ids : itemsRepo.listDraftItems(db).map((r) => r.id)
+  for (const id of targets) discardDraft(db, id, dataDir)
+}
+
 // Delete the draft item row (cascade removes its images + custom fields + tags,
 // and FTS) and best-effort remove the orphaned image files on disk.
 export const discardDraft = (db: DrizzleDb, id: number, dataDir: string): boolean => {

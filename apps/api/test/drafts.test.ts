@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createDb, runMigrations } from '@homebox/db'
-import { listDrafts, renameDraft, publishDraft, publishAll, discardDraft } from '../src/modules/drafts/service'
+import { listDrafts, renameDraft, publishDraft, publishAll, discardDraft, discardAll } from '../src/modules/drafts/service'
 import { createItemsFromImage } from '../src/modules/unpack/service'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { getImagesForItem } from '../src/modules/images/repo'
 import sharp from 'sharp'
 
 // A real ≥100×100 PNG so `createItemsFromImage`'s `saveCrop` (which extracts
@@ -20,6 +21,14 @@ const setup = () => {
   db.prepare("INSERT INTO item_types (id, name) VALUES (1, 'Type')").run()
   const dataDir = mkdtempSync(join(tmpdir(), 'drafts-test-'))
   return { db, dataDir }
+}
+
+// One draft per call: the fake provider reports exactly one detected box.
+const makeDraft = async (ctx: ReturnType<typeof setup>, fileName: string): Promise<number> => {
+  const path = join(ctx.dataDir, fileName)
+  writeFileSync(path, png)
+  const { drafts } = await createItemsFromImage({ ...ctx, userId: 1, provider: fakeProvider }, { path, itemTypeId: 1 })
+  return drafts[0].id
 }
 
 describe('drafts lifecycle', () => {
@@ -47,6 +56,34 @@ describe('drafts lifecycle', () => {
     publishAll(db, [a.drafts[0].id])
     expect(listDrafts(db)).toHaveLength(1)
     publishAll(db, [b.drafts[0].id])
+    expect(listDrafts(db)).toHaveLength(0)
+  })
+
+  it('discardAll discards exactly the named drafts and their files', async () => {
+    const ctx = setup()
+    const { db, dataDir } = ctx
+    const a = await makeDraft(ctx, 'a.png')
+    const b = await makeDraft(ctx, 'b.png')
+    const c = await makeDraft(ctx, 'c.png')
+    const gone = getImagesForItem(db, a)[0]
+
+    discardAll(db, [a, b], dataDir)
+
+    expect(listDrafts(db).map((d) => d.id)).toEqual([c])
+    // `discardDraft` fires its `unlink`s without awaiting them, so a file leaves
+    // the disk a tick after its row leaves the table — poll rather than race it.
+    await vi.waitFor(() => expect(existsSync(join(dataDir, gone.originalPath))).toBe(false))
+    expect(existsSync(join(dataDir, getImagesForItem(db, c)[0].originalPath))).toBe(true)
+  })
+
+  it('discardAll with no ids discards every draft', async () => {
+    const ctx = setup()
+    const { db, dataDir } = ctx
+    await makeDraft(ctx, 'a.png')
+    await makeDraft(ctx, 'b.png')
+
+    discardAll(db, undefined, dataDir)
+
     expect(listDrafts(db)).toHaveLength(0)
   })
 })
