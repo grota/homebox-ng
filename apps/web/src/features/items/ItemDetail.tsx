@@ -97,6 +97,16 @@ export function ItemDetail() {
 
       <PhotoUpload itemId={item.id} />
 
+      {/* One `unpack` mutation is shared by every card's "Unpack this photo", so
+          its error is shown here once rather than repeated inside the grid. A
+          failed unpack stays on this page — the navigation to the drafts page
+          happens on success — so without this the failure would be silent. */}
+      {unpack.error && (
+        <p role="alert" className="text-danger">
+          {unpack.error.message}
+        </p>
+      )}
+
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         {item.images.map((img) => (
           <Card key={img.id} padding="sm" className="flex flex-col gap-1">

@@ -81,11 +81,12 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
   // the default action — no `stopPropagation` — so the zoom handler fires too.
   //
   // Installed from the ref callback rather than an effect, and that is not a
-  // style choice: `Modal` renders `Dialog.Content`, whose Radix `Presence`
-  // mounts its subtree in a *later* commit than this component's, so a
-  // mount-time effect here runs before the container exists — and with `[]`
-  // deps it never runs again. A callback ref fires when the node actually
-  // attaches, whenever that is; React 19 calls the returned cleanup on detach.
+  // style choice: `Modal` wraps its content in Radix's `Dialog.Portal`, which
+  // renders `null` on the first commit and mounts its subtree from a layout
+  // effect afterwards. So a mount-time effect here runs before the container
+  // exists — and with `[]` deps it never runs again. A callback ref fires when
+  // the node actually attaches, whenever that is; React 19 calls the returned
+  // cleanup on detach.
   const setContainer = useCallback((node: HTMLDivElement | null) => {
     containerRef.current = node
     if (!node) return

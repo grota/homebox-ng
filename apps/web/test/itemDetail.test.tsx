@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   deleteImage: vi.fn(),
   updateItem: vi.fn(async (x: unknown) => x),
   unpack: vi.fn(),
+  // Mutable so a test can make the unpack mutation report a failure. Cleared in
+  // `beforeEach`, since the other cases assert on the success path.
+  unpackError: null as { message: string } | null,
   navigate: vi.fn(),
 }))
 
@@ -69,11 +72,14 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
           useMutation: (options?: { onSuccess?: (result: { detected: number }) => void }) => ({
             mutate: (input: unknown) => {
               mocks.unpack(input)
+              // A failed run never calls `onSuccess`, which is what leaves the
+              // page without its navigation.
+              if (mocks.unpackError) return
               options?.onSuccess?.({ detected: 2 })
             },
             mutateAsync: vi.fn(),
             isPending: false,
-            error: null,
+            error: mocks.unpackError,
           }),
         },
       },
@@ -95,6 +101,7 @@ describe('item detail photos', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mocks.unpackError = null
   })
 
   it('renders an Edit button per image and opens the editor', async () => {
@@ -158,6 +165,17 @@ describe('item detail photos', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Unpack this photo' })[0])
     expect(mocks.unpack).toHaveBeenCalledWith({ kind: 'item', imageId: 10 })
     expect(mocks.navigate).toHaveBeenCalledWith('/drafts?detected=2')
+  })
+
+  // The navigation above happens on success, so a failed run leaves the user on
+  // this page. Without an error surface that failure is completely silent: no
+  // movement, no message, nothing to distinguish it from a click that missed.
+  it('shows the failure when an unpack does not succeed', () => {
+    mocks.unpackError = { message: 'Detection failed' }
+    renderDetail()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Unpack this photo' })[0])
+    expect(screen.getByRole('alert')).toHaveTextContent('Detection failed')
+    expect(mocks.navigate).not.toHaveBeenCalled()
   })
 
   it('omits fieldValues when the type definitions have not loaded', async () => {
