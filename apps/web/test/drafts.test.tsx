@@ -31,6 +31,10 @@ let draftData: any[] = []
 // `draftData` below: the factory closes over it and only reads it at render.
 const discardAllMutate = vi.fn()
 
+// The bulk-publish action's, for the same reason: it also clears the selection
+// on success now, and that is only assertable if the callback is wired through.
+const publishAllMutate = vi.fn()
+
 // A minimal draft row. `DraftsPage` reads only `id`, `name` and `images`.
 const draft = (id: number, name: string) => ({
   id,
@@ -68,7 +72,15 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         list: { useQuery: () => ({ data: draftData, isLoading: false }) },
         update: { useMutation: () => idleMutation },
         publish: { useMutation: () => idleMutation },
-        publishAll: { useMutation: () => idleMutation },
+        publishAll: {
+          useMutation: (options?: { onSuccess?: () => void }) => ({
+            ...idleMutation,
+            mutateAsync: (input: unknown) => {
+              publishAllMutate(input)
+              options?.onSuccess?.()
+            },
+          }),
+        },
         discard: { useMutation: () => idleMutation },
         discardAll: {
           // `onSuccess` is wired through to the test rather than dropped: the page
@@ -180,6 +192,23 @@ describe('drafts page', () => {
     expect(btn).toBeDisabled()
   })
 
+  it('clears the selection once the publish succeeds, like the discard does', () => {
+    draftData = [draft(1, 'Draft Lamp')]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('checkbox', { name: 'drafts.selectAll' }))
+    const btn = screen.getByRole('button', { name: 'drafts.publishSelected' })
+    expect(btn).toBeEnabled()
+    fireEvent.click(btn)
+    expect(publishAllMutate).toHaveBeenCalledWith({ ids: [1] })
+    // A published id survives in `selected` otherwise, and the next bulk action
+    // would send it again — the two bulk buttons must not differ here.
+    expect(btn).toBeDisabled()
+  })
+
   it('takes the confirmed count from the selection, not from the list', () => {
     // Two drafts, one selected: the count must come from the selection, not the list.
     // Selecting through the select-all checkbox cannot tell those two apart, which
@@ -223,6 +252,29 @@ describe('drafts page', () => {
     draftData = [draft(1, 'Draft Lamp')]
     render(
       <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('shows no unpack message when the parameter is present but empty', () => {
+    // `?detected=` is a hand-edited URL, and `Number('')` is a real `0`: without
+    // the blank check this renders "No items detected" for a parameter that was
+    // never a count, which is the failure the absent case exists to prevent.
+    draftData = []
+    render(
+      <MemoryRouter initialEntries={['/drafts?detected=']}>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('shows no unpack message when the parameter is only whitespace', () => {
+    draftData = []
+    render(
+      <MemoryRouter initialEntries={['/drafts?detected=%20']}>
         <DraftsPage />
       </MemoryRouter>,
     )

@@ -17,7 +17,17 @@ export function ItemDetail() {
   const navigate = useNavigate()
   const utils = trpc.useUtils()
   const { data: item, isLoading } = trpc.items.get.useQuery({ id: itemId })
-  const unpack = trpc.unpack.run.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
+  // The drafts page reports how many items an unpack detected, and this is the
+  // other entry point into the same flow: navigating on the *result* rather than
+  // on the click is what carries the count across, so a photo that yields
+  // nothing is not silent here either. Same convention as the drafts page's
+  // `UnpackModal.onUnpacked` — `?detected=<n>`, read by the page it lands on.
+  const unpack = trpc.unpack.run.useMutation({
+    onSuccess: (result) => {
+      void utils.drafts.list.invalidate()
+      navigate(`/drafts?detected=${result.detected}`)
+    },
+  })
   const [editingImage, setEditingImage] = useState<{ id: number; originalPath: string } | null>(null)
   const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null)
   const [editingItem, setEditingItem] = useState(false)
@@ -115,7 +125,7 @@ export function ItemDetail() {
                 Set primary
               </Button>
             )}
-            <Button onClick={() => { unpack.mutate({ kind: 'item', imageId: img.id }); navigate('/drafts') }}>
+            <Button onClick={() => unpack.mutate({ kind: 'item', imageId: img.id })}>
               Unpack this photo
             </Button>
             {/* The "View" anchor lived here. Its job — seeing the full photo — is now

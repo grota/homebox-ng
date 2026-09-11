@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   setPrimary: vi.fn(),
   deleteImage: vi.fn(),
   updateItem: vi.fn(async (x: unknown) => x),
+  unpack: vi.fn(),
   navigate: vi.fn(),
 }))
 
@@ -59,8 +60,23 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       itemTypes: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
       locations: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
       // `ItemDetail` renders a per-image "Unpack this photo" button backed by
-      // `trpc.unpack.run.useMutation()`, so the mock must provide it.
-      unpack: { run: { useMutation: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false, error: null }) } },
+      // `trpc.unpack.run.useMutation()`, so the mock must provide it. The page
+      // navigates from the run's *result* (that is how the detected count
+      // reaches the drafts page), so `onSuccess` is wired through rather than
+      // dropped — a stub that swallowed it would make the count unassertable.
+      unpack: {
+        run: {
+          useMutation: (options?: { onSuccess?: (result: { detected: number }) => void }) => ({
+            mutate: (input: unknown) => {
+              mocks.unpack(input)
+              options?.onSuccess?.({ detected: 2 })
+            },
+            mutateAsync: vi.fn(),
+            isPending: false,
+            error: null,
+          }),
+        },
+      },
     },
     __item: item,
   }
@@ -132,6 +148,16 @@ describe('item detail photos', () => {
       'src',
       '/file/uploads/originals/b.png',
     )
+  })
+
+  // The drafts page reports what an unpack detected, and this entry point into
+  // the same flow must not be the silent one: a run that finds nothing has to
+  // say so here too, which it can only do if the count travels in the URL.
+  it('reports the detected count to the drafts page when unpacking a photo', () => {
+    renderDetail()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Unpack this photo' })[0])
+    expect(mocks.unpack).toHaveBeenCalledWith({ kind: 'item', imageId: 10 })
+    expect(mocks.navigate).toHaveBeenCalledWith('/drafts?detected=2')
   })
 
   it('omits fieldValues when the type definitions have not loaded', async () => {

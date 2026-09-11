@@ -13,29 +13,38 @@ export function DraftsPage() {
   // half of that handshake — read, then dropped from the URL, so the notice
   // describes an event rather than the address bar.
   //
-  // `null` when the parameter is absent and `NaN` when it is not a number: the
-  // two cases that render nothing. A real `0` stays distinct from both — the
-  // unpack ran and found nothing, which is the outcome that carries the most
-  // information, so it must not be swallowed by an absent case's `?? 0`.
+  // `null` when the parameter is absent *or* blank and `NaN` when it is not a
+  // number: the cases that render nothing. Blank counts as absent rather than as
+  // zero — `?detected=` is a hand-edited URL, the one input this guard exists
+  // for, and `Number('')` is a perfectly real `0` that would otherwise be read
+  // as "the unpack ran and found nothing". A real `0` stays distinct from both —
+  // it is the outcome that carries the most information, so it must not be
+  // swallowed by an absent case's `?? 0`.
   //
   // Capture on mount: the notice must survive the URL rewrite below, which is
   // what removes the parameter from the URL so a reload does not re-trigger it.
   const [params] = useSearchParams()
   const [detected, setDetected] = useState(() => params.get('detected'))
-  const count = detected === null ? null : Number(detected)
+  const count = detected === null || detected.trim() === '' ? null : Number(detected)
   const { data, isLoading } = trpc.drafts.list.useQuery()
   const update = trpc.drafts.update.useMutation()
   const publish = trpc.drafts.publish.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
-  const publishAll = trpc.drafts.publishAll.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const discard = trpc.drafts.discard.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null)
+  // Both bulk actions clear the selection on success, as the spec requires — and
+  // for the same reason: `selected` is never pruned when the list refetches, so
+  // an id that survived a successful bulk action would be sent again by the next
+  // one. Clearing here is also the first of the two layers that keep a bulk
+  // discard from being half-applied; `discardAll`'s tolerance is the second.
+  const publishAll = trpc.drafts.publishAll.useMutation({
+    onSuccess: () => {
+      setSelected(new Set())
+      void utils.drafts.list.invalidate()
+    },
+  })
   const discardAll = trpc.drafts.discardAll.useMutation({
     onSuccess: () => {
-      // `selected` is never pruned when the list refetches, so a discarded id
-      // survives in the set and would be sent again by the next bulk action.
-      // Clearing here is the first of the two layers that keep a bulk discard
-      // from being half-applied; `discardAll`'s tolerance is the second.
       setSelected(new Set())
       void utils.drafts.list.invalidate()
     },
@@ -63,7 +72,8 @@ export function DraftsPage() {
   // sits directly under the heading — above the Unpack modal in the empty state,
   // above the select-all toolbar once drafts exist — so the page does not reflow
   // as the list fills or empties. Three outcomes, spelled out rather than folded
-  // into one comparison: an absent or malformed parameter renders nothing, a
+  // into one comparison: an absent or malformed parameter renders nothing (blank
+  // is malformed, not a zero — see the `count` above), a
   // positive count names the number, and a zero takes the danger colour — it is
   // the one result the user has to act on, since a photo that yields nothing
   // otherwise leaves no error and no file to look at.
