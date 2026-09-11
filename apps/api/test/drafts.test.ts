@@ -86,4 +86,16 @@ describe('drafts lifecycle', () => {
 
     expect(listDrafts(db)).toHaveLength(0)
   })
+
+  it('discardAll skips an id that no longer exists instead of aborting the batch', async () => {
+    const ctx = setup()
+    const { db, dataDir } = ctx
+    const a = await makeDraft(ctx, 'a.png')
+    const b = await makeDraft(ctx, 'b.png')
+    discardDraft(db, a, dataDir) // `a` is already gone when the batch runs
+
+    discardAll(db, [a, b], dataDir)
+
+    expect(listDrafts(db)).toHaveLength(0)
+  })
 })

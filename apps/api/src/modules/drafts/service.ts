@@ -22,11 +22,22 @@ export const publishAll = (db: DrizzleDb, ids?: number[]): void => {
 }
 
 // Bulk discard, mirroring `publishAll`: an omitted or empty `ids` means every
-// draft. A loop of independent single-row deletes, each of which commits on its
-// own — there is no transaction around them.
+// draft.
+//
+// The batch is a loop of independent single-row deletes with no surrounding
+// transaction, and `deleteItem` THROWS `NOT_FOUND` for a row that is already
+// gone (which is why `discardDraft`'s `if (!deleted.ok)` branch never runs).
+// Letting that throw escape would leave the batch half-applied: the drafts
+// before it deleted, the ones after it untouched, no rollback. A row that no
+// longer exists is already the outcome this loop wanted for it, so skip it.
+// `better-sqlite3` is synchronous, so nothing can delete the row between this
+// check and `deleteItem`'s own existence check.
 export const discardAll = (db: DrizzleDb, ids: number[] | undefined, dataDir: string): void => {
   const targets = ids && ids.length > 0 ? ids : itemsRepo.listDraftItems(db).map((r) => r.id)
-  for (const id of targets) discardDraft(db, id, dataDir)
+  for (const id of targets) {
+    if (!itemsRepo.getItem(db, id)) continue
+    discardDraft(db, id, dataDir)
+  }
 }
 
 // Delete the draft item row (cascade removes its images + custom fields + tags,
