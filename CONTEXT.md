@@ -32,6 +32,12 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   `(packages/db/src/schema.ts:112)`
 - **non-destructive editor** — crop/rotate/resize writes a new `editedPath` and leaves the
   original buffer intact; the original is never overwritten.
+- **photo viewer** — opens any thumbnail's photo in a full-viewport overlay, showing the same
+  rendition as the grid (`editedPath` when one exists, else `originalPath`). Starts fit to the
+  viewport when the photo is larger than it and at natural size when it is not; clicking the
+  photo toggles between the two, and a **navigator** shows which region of an oversized photo
+  is on screen and jumps to another. Not yet in code — added with the viewer itself, and no
+  back-reference exists until it lands.
 
 ## Unpack → drafts → publish (the background flow)
 
