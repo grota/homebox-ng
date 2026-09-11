@@ -178,4 +178,14 @@ describe('PhotoViewer zoom and keyboard pan', () => {
     fireEvent.pointerUp(container, { pointerId: 1, clientX: 300, clientY: 300 })
     expect(onClose).not.toHaveBeenCalled()
   })
+
+  // jsdom implements no click-focus, so this pins the precondition rather than the
+  // behaviour: the container must be focusable, or a click on the <img> hands focus
+  // to Radix's `tabindex="-1"` Dialog.Content and this container's keydown handler
+  // is never reached. Verified in Chromium; Task 10's browser checkpoint exercises
+  // the real interaction.
+  it('keeps the container focusable so arrow keys survive a click on the photo', () => {
+    const { container } = openViewer(LARGE)
+    expect(container).toHaveAttribute('tabindex', '-1')
+  })
 })

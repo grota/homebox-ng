@@ -88,7 +88,7 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
     // `drag.on` provably one of exactly two elements.
     if (target !== containerRef.current && target !== imageRef.current) return
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
-    if (pointers.current.size === 2) {
+    if (pointers.current.size >= 2) {
       // A second finger means a pinch, and ends the pan — and any click the
       // first finger might still have become.
       drag.current = null
@@ -179,7 +179,13 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
       <div
         ref={containerRef}
         data-testid="photo-viewer"
-        className="relative h-full w-full touch-none overflow-hidden bg-black/90"
+        // Focusable but not a tab stop. Without this, clicking the non-focusable
+        // <img> sends focus to the nearest focusable ancestor — Radix's
+        // Dialog.Content, which carries tabindex="-1" — and a keydown there
+        // bubbles *up*, never reaching this container, so arrow-key panning dies
+        // the moment the user clicks the photo to zoom. Verified in Chromium.
+        tabIndex={-1}
+        className="relative h-full w-full touch-none overflow-hidden bg-black/90 focus:outline-none"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
