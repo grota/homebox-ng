@@ -85,3 +85,51 @@ describe('PhotoViewer chrome', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   })
 })
+
+// A pointer-down and -up in the same spot, which is the only thing the viewer
+// counts as a click.
+const click = (element: Element, at = { clientX: 0, clientY: 0 }) => {
+  fireEvent.pointerDown(element, { pointerId: 1, ...at })
+  fireEvent.pointerUp(element, { pointerId: 1, ...at })
+}
+
+describe('PhotoViewer dismissal', () => {
+  it('closes when the backdrop itself is clicked', () => {
+    const { container, onClose } = openViewer(LARGE)
+    click(container)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not close when a drag ends on the backdrop', () => {
+    const { container, onClose } = openViewer(LARGE)
+    fireEvent.pointerDown(container, { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(container, { pointerId: 1, clientX: 100, clientY: 100, buttons: 1 })
+    fireEvent.pointerUp(container, { pointerId: 1, clientX: 100, clientY: 100 })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('toggles fit and 1:1 when the image is clicked', () => {
+    const { image } = openViewer(LARGE)
+    click(image)
+    expectTransform(image, { scale: 1, x: -1600, y: -1200 })
+    click(image)
+    expectTransform(image, { scale: 0.2, x: 0, y: 0 })
+  })
+
+  it('does nothing when the image already fits, because there is no second state', () => {
+    const { image } = openViewer(SMALL)
+    click(image)
+    expectTransform(image, { scale: 1, x: 200, y: 150 })
+  })
+})
+
+describe('PhotoViewer pan', () => {
+  it('pans by the drag delta', () => {
+    const { container, image } = openViewer(LARGE)
+    click(image) // 1:1, where there is something off-screen to pan to
+    fireEvent.pointerDown(container, { pointerId: 1, clientX: 400, clientY: 300 })
+    fireEvent.pointerMove(container, { pointerId: 1, clientX: 500, clientY: 350, buttons: 1 })
+    fireEvent.pointerUp(container, { pointerId: 1, clientX: 500, clientY: 350 })
+    expectTransform(image, { scale: 1, x: -1500, y: -1150 })
+  })
+})

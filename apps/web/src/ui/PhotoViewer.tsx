@@ -1,11 +1,16 @@
 import { useRef, useState } from 'react'
-import type { SyntheticEvent } from 'react'
+import type { PointerEvent as ReactPointerEvent, SyntheticEvent } from 'react'
 import { Button, buttonClasses } from './Button'
 import { cn } from './cn'
 import { Modal } from './Modal'
-import { initialView, type Size, type Transform } from './zoom'
+import { initialView, panBy, toggleZoom, type Size, type Transform } from './zoom'
 
 type Scene = { natural: Size; viewport: Size; transform: Transform }
+
+// A pointer that moved less than this many pixels between down and up was a
+// click, not a drag. Without it a pan that happens to end on the backdrop would
+// dismiss the viewer.
+const DRAG_THRESHOLD = 4
 
 type PhotoViewerProps = {
   /** The full-size rendition — `editedPath ?? originalPath`. */
@@ -23,6 +28,9 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   const [scene, setScene] = useState<Scene | null>(null)
+  // The pointer-down that may still turn out to be a click: where it started,
+  // whether it has moved past the threshold, and what it landed on.
+  const drag = useRef<{ x: number; y: number; moved: boolean; on: EventTarget | null } | null>(null)
 
   const measure = () => containerRef.current?.getBoundingClientRect()
 
@@ -45,6 +53,49 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
   const apply = (next: (current: Scene) => Transform) =>
     setScene((current) => (current ? { ...current, transform: next(current) } : current))
 
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const { target } = event
+    // Only the image and the backdrop itself are gesture surfaces. The chrome —
+    // close button, navigator, open-original — is neither, which is what makes
+    // `drag.on` provably one of exactly two elements.
+    if (target !== containerRef.current && target !== imageRef.current) return
+    drag.current = { x: event.clientX, y: event.clientY, moved: false, on: target }
+    // jsdom does not implement pointer capture; the drag still works without it,
+    // it just stops tracking once the pointer leaves the element.
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = drag.current
+    if (!start) return
+    const dx = event.clientX - start.x
+    const dy = event.clientY - start.y
+    // Below the threshold this could still turn out to be a click, so nothing
+    // moves yet.
+    if (!start.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return
+    start.moved = true
+    start.x = event.clientX
+    start.y = event.clientY
+    apply((current) => panBy(current.natural, current.viewport, current.transform, dx, dy))
+  }
+
+  const onPointerUp = () => {
+    const start = drag.current
+    drag.current = null
+    // A drag is not a click: a pan that happens to end on the backdrop must not
+    // dismiss the viewer.
+    if (!start || start.moved) return
+    // The whole dismissal rule, in one line: the backdrop closes, the image
+    // toggles. `start.on` is one of those two and nothing else, because
+    // `onPointerDown` refuses every other target.
+    if (start.on === containerRef.current) onClose()
+    else apply((current) => toggleZoom(current.natural, current.viewport, current.transform))
+  }
+
+  const onPointerCancel = () => {
+    drag.current = null
+  }
+
   return (
     <Modal open onOpenChange={(next) => { if (!next) onClose() }} title={alt} size="full">
       {/* The backdrop is this element, and the dismissal rule is a positive check
@@ -54,6 +105,10 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
         ref={containerRef}
         data-testid="photo-viewer"
         className="relative h-full w-full touch-none overflow-hidden bg-black/90"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
       >
         {scene ? null : (
           <p className="absolute inset-0 grid place-items-center text-sm text-white/70">Loading…</p>
