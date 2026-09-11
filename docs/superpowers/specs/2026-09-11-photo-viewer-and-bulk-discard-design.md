@@ -168,6 +168,21 @@ that the click target is the container rather than the image.
 - The zoom/pan geometry is the one piece of real logic here and should be extracted into a
   pure, unit-tested module rather than living inside the component.
 
+## To validate in use
+
+Two decisions were taken provisionally, to be judged against the running app rather than argued
+further on paper. Neither blocks implementation; both are cheap to change afterwards.
+
+- **The `/items` card split** — the image becomes a viewer button and the item name becomes the
+  link. This is the one place the feature changes an existing interaction, and it trades a
+  one-click card for two explicit targets.
+- **Fit-first opening for extreme aspect ratios.** A panorama on a phone fits to a thin strip,
+  because fit satisfies the narrower dimension; the navigator correctly stays hidden (nothing is
+  off-screen) and only appears once the photo is tapped to 1:1. The alternative considered — a
+  floor on how far fit may shrink a photo — was rejected because it makes "fit" sometimes not
+  fit, a rule the user would have to learn. Revisit if shooting panoramas makes the opening view
+  feel useless in practice.
+
 ## Out of scope
 
 - Comparing the original and edited renditions side by side inside the viewer.
