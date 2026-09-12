@@ -7,6 +7,7 @@ import { registerUploadRoutes } from './uploads.js'
 import { registerBackupRoutes } from './modules/backup/backupRoutes.js'
 import { registerUnpackRoute } from './modules/unpack/route.js'
 import { getSettings } from './modules/instanceSettings/service.js'
+import { DEFAULT_DATA_DIR } from './env.js'
 import { registerDetectionProviders } from './modules/detection/register.js'
 
 export type BuildAppOptions = { db: DrizzleDb; dataDir?: string; dbPath?: string }
@@ -14,8 +15,9 @@ export type BuildAppOptions = { db: DrizzleDb; dataDir?: string; dbPath?: string
 // Build a Fastify instance with `/health`, tRPC mounted under `/trpc`, and the
 // image upload/file routes. Exported for tests and for embedding (e.g. a server
 // entrypoint or another Fastify host). Doesn't read env — callers pass the db
-// (and optionally `dataDir`) in.
-export const buildApp = ({ db, dataDir = './data', dbPath }: BuildAppOptions) => {
+// (and optionally `dataDir`) in; the fallback is the workspace-root default from
+// `env.ts`, so an omitted `dataDir` doesn't follow the process cwd.
+export const buildApp = ({ db, dataDir = DEFAULT_DATA_DIR, dbPath }: BuildAppOptions) => {
   const app = Fastify()
   // The live DB is held behind a holder so a restore can swap it in place. Both
   // tRPC and the upload/backup routes read `dbHolder.current` per request, so

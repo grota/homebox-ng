@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // Load the repo-root `.env` (path is the same from `src/` and `dist/` — both are
@@ -24,13 +25,20 @@ export type Env = {
   SESSION_SECRET: string
 }
 
+// Where the data dir (uploads, detection model cache) lands when `DATA_DIR` is
+// not set. Resolved against the workspace root, NOT the process cwd: `start`
+// runs with `apps/api` as its cwd, so a bare `./data` put it at `apps/api/data`.
+// This module sits at `<root>/apps/api/{src,dist}`, so three `..` land on the
+// workspace root — the same walk the `.env` lookup above makes.
+export const DEFAULT_DATA_DIR = join(fileURLToPath(new URL('../../..', import.meta.url)), 'data')
+
 // Only SESSION_SECRET is truly required (it guards session cookies in a later
 // phase). The rest fall back to the values in `.env.example`.
 const REQUIRED = ['SESSION_SECRET'] as const
 const DEFAULTS = {
   PORT: '3000',
   DATABASE_PATH: './data/homebox.db',
-  DATA_DIR: './data',
+  DATA_DIR: DEFAULT_DATA_DIR,
 } as const
 
 // Lazily read env so importing this module has no side effects — `buildApp`

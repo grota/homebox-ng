@@ -82,7 +82,9 @@ so you don't have to `export` the vars. Two things to know:
 - **Shell vars win.** Variables already set in your environment take precedence over `.env`
   (the e2e suite relies on this to inject `DATABASE_PATH`/`SESSION_SECRET`/…).
 - **Relative paths resolve against `apps/api/`.** `start` runs with that package as its working
-  directory, so `DATABASE_PATH=./data/homebox.db` lands at `apps/api/data/homebox.db`.
+  directory, so `DATABASE_PATH=./data/homebox.db` lands at `apps/api/data/homebox.db`. Only an
+  *unset* `DATA_DIR` escapes that: its default is `<repo root>/data`, absolute and independent of
+  the working directory.
 
 ### 3. Build
 
@@ -119,7 +121,7 @@ A fresh install has no users, so the app routes to `/setup` — create the first
 | `SESSION_SECRET` | **required** | Signs session cookies |
 | `PORT` | `3000` | API/SPA listen port |
 | `DATABASE_PATH` | `./data/homebox.db` | SQLite file |
-| `DATA_DIR` | `./data` | Uploads + model cache root |
+| `DATA_DIR` | `<repo root>/data` | Uploads + model cache root |
 | `DETECTION_MOCK` | (unset) | `1` registers the deterministic mock detection provider |
 | `GEMINI_API_KEY` | (unset) | Enables the `google` detection provider |
 | `OPENAI_API_KEY` | (unset) | Enables the `openai` detection provider |

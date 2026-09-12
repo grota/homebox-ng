@@ -1,14 +1,17 @@
 import { env, pipeline } from '@huggingface/transformers'
 import { join } from 'node:path'
+import { DEFAULT_DATA_DIR } from '../src/env.js'
 
 // Admin CLI for the local object-detection model. Reads DATA_DIR (directly from
 // environment — NOT via loadEnv, which would require SESSION_SECRET) and points
 // the transformers cache at DATA_DIR/models/detection/ so the model persists
-// there. If the model is already cached it reports "ready"; otherwise it
-// downloads on demand (progress printed), then reports the cache path. This is a
-// first-run optimisation: the in-request path in local.ts still auto-downloads as
-// a fallback, so this script is never load-bearing.
-const dataDir = process.env.DATA_DIR ?? './data'
+// there. The fallback is the same workspace-root default the server uses, so the
+// CLI and the server agree on where the cache lives when DATA_DIR is unset. If
+// the model is already cached it reports "ready"; otherwise it downloads on
+// demand (progress printed), then reports the cache path. This is a first-run
+// optimisation: the in-request path in local.ts still auto-downloads as a
+// fallback, so this script is never load-bearing.
+const dataDir = process.env.DATA_DIR ?? DEFAULT_DATA_DIR
 const model = process.env.DETECTION_MODEL ?? 'onnx-community/rfdetr_nano-ONNX'
 const cacheDir = join(dataDir, 'models', 'detection')
 env.cacheDir = cacheDir
