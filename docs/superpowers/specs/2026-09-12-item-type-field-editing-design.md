@@ -1,8 +1,9 @@
 # Item-type field editing — design
 
 **Status:** Draft for review (2026-09-12)
-**Related:** ADR-0003 (to be written) for the refuse-vs-destroy decision; ADR-0002
-(`docs/adr/0002-modal-full-viewport-variant.md`) for the `Modal` this design reuses.
+**Related:** ADR-0003 (`docs/adr/0003-non-destructive-field-edits.md`) for the refuse-vs-destroy
+decision; ADR-0002 (`docs/adr/0002-modal-full-viewport-variant.md`) for the `Modal` this design
+reuses.
 
 ## Goal
 
