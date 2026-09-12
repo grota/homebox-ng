@@ -20,5 +20,7 @@ export const locationsRouter = t.router({
   list: protectedProcedure.query(({ ctx }) => service.listLocations(ctx.db)),
   create: protectedProcedure.input(locationInput).mutation(({ ctx, input }) => service.createLocation(ctx.db, input)),
   update: protectedProcedure.input(updateInput).mutation(({ ctx, input }) => service.updateLocation(ctx.db, input)),
-  delete: protectedProcedure.input(idInput).mutation(({ ctx, input }) => service.deleteLocation(ctx.db, input.id)),
+  // Deep delete: the location, its sub-locations and the items in them. Takes
+  // `dataDir` to best-effort remove the deleted items' image files.
+  delete: protectedProcedure.input(idInput).mutation(({ ctx, input }) => service.deleteLocation(ctx.db, input.id, ctx.dataDir)),
 })

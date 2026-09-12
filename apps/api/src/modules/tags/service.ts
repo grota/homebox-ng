@@ -1,6 +1,4 @@
 import { TRPCError } from '@trpc/server'
-import { eq } from 'drizzle-orm'
-import { itemTags } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import type { TagInput } from '@homebox/shared'
 import { reindexItem } from '../items/fts.js'
@@ -37,12 +35,42 @@ export const assignTags = (db: DrizzleDb, input: { itemId: number; tagIds: numbe
   return { assigned: rows.map(toDto) }
 }
 
+// Rename and/or recolor a tag. Unlike `create` (an upsert keyed on the name),
+// this targets a specific tag by id, and rejects a rename onto another tag's
+// name with `CONFLICT` rather than letting the UNIQUE constraint surface as a
+// 500. A rename changes the FTS `tags` blob of every item carrying the tag, so
+// those items are re-indexed after the write.
+export const updateTag = (db: DrizzleDb, input: { id: number; name?: string; color?: string | null }): TagDto => {
+  const existing = repo.getById(db, input.id)
+  if (!existing) throw new TRPCError({ code: 'NOT_FOUND' })
+
+  if (input.name !== undefined) {
+    const clash = repo.getByName(db, input.name)
+    if (clash && clash.id !== input.id) throw new TRPCError({ code: 'CONFLICT' })
+  }
+
+  const data: repo.UpdateTagData = {}
+  if (input.name !== undefined) data.name = input.name
+  if (input.color !== undefined) data.color = input.color
+
+  if (Object.keys(data).length === 0) return toDto(existing)
+
+  // Captured before the write; the links themselves do not change, but the
+  // names the blobs are built from do.
+  const itemIds = input.name !== undefined ? repo.listItemIdsForTag(db, input.id) : []
+  const row = repo.updateTag(db, input.id, data)
+  if (!row) throw new TRPCError({ code: 'NOT_FOUND' })
+
+  for (const itemId of itemIds) reindexItem(db, itemId)
+  return toDto(row)
+}
+
 // `delete` removes the tag row; the `itemTags.tagId` FK cascades, so any
 // associated item links are cleaned up automatically. Capture the referencing
 // item ids BEFORE the delete (the cascade wipes the `itemTags` rows), then
 // reindex each so the FTS `tags` blob no longer carries the deleted tag's name.
 export const deleteTag = (db: DrizzleDb, id: number): { ok: true } => {
-  const itemIds = db.select({ itemId: itemTags.itemId }).from(itemTags).where(eq(itemTags.tagId, id)).all().map((r) => r.itemId)
+  const itemIds = repo.listItemIdsForTag(db, id)
   if (!repo.deleteTag(db, id)) throw new TRPCError({ code: 'NOT_FOUND' })
   for (const itemId of itemIds) reindexItem(db, itemId)
   return { ok: true }
