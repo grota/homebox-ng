@@ -55,7 +55,6 @@
 | `apps/api/package.json` | Add the `seed` script |
 | `apps/web/src/features/itemTypes/ItemTypesPage.tsx` | Split: type form + list, delegating fields to `TypeFields`; drop the obsolete `signature` guard |
 | `apps/web/test/itemTypes.test.tsx` | Follow the restructure |
-| `apps/web/test/catalog.test.tsx`, `apps/web/test/itemDetail.test.tsx` | Add `itemTypes.updateFields` to the mocks |
 
 **Boundary — deliberately NOT touched.** `itemCustomFieldValues` is read/written in
 `apps/api/src/modules/items/{repo,router}.ts` and `apps/api/src/modules/items/fts.ts`.
@@ -92,9 +91,13 @@ Verification for this is Task 4's final step: `grep -rn "replaceTypeFields" apps
   - `FIELD_TYPES: readonly ['text', 'number', 'currency', 'date', 'boolean', 'url']`
   - `type FieldType = (typeof FIELD_TYPES)[number]`
   - `fitsFieldType(fieldType: FieldType, value: string): boolean`
-  - `isRealDataValue(value: string | null): boolean` — the non-empty predicate for JS callers
 
-Consumed by: Task 3 (both the gate and the usage query), Task 5 (the web's per-row warning).
+Consumed by: Task 3 (the gate and the `fieldValueUsage` filter), Task 4 (the row's type select
+and the `required` toggle), Task 5 (the retype warning and the dialog).
+
+There is deliberately **no** JS "is this value empty" helper: the emptiness predicate lives in
+SQL (`item_*` queries), which is the only place it is needed, and the design's constraint is
+that it reads `IS NOT NULL AND <> ''`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -102,7 +105,7 @@ Create `packages/shared/test/fieldValue.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest'
-import { FIELD_TYPES, fitsFieldType, isRealDataValue } from '../src/fieldValue'
+import { FIELD_TYPES, fitsFieldType } from '../src/fieldValue'
 
 describe('fitsFieldType', () => {
   // text accepts anything, including an empty string: the emptiness rule is
@@ -148,16 +151,6 @@ describe('fitsFieldType', () => {
 
   it('lists exactly the six field types', () => {
     expect([...FIELD_TYPES]).toEqual(['text', 'number', 'currency', 'date', 'boolean', 'url'])
-  })
-})
-
-describe('isRealDataValue', () => {
-  it('treats only a non-empty string as data', () => {
-    expect(isRealDataValue('large')).toBe(true)
-    expect(isRealDataValue('0')).toBe(true) // `'0'` is data; truthiness would lose it
-    expect(isRealDataValue(' ')).toBe(true) // whitespace is not trimmed away, deliberately
-    expect(isRealDataValue('')).toBe(false)
-    expect(isRealDataValue(null)).toBe(false)
   })
 })
 ```
@@ -232,13 +225,6 @@ export const fitsFieldType = (fieldType: FieldType, value: string): boolean => {
       return isAbsoluteUrl(value)
   }
 }
-
-// Whether a stored value counts as real user data. A blank field still has a
-// `item_custom_field_values` ROW (the item form submits one entry per field of
-// the selected type, using '' for untouched ones), so "a row exists" and even
-// "the value is not NULL" both over-report. Not trimmed, deliberately: treating
-// whitespace as data errs toward not destroying it.
-export const isRealDataValue = (value: string | null): boolean => value !== null && value !== ''
 ```
 
 - [ ] **Step 4: Export it**
@@ -252,7 +238,7 @@ export * from './fieldValue.js'
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `pnpm --filter @homebox/shared test`
-Expected: PASS, 7 tests.
+Expected: PASS, 6 new tests (plus the package's pre-existing ones).
 
 - [ ] **Step 6: Point the two existing field-type lists at the shared one**
 
@@ -956,7 +942,9 @@ In `apps/api/src/modules/itemTypes/router.ts`, add `import { FIELD_TYPES } from 
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `pnpm --filter @homebox/api build && pnpm --filter @homebox/api exec vitest run test/itemTypeFields.test.ts`
-Expected: PASS, 14 tests.
+Expected: PASS — every case in the file, including the five `describe` groups (the diff's
+non-destructiveness, the deletion acknowledgment, the retype gate, the count pin, and
+`fieldValueUsage`).
 
 - [ ] **Step 7: Run the whole API suite**
 
@@ -1283,11 +1271,11 @@ mock, assert that a name-only edit now sends `{ id, name, description }` **with 
 and replace the two `fields`-signature tests (create still sends `fields`; the retype and dialog
 cases move to Task 5's tests).
 
-- [ ] **Step 7: Add the new procedure to the other mocks and verify the web suite**
+- [ ] **Step 7: Verify the web suite**
 
-Add `updateFields` (a `vi.fn` mutation) to the `itemTypes` mock in `apps/web/test/catalog.test.tsx`
-and `apps/web/test/itemDetail.test.tsx` if either renders `TypeFields` — a mock missing a
-procedure the component calls throws.
+Neither `catalog.test.tsx` (which renders `ItemsPage`) nor `itemDetail.test.tsx` renders the
+item-types page or `TypeFields`, so neither mock needs `updateFields` — no change is expected
+there. Only add it if a test in this step actually throws for a missing procedure.
 
 Run: `pnpm --filter @homebox/web test`
 Expected: PASS, all files.
