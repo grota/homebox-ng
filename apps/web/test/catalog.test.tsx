@@ -13,6 +13,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
       useUtils: () => ({
         items: { list: { invalidate: vi.fn() }, get: { invalidate: vi.fn() } },
+        tags: { list: { invalidate: vi.fn() } },
       }),
       items: {
         list: {
@@ -52,8 +53,21 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         update: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
       },
       locations: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
-      itemTypes: { list: { useQuery: () => ({ data: [{ id: 1, name: 'Light', fields: [] }], isLoading: false }) } },
-      tags: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
+      // Type 1 carries one `currency` custom field so the form's numeric input is
+      // reachable; the step test below depends on it.
+      itemTypes: {
+        list: {
+          useQuery: () => ({
+            data: [{ id: 1, name: 'Light', fields: [{ id: 9, name: 'Price', fieldType: 'currency', required: false }] }],
+            isLoading: false,
+          }),
+        },
+      },
+      tags: {
+        list: { useQuery: () => ({ data: [], isLoading: false }) },
+        create: { useMutation: () => ({ mutateAsync: vi.fn(async () => ({ id: 7, name: 'new', color: null })), isPending: false, error: null }) },
+        assign: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
+      },
       // `<AppProviders>` renders `<SettingsProvider>`, which reads `settings.get`
       // and wires `settings.update`. Return `data: undefined` so the provider falls
       // back to the spec defaults.
@@ -95,6 +109,21 @@ describe('catalog pages', () => {
     expect(body.get('itemId')).toBe('42')
     expect(body.get('file')).toBe(file)
     fetchSpy.mockRestore()
+  })
+
+  // A number input defaults to step=1, so a stored decimal like 120.50 raises
+  // stepMismatch and native constraint validation blocks the whole submit — the
+  // item is then unsaveable. `step="any"` is what matches `fitsFieldType`, which
+  // blesses any float for these two types. jsdom implements no stepMismatch, so
+  // only the attribute itself can be asserted here.
+  it('gives a numeric custom field step="any" so a decimal can be saved', async () => {
+    render(<AppProviders><ItemsPage /></AppProviders>)
+    fireEvent.click(screen.getByRole('button', { name: /new item/i }))
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
+
+    const price = await screen.findByLabelText('Price')
+    expect(price).toHaveAttribute('type', 'number')
+    expect(price).toHaveAttribute('step', 'any')
   })
 
   // The card used to be one <Link> wrapping everything. It now splits: the photo

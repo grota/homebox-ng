@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core'
 import type { AnySQLiteColumn, SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 
 // ---------------------------------------------------------------------------
@@ -68,12 +68,16 @@ export const items = sqliteTable('items', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
 })
 
-export const itemCustomFieldValues = sqliteTable('item_custom_field_values', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  itemId: integer('item_id').notNull().references(() => items.id, { onDelete: 'cascade' }),
-  fieldId: integer('field_id').notNull().references(() => itemTypeFields.id, { onDelete: 'cascade' }),
-  value: text('value'),
-})
+export const itemCustomFieldValues = sqliteTable(
+  'item_custom_field_values',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    itemId: integer('item_id').notNull().references(() => items.id, { onDelete: 'cascade' }),
+    fieldId: integer('field_id').notNull().references(() => itemTypeFields.id, { onDelete: 'cascade' }),
+    value: text('value'),
+  },
+  (t) => [index('idx_icfv_field_id').on(t.fieldId), index('idx_icfv_item_id').on(t.itemId)]
+)
 
 export const tags = sqliteTable('tags', {
   id: integer('id').primaryKey({ autoIncrement: true }),

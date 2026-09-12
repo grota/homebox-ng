@@ -15,6 +15,7 @@ type EditableItem = {
   itemTypeId: number
   locationId: number | null
   customFields: { fieldId: number; fieldName: string; value: string | null }[]
+  tags?: { id: number; name: string; color: string | null }[]
 }
 
 type ItemFormProps = {
@@ -33,10 +34,15 @@ type ItemFormProps = {
 export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
   const createItem = trpc.items.create.useMutation()
   const updateItem = trpc.items.update.useMutation()
+  // `tags.assign` is its own procedure (an item's tags are a many-to-many link,
+  // not a column), so tagging an item is a second call after the item write.
+  const assignTags = trpc.tags.assign.useMutation()
+  const createTag = trpc.tags.create.useMutation()
   const utils = trpc.useUtils()
 
   const types = trpc.itemTypes.list.useQuery()
   const locations = trpc.locations.list.useQuery()
+  const tags = trpc.tags.list.useQuery()
 
   const [name, setName] = useState(item?.name ?? '')
   const [description, setDescription] = useState(item?.description ?? '')
@@ -47,11 +53,42 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
   const [fieldValues, setFieldValues] = useState<Record<number, string>>(
     Object.fromEntries((item?.customFields ?? []).map((f) => [f.fieldId, f.value ?? '']))
   )
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>((item?.tags ?? []).map((t) => t.id))
+  const [newTag, setNewTag] = useState('')
   const [photo, setPhoto] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const allTypes = types.data ?? []
   const selectedType = allTypes.find((t) => t.id === itemTypeId)
+  const allTags = tags.data ?? []
+
+  // The tag set the item arrived with. `tags.assign` REPLACES the whole set, so
+  // it may only be sent when this form actually knows the current one — a caller
+  // passing an item without `tags` would otherwise silently clear them on save.
+  // A new item has no prior set, so create mode is always safe.
+  const loadedTagIds = (item?.tags ?? []).map((t) => t.id)
+  const tagsKnown = item === undefined || Array.isArray(item.tags)
+  const tagSetChanged =
+    [...selectedTagIds].sort((a, b) => a - b).join(',') !== [...loadedTagIds].sort((a, b) => a - b).join(',')
+
+  const toggleTag = (id: number) =>
+    setSelectedTagIds((current) => (current.includes(id) ? current.filter((t) => t !== id) : [...current, id]))
+
+  // `tags.create` upserts by name, so this both adds a new tag and selects an
+  // existing one whose name was retyped.
+  const handleCreateTag = async () => {
+    const trimmed = newTag.trim()
+    if (trimmed === '') return
+    setError(null)
+    try {
+      const created = await createTag.mutateAsync({ name: trimmed })
+      await utils.tags.list.invalidate()
+      setSelectedTagIds((current) => (current.includes(created.id) ? current : [...current, created.id]))
+      setNewTag('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create the tag')
+    }
+  }
 
   const handleTypeChange = (value: string) => {
     const id = Number(value)
@@ -95,6 +132,11 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
       // already committed at this point, so a failed upload reports the error
       // but does not roll the item back.
       if (photo) await uploadImage(saved.id, photo)
+
+      // Same shape of trade-off for the tags: a second, non-atomic call whose
+      // failure leaves the item itself saved. Skipped when the set is unchanged,
+      // so a plain rename does not churn the links or reindex the item.
+      if (tagsKnown && tagSetChanged) await assignTags.mutateAsync({ itemId: saved.id, tagIds: selectedTagIds })
 
       utils.items.list.invalidate()
       if (item) utils.items.get.invalidate({ id: item.id })
@@ -180,22 +222,67 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
       {selectedType && selectedType.fields.length > 0 && (
         <fieldset className="border border-border rounded-lg p-3">
           <legend>Custom fields</legend>
-          {selectedType.fields.map((field) => (
+          {selectedType.fields.map((field) => {
+            // A number input defaults to step=1, so a stored decimal such as 120.50
+            // raises stepMismatch and native validation blocks the whole submit —
+            // the item becomes unsaveable. `fitsFieldType` blesses any float for
+            // these two types, so `any` is the step that matches it.
+            const numeric = field.fieldType === 'number' || field.fieldType === 'currency'
             // Both `required`s are needed: `Field`'s renders the asterisk, `Input`'s
             // is the native constraint. The label was already `name *` before this
             // conversion, so the accessible name is unchanged.
-            <Field key={field.id} label={field.name} htmlFor={`field-${field.id}`} required={field.required}>
-              <Input
-                id={`field-${field.id}`}
-                type={field.fieldType === 'number' || field.fieldType === 'currency' ? 'number' : field.fieldType === 'date' ? 'date' : field.fieldType === 'url' ? 'url' : 'text'}
-                value={fieldValues[field.id] ?? ''}
-                required={field.required}
-                onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }))}
-              />
-            </Field>
-          ))}
+            return (
+              <Field key={field.id} label={field.name} htmlFor={`field-${field.id}`} required={field.required}>
+                <Input
+                  id={`field-${field.id}`}
+                  type={numeric ? 'number' : field.fieldType === 'date' ? 'date' : field.fieldType === 'url' ? 'url' : 'text'}
+                  step={numeric ? 'any' : undefined}
+                  value={fieldValues[field.id] ?? ''}
+                  required={field.required}
+                  onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                />
+              </Field>
+            )
+          })}
         </fieldset>
       )}
+
+      <fieldset className="border border-border rounded-lg p-3">
+        <legend>Tags</legend>
+        {allTags.length === 0 ? (
+          <p className="text-text-muted">No tags yet — add one below.</p>
+        ) : (
+          <div className="flex flex-wrap gap-3">
+            {allTags.map((tag) => (
+              <label key={tag.id} className="flex items-center gap-1">
+                {/* A native checkbox: no primitive exists for it, and the label
+                    wrapper is what gives it the tag's name as its accessible
+                    name. */}
+                <input
+                  type="checkbox"
+                  checked={selectedTagIds.includes(tag.id)}
+                  onChange={() => toggleTag(tag.id)}
+                />
+                {tag.name}
+              </label>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2 items-end mt-2">
+          <Field label="New tag" htmlFor="item-new-tag" className="flex-1 min-w-0">
+            <Input
+              id="item-new-tag"
+              value={newTag}
+              onChange={(e) => setNewTag(e.target.value)}
+              placeholder="Tag name"
+              className="w-full"
+            />
+          </Field>
+          <Button onClick={handleCreateTag} disabled={newTag.trim() === '' || createTag.isPending}>
+            Add tag
+          </Button>
+        </div>
+      </fieldset>
 
       <Field label={item ? 'Add photo' : 'Photo'} htmlFor="item-photo">
         <Input

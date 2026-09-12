@@ -28,4 +28,16 @@ describe('db schema', () => {
     const insert = db.insert(users).values({ name, email, passwordHash, role: 'user' }).returning().get()
     expect(insert.mustChangePassword).toBe(false)
   })
+  it('indexes the custom-field value lookups', () => {
+    // `tbl_name` is part of the assertion, not decoration: index names are global
+    // in SQLite, so a correctly-named index on the WRONG table would otherwise
+    // pass while leaving `WHERE field_id = ?` a scan — which is the whole point of
+    // the migration.
+    const rows = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name = 'item_custom_field_values'").all() as { name: string }[]
+    const set = new Set(rows.map(n => n.name))
+    // `field_id` answers "how many values does this field hold", which gates
+    // every destructive field operation; `item_id` answers the per-item read.
+    expect(set.has('idx_icfv_field_id')).toBe(true)
+    expect(set.has('idx_icfv_item_id')).toBe(true)
+  })
 })

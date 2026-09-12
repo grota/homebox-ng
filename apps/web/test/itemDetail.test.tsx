@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   deleteImage: vi.fn(),
   updateItem: vi.fn(async (x: unknown) => x),
   unpack: vi.fn(),
+  // `tags.assign` replaces an item's whole tag set, so what it is (and is not)
+  // called with on save is worth asserting.
+  assignTags: vi.fn(async (x: unknown) => x),
   // Mutable so a test can make the unpack mutation report a failure. Cleared in
   // `beforeEach`, since the other cases assert on the success path.
   unpackError: null as { message: string } | null,
@@ -35,6 +38,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
     id: 3, name: 'Lamp', description: 'Desk', quantity: 1, unit: null,
     itemTypeId: 1, locationId: null, type: { id: 1, name: 'Light' }, location: null,
     customFields: [],
+    tags: [],
     images: [
       { id: 10, originalPath: 'uploads/originals/a.png', editedPath: 'uploads/edited/e.png', thumbPath: 'uploads/thumbs/a.jpg', isPrimary: true },
       { id: 11, originalPath: 'uploads/originals/b.png', editedPath: null, thumbPath: 'uploads/thumbs/b.jpg', isPrimary: null },
@@ -47,7 +51,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
     ...actual,
     trpc: {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-      useUtils: () => ({ items: { list: { invalidate }, get: { invalidate } }, drafts: { list: { invalidate: vi.fn() } } }),
+      useUtils: () => ({ items: { list: { invalidate }, get: { invalidate } }, drafts: { list: { invalidate: vi.fn() } }, tags: { list: { invalidate: vi.fn() } } }),
       items: {
         get: { useQuery: () => ({ data: item, isLoading: false }) },
         // `ItemDetail` renders an inline edit form, which calls `items.update`
@@ -62,6 +66,14 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       },
       itemTypes: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
       locations: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
+      // The edit form renders the tag picker (`tags.list`) and offers inline
+      // creation + assignment. The item carries `tags: []` like the real DTO, so
+      // the form knows the current set.
+      tags: {
+        list: { useQuery: () => ({ data: [{ id: 5, name: 'fragile', color: null }], isLoading: false }) },
+        create: { useMutation: () => ({ mutateAsync: vi.fn(async () => ({ id: 7, name: 'new', color: null })), isPending: false, error: null }) },
+        assign: { useMutation: () => ({ mutateAsync: mocks.assignTags, isPending: false, error: null }) },
+      },
       // `ItemDetail` renders a per-image "Unpack this photo" button backed by
       // `trpc.unpack.run.useMutation()`, so the mock must provide it. The page
       // navigates from the run's *result* (that is how the detected count
@@ -198,5 +210,30 @@ describe('item detail photos', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit item' }))
     expect(screen.getByLabelText('Name')).toHaveValue('Lamp')
     expect(screen.getByRole('heading', { name: 'Edit item' })).toBeInTheDocument()
+  })
+
+  it('assigns the tags picked on the edit form to the item', async () => {
+    renderDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item' }))
+
+    // The checkbox's accessible name comes from the wrapping <label>.
+    fireEvent.click(await screen.findByLabelText('fragile'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(mocks.assignTags).toHaveBeenCalledWith({ itemId: 3, tagIds: [5] }))
+  })
+
+  // `tags.assign` REPLACES the whole set, so saving a form whose tags were never
+  // touched must not rewrite (and reindex) the links.
+  it('leaves the tags alone when an edit does not change them', async () => {
+    renderDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item' }))
+    await screen.findByLabelText('fragile')
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp Two' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(mocks.updateItem).toHaveBeenCalled())
+    expect(mocks.assignTags).not.toHaveBeenCalled()
   })
 })

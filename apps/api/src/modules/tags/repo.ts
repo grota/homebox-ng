@@ -19,11 +19,26 @@ export const listTags = (db: DrizzleDb): TagRow[] =>
 export const getByName = (db: DrizzleDb, name: string): TagRow | undefined =>
   db.select(TAG_FIELDS).from(tags).where(eq(tags.name, name)).get()
 
+export const getById = (db: DrizzleDb, id: number): TagRow | undefined =>
+  db.select(TAG_FIELDS).from(tags).where(eq(tags.id, id)).get()
+
 export const createTag = (db: DrizzleDb, data: { name: string; color: string | null }): TagRow =>
   db.insert(tags).values({ name: data.name, color: data.color }).returning(TAG_FIELDS).get()
 
+export type UpdateTagData = Partial<Pick<TagRow, 'name' | 'color'>>
+
+// Returns `undefined` when no row matched, so the caller can raise NOT_FOUND.
+export const updateTag = (db: DrizzleDb, id: number, data: UpdateTagData): TagRow | undefined =>
+  db.update(tags).set(data).where(eq(tags.id, id)).returning(TAG_FIELDS).get()
+
 export const deleteTag = (db: DrizzleDb, id: number): boolean =>
   db.delete(tags).where(eq(tags.id, id)).run().changes > 0
+
+// Ids of the items carrying this tag. Read before a rename or delete: a rename
+// changes their FTS `tags` blob, and the delete cascade wipes the very
+// `item_tags` rows that name them.
+export const listItemIdsForTag = (db: DrizzleDb, tagId: number): number[] =>
+  db.select({ itemId: itemTags.itemId }).from(itemTags).where(eq(itemTags.tagId, tagId)).all().map((r) => r.itemId)
 
 // Tags currently assigned to an item (joined through `itemTags`), name-sorted.
 export const getItemTagIds = (db: DrizzleDb, itemId: number): TagRow[] =>

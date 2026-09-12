@@ -36,6 +36,13 @@
       "when": 1788715771790,
       "tag": "0004_bouncy_midnight",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789200368229,
+      "tag": "0005_add_custom_field_value_indexes",
+      "breakpoints": true
     }
   ]
 }
