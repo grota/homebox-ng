@@ -15,7 +15,8 @@
     "build": "tsc -b",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "detection:model": "tsx scripts/detection-model.ts"
+    "detection:model": "tsx scripts/detection-model.ts",
+    "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@fastify/multipart": "^10.1.1",
