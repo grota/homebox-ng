@@ -208,7 +208,11 @@ export function ItemTypesPage() {
 
       {editing && (
         <div className="max-w-[30rem] my-4">
-          <TypeFields typeId={editing.id} fields={editing.fields} canEdit={isAdmin} />
+          {/* `key` matters: every row's Edit button is reachable while a type is
+              already open, and without it the editor keeps its tree position and
+              so its seeded rows, showing the previous type's fields under this
+              type's id — rows whose Save the cross-type guard then refuses. */}
+          <TypeFields key={editing.id} typeId={editing.id} fields={editing.fields} canEdit={isAdmin} />
         </div>
       )}
 

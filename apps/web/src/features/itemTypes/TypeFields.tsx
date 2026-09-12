@@ -21,16 +21,21 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
   const [newType, setNewType] = useState<FieldType>('text')
   const [error, setError] = useState<string | null>(null)
 
-  // The server assigns an added field its id, so it arrives back through the
-  // `fields` prop on the refetch and not from anything this editor holds. Merge
-  // those in — without it a freshly added field would stay invisible until the
-  // type was reopened. Keys are the negated id so they cannot collide with the
-  // index keys of the rows seeded from the first render.
+  // The server owns the rows: it assigns an added field its id, and a deletion
+  // takes one away. Both come back through the `fields` prop on the refetch, so
+  // local state has to converge on the prop — drop rows it no longer lists,
+  // append ones it lists that this editor has not seen, and leave the values of
+  // the rows in between alone, because every write refetches and a full sync
+  // would wipe a name the admin is still typing. Returning `current` itself when
+  // nothing changed keeps this from looping. Appended keys are the negated id, so
+  // they cannot collide with the index keys seeded on the first render.
   useEffect(() => {
     setRows((current) => {
-      const seen = new Set(current.map((row) => row.id))
+      const ids = new Set(fields.map((f) => f.id))
+      const kept = current.filter((row) => ids.has(row.id))
+      const seen = new Set(kept.map((row) => row.id))
       const added = fields.filter((f) => !seen.has(f.id))
-      return added.length === 0 ? current : [...current, ...added.map((f) => ({ key: -f.id, ...f }))]
+      return added.length === 0 && kept.length === current.length ? current : [...kept, ...added.map((f) => ({ key: -f.id, ...f }))]
     })
   }, [fields])
 
@@ -62,9 +67,17 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
       setNewType('text')
     })
 
-  // The count is read first so the confirmation can name what it destroys.
+  // The count is read first so the confirmation can name what it destroys, and
+  // the read is guarded on its own: a failed query must say so rather than reject
+  // out of the click handler and leave the admin with no feedback at all.
   const remove = async (row: DraftRow) => {
-    const usage = await utils.client.itemTypes.fieldValueUsage.query({ typeId, fieldId: row.id })
+    let usage: { total: number }
+    try {
+      usage = await utils.client.itemTypes.fieldValueUsage.query({ typeId, fieldId: row.id })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not count the values this field holds')
+      return
+    }
     const warning = usage.total === 0 ? `Delete the field “${row.name}”?` : `Delete the field “${row.name}”? This also destroys ${usage.total} stored value${usage.total === 1 ? '' : 's'}.`
     if (!window.confirm(warning)) return
     await run({ id: typeId, upserts: [], deletedIds: [row.id], acknowledgeValueLoss: true })

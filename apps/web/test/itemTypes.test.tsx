@@ -1,15 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
+// The type list the page renders. `vi.hoisted` above needs it to exist by name,
+// so the fixture lives here and `beforeEach` seeds the mock with the single type
+// every other case wants (one type keeps the Edit/Delete queries unambiguous).
+const TYPES = [
+  { id: 1, name: 'Default', description: null, fields: [{ id: 1, itemTypeId: 1, name: 'qty', fieldType: 'number', required: false, config: null, sortOrder: 0 }] },
+  { id: 2, name: 'Books', description: null, fields: [{ id: 2, itemTypeId: 2, name: 'author', fieldType: 'text', required: false, config: null, sortOrder: 0 }] },
+]
+
 // Mutation spies live outside the factory so the tests can assert on the calls.
 // `vi.hoisted` is required: `vi.mock` factories are hoisted above plain consts.
-// `role` is mutable so one case can render the page as a non-admin.
+// `role` is mutable so one case can render the page as a non-admin, and `types`
+// so one can render a second type to switch to.
 const mocks = vi.hoisted(() => ({
   create: vi.fn(async (input: unknown) => input),
   update: vi.fn(async (input: unknown) => input),
   remove: vi.fn(async (input: unknown) => input),
   invalidate: vi.fn(),
   role: 'admin' as 'admin' | 'user',
+  types: [] as unknown[],
 }))
 
 // mock the tRPC module so hooks resolve deterministically without a backend.
@@ -33,10 +43,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       auth: { me: { useQuery: () => ({ data: { id: 1, name: 'Admin', email: 'a@b.co', role: mocks.role }, isLoading: false }) } },
       itemTypes: {
         list: {
-          useQuery: () => ({
-            data: [{ id: 1, name: 'Default', description: null, fields: [{ id: 1, itemTypeId: 1, name: 'qty', fieldType: 'number', required: false, config: null, sortOrder: 0 }] }],
-            isLoading: false,
-          }),
+          useQuery: () => ({ data: mocks.types, isLoading: false }),
         },
         create: { useMutation: mutation(mocks.create) },
         update: { useMutation: mutation(mocks.update) },
@@ -64,6 +71,7 @@ const renderPage = () => render(<AppProviders><ItemTypesPage /></AppProviders>)
 
 beforeEach(() => {
   mocks.role = 'admin'
+  mocks.types = [TYPES[0]]
   vi.clearAllMocks()
 })
 
@@ -117,6 +125,23 @@ describe('item types page', () => {
 
     expect(await screen.findByLabelText('New field name')).toBeInTheDocument()
     expect(screen.getByDisplayValue('qty')).toBeInTheDocument()
+  })
+
+  // Edit is reachable from every row while a type is already open, so the editor
+  // has to be re-seeded for the new type. It used to keep its tree position and
+  // therefore its `useState` seed, showing the previous type's rows under the new
+  // type's id — dirty rows whose Save the cross-type guard then refused.
+  it('shows only the newly edited type’s fields', async () => {
+    mocks.types = TYPES
+    renderPage()
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Edit' }))[0])
+    expect(await screen.findByDisplayValue('qty')).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1])
+
+    expect(await screen.findByDisplayValue('author')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByDisplayValue('qty')).toBeNull())
   })
 
   it('deletes a type once the confirmation is accepted', async () => {

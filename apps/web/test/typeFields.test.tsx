@@ -128,6 +128,54 @@ describe('type fields editor', () => {
     expect(mocks.updateFields).not.toHaveBeenCalled()
   })
 
+  // Asserting the payload alone let this through: the row itself has to go. The
+  // rerender is the refetch that follows the write, and the deleted id is absent
+  // from it — the editor has to converge, or a row the server no longer has stays
+  // on screen with its Save enabled (its `isDirty` reads a missing `saved` as a
+  // change) and fails the ownership check when clicked.
+  it('drops a deleted field once the server no longer reports it', async () => {
+    const view = renderFields()
+    fireEvent.click(screen.getAllByRole('button', { name: /^delete/i })[0])
+    await waitFor(() => expect(mocks.updateFields).toHaveBeenCalledWith({ id: 7, upserts: [], deletedIds: [11], acknowledgeValueLoss: true }))
+
+    view.rerender(<TypeFields typeId={7} fields={[fields[1]]} canEdit />)
+
+    await waitFor(() => expect(screen.queryByDisplayValue('size')).toBeNull())
+    expect(screen.getByDisplayValue('note')).toBeInTheDocument()
+  })
+
+  // A refetch that brings a new field must not reset what is being typed: the
+  // list invalidates on every write, so overwriting existing rows would wipe a
+  // half-typed name.
+  it('keeps an unsaved edit when a refetch brings a new field', async () => {
+    const view = renderFields()
+    fireEvent.change(screen.getByDisplayValue('size'), { target: { value: 'size (cm)' } })
+
+    view.rerender(
+      <TypeFields
+        typeId={7}
+        fields={[...fields, { id: 13, name: 'colour', fieldType: 'text' as const, required: false, sortOrder: 2 }]}
+        canEdit
+      />
+    )
+
+    expect(screen.getByDisplayValue('size (cm)')).toBeInTheDocument()
+    expect(await screen.findByDisplayValue('colour')).toBeInTheDocument()
+  })
+
+  // A failed count read used to reject out of the click handler: no message, no
+  // write, nothing on screen. It has to be a visible failure instead.
+  it('reports a failed value-count read and does not delete', async () => {
+    mocks.usageQuery.mockRejectedValueOnce(new Error('Session expired'))
+    renderFields()
+
+    fireEvent.click(screen.getAllByRole('button', { name: /^delete/i })[0])
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Session expired')
+    expect(mocks.updateFields).not.toHaveBeenCalled()
+    expect(mocks.confirm).not.toHaveBeenCalled()
+  })
+
   it('hides every control from a non-admin', () => {
     renderFields({ canEdit: false })
     expect(screen.queryByRole('button', { name: 'Add field' })).toBeNull()
