@@ -17,3 +17,6 @@ blob-report/
 # Skills are being handled by the skills NPM package and we have a lock file in
 # this repository. I don't want to actually check in the skills themselves.
 /.agents/skills/
+
+# Claude Code worktrees: each is a full nested checkout, so never commit one.
+/.claude/worktrees/
