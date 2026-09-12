@@ -155,12 +155,11 @@ pnpm --filter @homebox/web test:e2e   # Playwright end-to-end
 ```
 
 The e2e suite boots the **built** API (`pnpm -r build && pnpm --filter @homebox/api start`) with
-`DETECTION_MOCK=1` and its own database. All spec files share one e2e database and run serially
-(`workers: 1`); on a stale `apps/api/data/e2e.db` the run can produce false failures, so wipe it
-first:
+`DETECTION_MOCK=1` and a database of its own: the config mints a fresh temp directory per run and
+points `DATABASE_PATH`/`DATA_DIR` inside it, so nothing survives the run and there is no stale
+database to wipe. All spec files share that one database and run serially (`workers: 1`):
 
 ```bash
-rm -f apps/api/data/e2e.db*
 pnpm --filter @homebox/web test:e2e
 ```
 
@@ -186,7 +185,8 @@ pnpm --filter @homebox/db exec drizzle-kit generate
 
 ## Notes
 
-- The repo is **local-only** (no git remote is configured); there is nothing to `git pull`.
+- The git remote is `origin` (GitHub, `grota/homebox-ng`), which is also where issues and specs
+  live — see `docs/agents/issue-tracker.md`.
 - `apps/web` and `apps/api` are ESM (`"type":"module"`); relative imports in `src` use `.js`
   specifiers. The built API (`node dist/index.js`) rejects extensionless relative imports, which is
   why the packages build with `tsc -b` and imports are written with extensions.

@@ -91,7 +91,7 @@ type LevelNode = { id: number; name: string }
 // present, so drafts (`published = false`) never leak into the catalog, search,
 // or any facet count. The `tagIds` predicate is OR-within-dimension: an item
 // matches if it carries AT LEAST ONE of the selected tags (membership in the
-// subselect of `item_tag` ids).
+// subselect of `item_tags` ids).
 const buildWhere = (db: DrizzleDb, filters: RelationalFilters, searchPredicate?: SQL): SQL | undefined => {
   const conds: SQL[] = [eq(items.published, true)] // drafts never leak into the catalog or facets
   if (searchPredicate) conds.push(searchPredicate)

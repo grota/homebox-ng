@@ -16,7 +16,7 @@ type GetSettings = () => InstanceSettingsDto
 //
 // The mock is registered under EVERY known provider name (in addition to
 // 'mock') so that DETECTION_MOCK=1 resolves to it no matter what the live
-// `detectionProvider` setting happens to be (`runUnpack` looks up the provider
+// `detectionProvider` setting happens to be (`createItemsFromImage` looks up the provider
 // by settings value, which is one of `DETECTION_PROVIDERS`, and `instanceSettings
 // .update` rejects 'mock'). This makes mock mode self-sufficient.
 export const registerDetectionProviders = (getSettings: GetSettings, opts: { mock?: boolean } = {}): void => {

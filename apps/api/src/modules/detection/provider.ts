@@ -8,7 +8,7 @@ export interface DetectionProviderImpl {
   name: string
   // `bounds` are the decoded image dims (pixel space, top-left origin). Every
   // returned box is guaranteed to lie within those bounds: providers clamp here,
-  // so consumers (`runUnpack`) can trust the box before driving `sharp.extract`.
+  // so consumers (`createItemsFromImage`) can trust the box before driving `sharp.extract`.
   detectBoxes(image: Buffer, bounds: { width: number; height: number }): Promise<DetectionBox[]>
 }
 

@@ -1,6 +1,8 @@
 # ADR-0001: Styling primitives on Tailwind tokens, Radix for behavior, no shadcn
 
-**Status:** Accepted (2026-09-10). Revisit conditions in "When to revisit" below.
+**Status:** Accepted (2026-09-10), **amended by ADR-0002** (2026-09-11) — `Modal` gained a
+full-viewport size for a second consumer, so the one-consumer decision below is superseded.
+Otherwise as accepted; revisit conditions in "When to revisit" below.
 
 ## Context
 
@@ -56,11 +58,13 @@ ships unstyled by design, so the token system and all 6 palettes are untouched, 
 trapping, Escape handling, focus restore, roving tabindex and correct ARIA come for free.
 Two packages, not a framework.
 
-`PhotoEditor` is the only consumer of `Modal`. `UnpackModal` is still a plain `<div>` with
-no dialog semantics — extending `Modal` to it is available now that the primitive exists,
-but is not done. Nor does `Modal` serve the delete confirmations: those are still
-`window.confirm` (`ItemDetail.tsx:72`, `:124`); replacing them is deferred (design spec §3).
-`Modal` is therefore designed against one real consumer rather than two guesses.
+`PhotoEditor` was `Modal`'s only consumer when this was written — the primitive was designed
+against one real consumer rather than two guesses. That held until the photo viewer arrived,
+which ADR-0002 answered by widening `Modal` with a full-viewport `size` rather than adding a
+second primitive. `UnpackModal` still has no dialog semantics: it is a `Card`, and extending
+`Modal` to it remains available-but-undone. Nor does `Modal` serve the delete confirmations —
+those are still `window.confirm` (`ItemDetail.tsx:83`, `:148`); replacing them is deferred
+(design spec §3).
 
 **4. Do not adopt shadcn/ui's styled layer.** Deferred, not rejected on principle — see
 Consequences for the specific costs and the revisit trigger.

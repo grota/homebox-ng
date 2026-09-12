@@ -5,8 +5,9 @@ import type { AppRouter } from '@homebox/api'
 // by the already-built `@homebox/api` package.
 export const trpc = createTRPCReact<AppRouter>()
 
-// The client used by `TrpcProvider`. `credentials: 'include'` is required so the
-// httpOnly `session` cookie set by the backend is sent on every request.
+// The client used by the `trpc.Provider` in `AppProviders`. `credentials: 'include'`
+// is required so the httpOnly `session` cookie set by the backend is sent on every
+// request.
 export const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
