@@ -169,20 +169,43 @@ export const updateFields = (db: DrizzleDb, input: UpdateFieldsInput): ItemTypeD
   for (const id of input.deletedIds) {
     if (!byId.has(id)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'That field does not belong to this item type.' })
   }
+  // Updating a field in place AND deleting it in the same request is refused
+  // rather than resolved: the delete removes the row the update claims to keep,
+  // so the update would silently hit zero rows. Nothing in this diff is
+  // inferred, so an ambiguous intent is an error, not a precedence rule.
+  const deleted = new Set(input.deletedIds)
+  if (input.upserts.some((f) => f.id !== undefined && deleted.has(f.id))) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'A field cannot be updated and deleted in the same request.' })
+  }
 
   // Every value this write is about to destroy, collected BEFORE it is gone.
   const doomed = new Set<number>()
 
-  for (const field of input.upserts) {
-    if (field.id === undefined) continue
-    const current = byId.get(field.id)!
-    if (current.fieldType === field.fieldType) continue
-    const offenders = repo.listNonEmptyValues(db, field.id).filter((v) => !fitsFieldType(field.fieldType, v.value))
-    if (offenders.length === 0) continue
+  // The casualties of every retype in the request, computed as a whole before
+  // any of them is judged — a per-field loop would throw on the first casualty
+  // and never see that a second field is dirty too.
+  const casualties = input.upserts.flatMap((next) => {
+    if (next.id === undefined) return []
+    const current = byId.get(next.id)!
+    if (current.fieldType === next.fieldType) return []
+    const offenders = repo.listNonEmptyValues(db, next.id).filter((v) => !fitsFieldType(next.fieldType, v.value))
+    return offenders.length === 0 ? [] : [{ current, next, offenders }]
+  })
+
+  // At most one field may need a clear. The count pin is a single number because
+  // the modal shows one field's values; a request-level total would let a client
+  // attest to the values it was shown while silently clearing another field's
+  // unseen ones. Retyping several fields at once stays fine while at most one of
+  // them strands anything.
+  if (casualties.length > 1) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only one field can be converted at a time.' })
+  }
+
+  for (const { current, next, offenders } of casualties) {
     if (!input.clearIncompatible) {
       throw new TRPCError({
         code: 'PRECONDITION_FAILED',
-        message: `${offenders.length} value${offenders.length === 1 ? '' : 's'} held by “${current.name}” cannot be read as ${field.fieldType}. Fix or clear them first.`,
+        message: `${offenders.length} value${offenders.length === 1 ? '' : 's'} held by “${current.name}” cannot be read as ${next.fieldType}. Fix or clear them first.`,
       })
     }
     // The count pin: the modal's list is a snapshot, so a value added since must

@@ -115,6 +115,21 @@ describe('the field diff is non-destructive', () => {
     expect(await code('itemTypes.updateFields', { id: a.type.id, upserts: [{ id: b.size.id, name: 'x', fieldType: 'text' }], deletedIds: [] })).toBe('BAD_REQUEST')
     expect(await code('itemTypes.updateFields', { id: a.type.id, upserts: [], deletedIds: [b.size.id] })).toBe('BAD_REQUEST')
   })
+
+  // One field cannot be updated in place AND deleted by the same request: the
+  // delete would remove the very row the update claims to keep, so the update
+  // would silently hit zero rows. Nothing here is inferred — so this is refused
+  // rather than resolved by letting one side win.
+  it('rejects an id that is both upserted and deleted', async () => {
+    const { type, size } = await fixture('UpsertAlsoDeleted')
+    expect(await code('itemTypes.updateFields', {
+      id: type.id,
+      upserts: [{ id: size.id, name: 'renamed', fieldType: 'text' }],
+      deletedIds: [size.id],
+    })).toBe('BAD_REQUEST')
+    // Refused before anything was written: both fields are still there.
+    expect((await get('itemTypes.list')).find((t: { id: number }) => t.id === type.id).fields).toHaveLength(2)
+  })
 })
 
 describe('deleting a field is acknowledged', () => {
@@ -196,6 +211,68 @@ describe('a retype is gated on the values it would strand', () => {
     expect((await get('items.get', { id: item.id })).customFields.find((f: { fieldId: number }) => f.fieldId === size.id)?.value).toBe('large')
     const types = await get('itemTypes.list', undefined)
     expect(types.find((t: { id: number }) => t.id === type.id).fields.find((f: { id: number }) => f.id === size.id).fieldType).toBe('text')
+  })
+
+  // Retyping two fields at once is fine while neither has a casualty — the
+  // constraint is one field NEEDING A CLEAR, not one upsert.
+  it('retypes two fields that strand nothing, with no flags', async () => {
+    const { type, item, size, note } = await fixture('RetypeTwoClean', ['120', '42'])
+    const res = await data('itemTypes.updateFields', {
+      id: type.id,
+      upserts: [
+        { id: size.id, name: 'size', fieldType: 'number' },
+        { id: note.id, name: 'note', fieldType: 'number' },
+      ],
+      deletedIds: [],
+    })
+    expect(res.fields.map((f: { fieldType: string }) => f.fieldType)).toEqual(['number', 'number'])
+    const after = await get('items.get', { id: item.id })
+    expect(after.customFields.find((f: { fieldId: number }) => f.fieldId === size.id)?.value).toBe('120')
+    expect(after.customFields.find((f: { fieldId: number }) => f.fieldId === note.id)?.value).toBe('42')
+  })
+
+  // Also fine: two retyped, one dirty. The single count describes the only field
+  // that is losing anything, and the clean field's values must survive untouched.
+  it('retypes two fields when only one strands values, counting that one', async () => {
+    const { type, item, size, note } = await fixture('RetypeOneDirty', ['120', 'hello'])
+    const res = await data('itemTypes.updateFields', {
+      id: type.id,
+      upserts: [
+        { id: size.id, name: 'size', fieldType: 'number' },
+        { id: note.id, name: 'note', fieldType: 'number' },
+      ],
+      deletedIds: [],
+      clearIncompatible: true,
+      acknowledgedValueCount: 1,
+    })
+    expect(res.fields.map((f: { fieldType: string }) => f.fieldType)).toEqual(['number', 'number'])
+    const after = await get('items.get', { id: item.id })
+    expect(after.customFields.find((f: { fieldId: number }) => f.fieldId === size.id)?.value).toBe('120')
+    expect(after.customFields.find((f: { fieldId: number }) => f.fieldId === note.id)).toBeUndefined()
+  })
+
+  // Two fields that both need clearing cannot be expressed: one count cannot
+  // describe both, and a request-level total would let a client attest to the
+  // values it was shown while clearing another field's unseen ones.
+  it('refuses a request that would clear two fields at once', async () => {
+    const { type, item, size, note } = await fixture('RetypeTwoDirty', ['large', 'hello'])
+    expect(await code('itemTypes.updateFields', {
+      id: type.id,
+      upserts: [
+        { id: size.id, name: 'size', fieldType: 'number' },
+        { id: note.id, name: 'note', fieldType: 'number' },
+      ],
+      deletedIds: [],
+      clearIncompatible: true,
+      acknowledgedValueCount: 2,
+    })).toBe('BAD_REQUEST')
+
+    // Both values survive, and neither field was retyped.
+    const after = await get('items.get', { id: item.id })
+    expect(after.customFields.find((f: { fieldId: number }) => f.fieldId === size.id)?.value).toBe('large')
+    expect(after.customFields.find((f: { fieldId: number }) => f.fieldId === note.id)?.value).toBe('hello')
+    const types = await get('itemTypes.list', undefined)
+    expect(types.find((t: { id: number }) => t.id === type.id).fields.map((f: { fieldType: string }) => f.fieldType)).toEqual(['text', 'text'])
   })
 })
 
