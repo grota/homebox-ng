@@ -13,6 +13,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
       useUtils: () => ({
         items: { list: { invalidate: vi.fn() }, get: { invalidate: vi.fn() } },
+        tags: { list: { invalidate: vi.fn() } },
       }),
       items: {
         list: {
@@ -53,7 +54,11 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       },
       locations: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
       itemTypes: { list: { useQuery: () => ({ data: [{ id: 1, name: 'Light', fields: [] }], isLoading: false }) } },
-      tags: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
+      tags: {
+        list: { useQuery: () => ({ data: [], isLoading: false }) },
+        create: { useMutation: () => ({ mutateAsync: vi.fn(async () => ({ id: 7, name: 'new', color: null })), isPending: false, error: null }) },
+        assign: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
+      },
       // `<AppProviders>` renders `<SettingsProvider>`, which reads `settings.get`
       // and wires `settings.update`. Return `data: undefined` so the provider falls
       // back to the spec defaults.

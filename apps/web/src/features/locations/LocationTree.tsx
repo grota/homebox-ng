@@ -1,6 +1,8 @@
+import { Button } from '../../ui'
+
 // Structurally compatible with the `LocationDto` returned by `locations.list`
 // ({ id, name, parentId, description, depth, children? }).
-type LocationTreeItem = {
+export type LocationTreeItem = {
   id: number
   name: string
   parentId: number | null
@@ -9,24 +11,34 @@ type LocationTreeItem = {
   children?: LocationTreeItem[]
 }
 
-export function LocationTree({ locations }: { locations: LocationTreeItem[] }) {
+type LocationTreeProps = {
+  locations: LocationTreeItem[]
+  onEdit: (location: LocationTreeItem) => void
+  onDelete: (location: LocationTreeItem) => void
+}
+
+export function LocationTree({ locations, onEdit, onDelete }: LocationTreeProps) {
   if (locations.length === 0) return <p>No locations yet.</p>
   return (
     <ul className="list-none pl-0">
       {locations.map((loc) => (
-        <LocationBranch key={loc.id} location={loc} />
+        <li key={loc.id}>
+          <div className="flex items-center gap-2">
+            <span>{loc.name}</span>
+            <Button size="sm" onClick={() => onEdit(loc)}>
+              Edit
+            </Button>
+            <Button size="sm" variant="danger" onClick={() => onDelete(loc)}>
+              Delete
+            </Button>
+          </div>
+          {loc.children && loc.children.length > 0 ? (
+            <div className="pl-4">
+              <LocationTree locations={loc.children} onEdit={onEdit} onDelete={onDelete} />
+            </div>
+          ) : null}
+        </li>
       ))}
     </ul>
-  )
-}
-
-function LocationBranch({ location }: { location: LocationTreeItem }) {
-  return (
-    <li>
-      <span>{location.name}</span>
-      {location.children && location.children.length > 0 ? (
-        <LocationTree locations={location.children} />
-      ) : null}
-    </li>
   )
 }
