@@ -116,6 +116,33 @@ describe('the field diff is non-destructive', () => {
     expect(await code('itemTypes.updateFields', { id: a.type.id, upserts: [], deletedIds: [b.size.id] })).toBe('BAD_REQUEST')
   })
 
+  // An omitted attribute PRESERVES the stored one. Nothing in this diff is
+  // inferred from omission — that is the whole shape of the fix — so a caller
+  // that only wants to rename a field must not silently drop its `required` or
+  // its `config`. This is what pins the `??` chains over `||` in the service.
+  it('preserves required and config when the upsert omits them', async () => {
+    const { type, size } = await fixture('OmitPreserves')
+    await data('itemTypes.updateFields', {
+      id: type.id,
+      upserts: [{ id: size.id, name: 'size', fieldType: 'text', required: true, config: { unit: 'cm' } }],
+      deletedIds: [],
+    })
+    const set = (await get('itemTypes.list')).find((t: { id: number }) => t.id === type.id).fields.find((f: { id: number }) => f.id === size.id)
+    expect(set.required).toBe(true)
+    expect(set.config).toEqual({ unit: 'cm' })
+
+    // Rename only — neither `required` nor `config` is on the wire.
+    const updated = await data('itemTypes.updateFields', {
+      id: type.id,
+      upserts: [{ id: size.id, name: 'size (cm)', fieldType: 'text' }],
+      deletedIds: [],
+    })
+    const after = updated.fields.find((f: { id: number }) => f.id === size.id)
+    expect(after.name).toBe('size (cm)')
+    expect(after.required).toBe(true)
+    expect(after.config).toEqual({ unit: 'cm' })
+  })
+
   // One field cannot be updated in place AND deleted by the same request: the
   // delete would remove the very row the update claims to keep, so the update
   // would silently hit zero rows. Nothing here is inferred — so this is refused
@@ -287,6 +314,21 @@ describe('fieldValueUsage', () => {
     const blank = await get('itemTypes.fieldValueUsage', { typeId: type.id, fieldId: note.id })
     expect(blank.total).toBe(0)
     expect(blank.items).toEqual([])
+  })
+
+  // The emptiness predicate is `IS NOT NULL AND <> ''` — a LENGTH test, never
+  // truthiness. `'0'` is the case that separates the two: it is falsy to JS and
+  // to a SQLite `WHERE value`, but it is real data, and a refactor to a
+  // truthiness check would silently stop counting it (and would let a `number`
+  // field's zero be destroyed as if it were blank).
+  it("counts '0' as data, and as fitting a number", async () => {
+    const { type, size } = await fixture('UsageZero', ['0', 'hello'])
+    const usage = await get('itemTypes.fieldValueUsage', { typeId: type.id, fieldId: size.id })
+    expect(usage.total).toBe(1)
+    expect(usage.items).toEqual([{ itemId: expect.any(Number), name: 'UsageZero item', value: '0' }])
+    // Not an offender for a number retype either: the one value that is counted
+    // is also the one that fits.
+    expect((await get('itemTypes.fieldValueUsage', { typeId: type.id, fieldId: size.id, fieldType: 'number' })).total).toBe(0)
   })
 
   it('narrows to values that do not fit the given type', async () => {
