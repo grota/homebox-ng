@@ -26,8 +26,9 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   `(packages/db/src/schema.ts:45)` `(packages/db/src/schema.ts:71)`
 - **tag** — a free-form label (unique name + color), attachable to many items via the
   `item_tags` join. `(packages/db/src/schema.ts:82)`
-- **image / photo** — an item's photo, the fork's analog of an attachment (there is no separate
-  `attachments` entity). `originalPath` is always preserved; `editedPath` is set only after a
+- **image / photo** — an item's photo, the fork's analog of an attachment and the only one:
+  attachments were dropped, so there is no separate `attachments` entity (v1 spec, non-goals).
+  `originalPath` is always preserved; `editedPath` is set only after a
   non-destructive edit; `thumbPath` is always present; `isPrimary` marks the cover.
   `(packages/db/src/schema.ts:116)`
 - **non-destructive editor** — crop/rotate/resize writes a new `editedPath` and leaves the
