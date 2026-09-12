@@ -26,6 +26,19 @@ import { rebuildFTS } from '../src/modules/items/fts.js'
 // has something to report.
 const ADMIN = { name: 'Admin', email: 'a@a.com', password: 'aaaaaaaa' }
 
+// These defaults are cwd-relative ON PURPOSE, and must not be "fixed" to resolve
+// against the repo root. On this branch the agreement holds: `pnpm --filter
+// @homebox/api seed` runs with `apps/api` as the cwd, and the API resolves its
+// own relative defaults the same way, so both land on `apps/api/data/homebox.db`.
+//
+// The hazard is a sibling branch (not merged here) that resolves a relative
+// `DATABASE_PATH`/`DATA_DIR` against the REPO ROOT. Once it lands, a bare
+// `pnpm --filter @homebox/api seed` would populate `apps/api/data/homebox.db`
+// while the server reads `<root>/data/homebox.db` — silently, seeding a database
+// nothing serves. The owed reconciliation is to make BOTH ends resolve the same
+// way in one commit (either both root-relative, or the script re-rooted to match
+// the server); changing this line alone first would break today's agreement and
+// is not the fix.
 const dbPath = process.env.DATABASE_PATH ?? './data/homebox.db'
 const dataDir = process.env.DATA_DIR ?? './data'
 
