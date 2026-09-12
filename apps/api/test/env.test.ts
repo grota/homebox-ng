@@ -1,29 +1,45 @@
 import { describe, it, expect } from 'vitest'
 import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DEFAULT_DATA_DIR, loadEnv } from '../src/env'
+import { DEFAULT_DATA_DIR, loadEnv, resolveDataPath } from '../src/env'
 
 // The workspace root as *this test file* sees it: `apps/api/test/env.test.ts` →
 // three levels up.
 const repoRoot = fileURLToPath(new URL('../../..', import.meta.url))
 
-describe('env defaults', () => {
-  // `pnpm --filter @homebox/api start` runs with `apps/api` as its cwd, so a
-  // cwd-relative default put the data dir (uploads, detection model cache) at
-  // `apps/api/data`. The default is derived from the module's own location
-  // instead, which is what makes it independent of where the process started.
-  it('resolves the default DATA_DIR against the workspace root, not the cwd', () => {
+describe('env data paths', () => {
+  // `pnpm --filter @homebox/api start` runs with `apps/api` as its cwd, so these
+  // used to land at `apps/api/data`. They are resolved against the workspace root
+  // now — derived from the module's own location, so where the process was
+  // started is irrelevant.
+  it('resolves the default data paths against the workspace root, not the cwd', () => {
     expect(isAbsolute(DEFAULT_DATA_DIR)).toBe(true)
     expect(DEFAULT_DATA_DIR).toBe(join(repoRoot, 'data'))
-    // With no DATA_DIR in the environment, `loadEnv` hands back that default.
-    expect(loadEnv({ SESSION_SECRET: 'secret' }).DATA_DIR).toBe(DEFAULT_DATA_DIR)
+
+    const env = loadEnv({ SESSION_SECRET: 'secret' })
+    expect(env.DATA_DIR).toBe(join(repoRoot, 'data'))
+    expect(env.DATABASE_PATH).toBe(join(repoRoot, 'data', 'homebox.db'))
   })
 
-  // An explicit DATA_DIR still wins, and a relative one keeps resolving against
-  // the process cwd: an existing install's uploads live where that path has
-  // always pointed, so moving it would orphan them.
-  it('leaves an explicitly supplied DATA_DIR alone', () => {
+  // `.env.example` ships exactly these two literals, so they are the paths most
+  // installs actually run with — an explicit relative value gets the same
+  // treatment as the default, rather than silently meaning `apps/api/data`.
+  it('resolves relative values supplied in the environment the same way', () => {
+    const env = loadEnv({
+      SESSION_SECRET: 'secret',
+      DATA_DIR: './data',
+      DATABASE_PATH: './data/homebox.db',
+    })
+    expect(env.DATA_DIR).toBe(join(repoRoot, 'data'))
+    expect(env.DATABASE_PATH).toBe(join(repoRoot, 'data', 'homebox.db'))
+
+    expect(resolveDataPath('./custom')).toBe(join(repoRoot, 'custom'))
+  })
+
+  // Absolute values are used as given: every test and the e2e suite point the app
+  // at a `mkdtemp` directory, and a deploy can point it anywhere on disk.
+  it('leaves an absolute data path alone', () => {
+    expect(resolveDataPath('/srv/homebox')).toBe('/srv/homebox')
     expect(loadEnv({ SESSION_SECRET: 'secret', DATA_DIR: '/srv/homebox' }).DATA_DIR).toBe('/srv/homebox')
-    expect(loadEnv({ SESSION_SECRET: 'secret', DATA_DIR: './custom' }).DATA_DIR).toBe('./custom')
   })
 })

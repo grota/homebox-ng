@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // Load the repo-root `.env` (path is the same from `src/` and `dist/` — both are
@@ -25,12 +25,17 @@ export type Env = {
   SESSION_SECRET: string
 }
 
-// Where the data dir (uploads, detection model cache) lands when `DATA_DIR` is
-// not set. Resolved against the workspace root, NOT the process cwd: `start`
-// runs with `apps/api` as its cwd, so a bare `./data` put it at `apps/api/data`.
 // This module sits at `<root>/apps/api/{src,dist}`, so three `..` land on the
 // workspace root — the same walk the `.env` lookup above makes.
-export const DEFAULT_DATA_DIR = join(fileURLToPath(new URL('../../..', import.meta.url)), 'data')
+const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
+
+// Every data path in `.env` (`DATA_DIR`, `DATABASE_PATH`) resolves against the
+// workspace root, never the process cwd. `start` runs with `apps/api` as its cwd,
+// so `DATA_DIR=./data` would otherwise mean `apps/api/data`: the same line in the
+// same `.env` pointing at a different directory depending on who started the
+// process. Absolute values are used as given.
+export const resolveDataPath = (value: string): string =>
+  isAbsolute(value) ? value : join(REPO_ROOT, value)
 
 // Only SESSION_SECRET is truly required (it guards session cookies in a later
 // phase). The rest fall back to the values in `.env.example`.
@@ -38,8 +43,12 @@ const REQUIRED = ['SESSION_SECRET'] as const
 const DEFAULTS = {
   PORT: '3000',
   DATABASE_PATH: './data/homebox.db',
-  DATA_DIR: DEFAULT_DATA_DIR,
+  DATA_DIR: './data',
 } as const
+
+// The data dir used when `DATA_DIR` is unset — and the fallback for callers that
+// never read env at all (`buildApp`, the `detection:model` CLI).
+export const DEFAULT_DATA_DIR = resolveDataPath(DEFAULTS.DATA_DIR)
 
 // Lazily read env so importing this module has no side effects — `buildApp`
 // never calls `loadEnv`, so tests (which build the app with an explicit in-memory
@@ -59,8 +68,11 @@ export const loadEnv = (env: NodeJS.ProcessEnv = process.env): Env => {
   }
   return {
     PORT: Number(env.PORT ?? DEFAULTS.PORT),
-    DATABASE_PATH: env.DATABASE_PATH ?? DEFAULTS.DATABASE_PATH,
-    DATA_DIR: env.DATA_DIR ?? DEFAULTS.DATA_DIR,
+    // Both absolute by the time they leave here, so every consumer (index.ts's
+    // `mkdirSync`/`createDb`, the upload and backup routes) can join onto them
+    // without caring where the process was started from.
+    DATABASE_PATH: resolveDataPath(env.DATABASE_PATH ?? DEFAULTS.DATABASE_PATH),
+    DATA_DIR: resolveDataPath(env.DATA_DIR ?? DEFAULTS.DATA_DIR),
     SESSION_SECRET: env.SESSION_SECRET as string,
   }
 }
