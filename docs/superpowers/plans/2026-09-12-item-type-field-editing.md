@@ -400,7 +400,7 @@ from.
 - Modify: `apps/api/src/modules/itemTypes/router.ts`
 
 **Interfaces:**
-- Consumes: `fitsFieldType`, `isRealDataValue`, `FieldType` from `@homebox/shared` (Task 1).
+- Consumes: `fitsFieldType`, `FieldType` from `@homebox/shared` (Task 1).
 - Produces (repo):
   - `applyFieldOps(db, typeId: number, upserts: FieldUpsert[], deletedIds: number[]): ItemTypeFieldRow[]` — does **not** open a transaction (the service owns it), mirroring `items/repo.ts`'s `replaceFieldValues`.
   - `getField(db, id: number): ItemTypeFieldRow | undefined`
@@ -1704,7 +1704,8 @@ spec's *Out of scope* section.
 
 ## Self-review notes (for the plan's author, not the implementer)
 
-- **Spec coverage.** §1 invariant → Task 3 (the flags). §2 emptiness → Task 1 (`isRealDataValue`),
+- **Spec coverage.** §1 invariant → Task 3 (the flags). §2 emptiness → Task 3's
+  `listNonEmptyValues` SQL predicate,
   Task 3 (the `listNonEmptyValues` predicate), Task 3's tests. §3 explicit diff → Task 3
   (`applyFieldOps`), Task 4 (the single-upsert row). §4 predicate → Task 1. §5 per-attribute rules
   → Task 3 (only `fieldType` gated; delete needs the flag), Task 4 (`required` toggle). §6 API
