@@ -150,8 +150,10 @@ values or refuses to submit.
 - **`itemTypes.updateFields({ id, upserts, deletedIds, clearIncompatible?,
   acknowledgeValueLoss?, acknowledgedValueCount? })`** → the hydrated type. `id` names the type,
   matching `itemTypes.update`. One transaction: validate that every id belongs to the type →
-  apply upserts → apply deletes → clear the acknowledged values. A dedicated procedure rather
-  than overloading `update`, because the field set now carries its own validation, refusal
+  clear the acknowledged values → apply the deletes → apply the upserts. That is the order the
+  code runs in; the clears are computed from the pre-write field rows, and no field may be both
+  deleted and upserted (refused, below), so the last two steps cannot interact. A dedicated procedure
+  rather than overloading `update`, because the field set now carries its own validation, refusal
   rules and destructive flags — that is an interface, not a parameter.
 - **`itemTypes.fieldValueUsage({ typeId, fieldId, fieldType? })`** →
   `{ total, missing, items: [{ itemId, name, value }] }`, non-empty values only. `fieldType`
@@ -162,8 +164,17 @@ values or refuses to submit.
   `fieldId` sits beside it.)
 - **`create` is unchanged** — insert-only `fields`, as today.
 - **Errors.** `PRECONDITION_FAILED` when a required acknowledgment is absent.
-  `CONFLICT` when `acknowledgedValueCount` no longer matches (§7). `BAD_REQUEST` when an id
-  does not belong to the type. Messages are user-facing sentences, since the UI displays them.
+  `CONFLICT` when `acknowledgedValueCount` no longer matches (§7). Messages are user-facing
+  sentences, since the UI displays them. Three `BAD_REQUEST`s:
+  - an id that does not belong to the type (an upsert's or a `deletedIds` entry's);
+  - an id that appears in **both** `upserts` and `deletedIds`. Refused rather than resolved:
+    the delete removes the row the upsert claims to keep, so the upsert would silently hit zero
+    rows. Nothing in this diff is inferred, so an ambiguous intent is an error, not a
+    precedence rule;
+  - a request in which **more than one field would need its values cleared** — "Only one field
+    can be converted at a time." A request-level count cannot be satisfied for two dirty fields
+    (§7), and making it a total would let a client attest to the one field's casualties while
+    silently clearing another's unseen ones.
 
 ### 7. Atomicity, the count pin, and the stale-list hole
 
@@ -179,6 +190,12 @@ Without the pin, a value added between opening the modal and clicking the button
 destroyed without ever being shown. Splitting "clear" and "retype" into two requests is
 rejected outright: a failure between them leaves values destroyed and the type unchanged — the
 worst outcome, data gone with nothing gained.
+
+`N` describes exactly one field, which is why a request may carry **at most one field that needs
+its values cleared** (§6). A request whose number would be the sum of two fields' casualties can
+never be satisfied: the modal showed one field's list, so the client could not have seen the
+other's. Retyping several fields at once stays allowed while at most one of them strands
+anything.
 
 ### 8. UI
 
@@ -205,7 +222,8 @@ worst outcome, data gone with nothing gained.
 
 The field row, the add-field row and the create-type form gain a `required` checkbox —
 otherwise the column is dead weight and the form's `required` attribute stays permanently
-false.
+false. The add-field row's payload carries it (`{ name, fieldType, required }`), so a field added
+to an existing type can start required instead of costing a second save.
 
 - Toggling it is non-destructive and always allowed.
 - **It is not enforced server-side, deliberately.** `required` stays a browser-level constraint

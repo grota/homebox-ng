@@ -44,7 +44,10 @@ and the server re-validates that acknowledgment inside the transaction.**
 4. **Destroying is one request.** The retype request carries `clearIncompatible` plus
    `acknowledgedValueCount`; the server recomputes the non-fitting set inside the transaction,
    refuses with `CONFLICT` if the count moved, and otherwise clears and retypes atomically.
-   Deleting a field requires the same shape of acknowledgment (`acknowledgeValueLoss`).
+   Deleting a field requires the same shape of acknowledgment (`acknowledgeValueLoss`). The
+   count describes **one** field, so a request in which two fields would need clearing is
+   refused (`BAD_REQUEST`, "Only one field can be converted at a time") rather than summed: a
+   request-level total cannot be satisfied against a modal that showed one field's list.
 5. **One compatibility predicate, in `packages/shared`.** It mirrors the browser's constraints,
    since those are what actually break, and it has two callers — the server's gate and the
    web's pre-warning — which must not drift.
@@ -89,6 +92,10 @@ and the server re-validates that acknowledgment inside the transaction.**
 - **The count pin can cost a re-check.** If a value changes between the modal opening and the
   button being pressed, the retype is refused and the user looks again. That is the intended
   trade: a stale list is cheap, a destroyed value is not.
+- **One field per request.** Because the pin is a single count, a request may carry at most one
+  field whose values need clearing; retyping two such fields at once is refused and has to be
+  split into two requests, each with its own count and its own confirmation. Retyping several
+  fields in one request stays allowed while at most one of them strands anything.
 - **One more procedure and one more query** (`updateFields`, `fieldValueUsage`) rather than
   folding both into `itemTypes.update`. Chosen because the field set now has its own validation,
   refusal rules and destructive flags; the alternative overloads one procedure's error contract.
