@@ -74,7 +74,7 @@ export const createItemType = (db: DrizzleDb, input: ItemTypeInput & { fields: I
   return toDto(created, created.fields)
 }
 
-export const updateItemType = (db: DrizzleDb, input: { id: number; name?: string; description?: string | null; fields?: ItemTypeFieldInput[] }): ItemTypeDto => {
+export const updateItemType = (db: DrizzleDb, input: { id: number; name?: string; description?: string | null }): ItemTypeDto => {
   const existing = repo.getType(db, input.id)
   if (!existing) throw new TRPCError({ code: 'NOT_FOUND' })
 
@@ -89,22 +89,7 @@ export const updateItemType = (db: DrizzleDb, input: { id: number; name?: string
   // name (not the description), so reindex only when the name changed.
   if (input.name !== undefined) reindexItemType(db, input.id)
 
-  const fields =
-    input.fields !== undefined
-      ? repo.replaceTypeFields(
-          db,
-          input.id,
-          input.fields.map((f) => ({
-            name: f.name,
-            fieldType: f.fieldType,
-            required: f.required ?? false,
-            config: f.config ?? null,
-            sortOrder: f.sortOrder ?? 0,
-          }))
-        )
-      : repo.getTypeFields(db, input.id)
-
-  return toDto(row, fields)
+  return toDto(row, repo.getTypeFields(db, input.id))
 }
 
 export type FieldUpsertInput = {

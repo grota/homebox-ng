@@ -75,20 +75,6 @@ export type UpdateTypeData = Partial<Pick<CreateTypeData, 'name' | 'description'
 export const updateType = (db: DrizzleDb, id: number, data: UpdateTypeData): ItemTypeRow =>
   db.update(itemTypes).set(data).where(eq(itemTypes.id, id)).returning(TYPE_FIELDS).get()
 
-// Replace a type's whole field set: delete the existing defs, then insert the
-// new ones, all in one transaction. Returns the freshly-inserted field rows.
-export const replaceTypeFields = (db: DrizzleDb, typeId: number, fields: CreateFieldData[]): ItemTypeFieldRow[] =>
-  db.transaction((tx) => {
-    tx.delete(itemTypeFields).where(eq(itemTypeFields.itemTypeId, typeId)).run()
-    return fields.map((f) =>
-      tx
-        .insert(itemTypeFields)
-        .values({ itemTypeId: typeId, name: f.name, fieldType: f.fieldType, required: f.required, config: f.config, sortOrder: f.sortOrder })
-        .returning(FIELD_FIELDS)
-        .get()
-    )
-  })
-
 export const getField = (db: DrizzleDb, id: number): ItemTypeFieldRow | undefined =>
   db.select(FIELD_FIELDS).from(itemTypeFields).where(eq(itemTypeFields.id, id)).get()
 

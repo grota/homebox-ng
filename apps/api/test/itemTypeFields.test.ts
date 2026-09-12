@@ -61,7 +61,7 @@ beforeAll(async () => {
 afterAll(() => app?.close())
 
 describe('the field diff is non-destructive', () => {
-  // THE REGRESSION. `replaceTypeFields` deleted every field row and re-inserted
+  // THE REGRESSION. The update path used to delete every field row and re-insert
   // it, so the cascade from `item_custom_field_values.field_id` took every value
   // with it. A rename must now be an UPDATE of the same row.
   it('keeps stored values when a field is renamed', async () => {

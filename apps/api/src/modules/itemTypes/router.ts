@@ -3,7 +3,7 @@ import { FIELD_TYPES, itemTypeInput } from '@homebox/shared'
 import { t, adminProcedure, protectedProcedure } from '../../trpc.js'
 import * as service from './service.js'
 
-// One custom field definition, provided inline on create/update. `config` is an
+// One custom field definition, provided inline on create. `config` is an
 // arbitrary JSON object (stored as-is in the JSON column); `sortOrder` controls
 // display order within the type.
 export const ItemTypeFieldInputSchema = z.object({
@@ -19,13 +19,14 @@ export type ItemTypeFieldInput = z.infer<typeof ItemTypeFieldInputSchema>
 // type's field definitions, defaulting to an empty set.
 const createInput = itemTypeInput.extend({ fields: z.array(ItemTypeFieldInputSchema).default([]) })
 
-// `update` takes an optional subset of scalar fields; when `fields` is provided
-// it replaces the type's whole field set.
+// `update` takes an optional subset of scalar fields. It deliberately has no
+// `fields`: an edit that replaced the whole field set would delete the field
+// rows and cascade every stored value away, so the field set is changed one row
+// at a time through `updateFields` instead (see ADR-0003).
 const updateInput = z.object({
   id: z.number().int().positive(),
   name: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
-  fields: z.array(ItemTypeFieldInputSchema).optional(),
 })
 const idInput = z.object({ id: z.number().int().positive() })
 

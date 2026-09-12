@@ -27,6 +27,8 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       useUtils: () => ({
         itemTypes: { list: { invalidate: mocks.invalidate } },
         items: { list: { invalidate: mocks.invalidate } },
+        // `TypeFields` reads the delete warning's count imperatively.
+        client: { itemTypes: { fieldValueUsage: { query: vi.fn(async () => ({ total: 0, missing: 0, items: [] })) } } },
       }),
       auth: { me: { useQuery: () => ({ data: { id: 1, name: 'Admin', email: 'a@b.co', role: mocks.role }, isLoading: false }) } },
       itemTypes: {
@@ -38,6 +40,10 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         },
         create: { useMutation: mutation(mocks.create) },
         update: { useMutation: mutation(mocks.update) },
+        // The field editor renders whenever a type is open for editing, so its
+        // mutation has to resolve here even though its behaviour is covered by
+        // `typeFields.test.tsx`.
+        updateFields: { useMutation: mutation(vi.fn()) },
         delete: { useMutation: mutation(mocks.remove) },
       },
       // `<AppProviders>` renders `<SettingsProvider>`, which reads `settings.get`
@@ -77,46 +83,40 @@ describe('item types page', () => {
     // Add a custom-field row, then name it — a fresh form starts with no rows.
     fireEvent.click(screen.getByRole('button', { name: 'Add field' }))
     fireEvent.change(screen.getByPlaceholderText('Field name'), { target: { value: 'author' } })
+    // The `required` toggle is live on creation too, not only in the editor.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Required' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Create type' }))
 
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ name: 'Books', description: 'Shelved', fields: [{ name: 'author', fieldType: 'text' }] }))
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ name: 'Books', description: 'Shelved', fields: [{ name: 'author', fieldType: 'text', required: true }] }))
     await waitFor(() => expect(mocks.invalidate).toHaveBeenCalled())
   })
 
-  // The guard that matters: `update` replaces the type's WHOLE field set, and
-  // `item_custom_field_values.field_id` cascades — so re-sending an untouched
-  // set on a plain rename would delete every item's values for this type.
-  it('omits fields when an edit only renames the type', async () => {
+  // `update` no longer carries `fields` at all, so no edit can replace — and
+  // cascade away the values of — fields it did not touch. The field set is
+  // edited one row at a time through `TypeFields` (ADR-0003).
+  it('sends a name-only edit with no fields key', async () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Renamed' } })
+    // The field editor's own rows are labelled "Name" too, so the type's input
+    // has to be picked out by its id.
+    fireEvent.change(screen.getByLabelText('Name', { selector: '#type-name' }), { target: { value: 'Renamed' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
-    await waitFor(() => expect(mocks.update).toHaveBeenCalled())
-    const payload = mocks.update.mock.calls[0][0] as Record<string, unknown>
-    expect(payload).toMatchObject({ id: 1, name: 'Renamed' })
-    expect(payload).not.toHaveProperty('fields')
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ id: 1, name: 'Renamed', description: '' }))
   })
 
-  it('sends fields when the field set actually changed', async () => {
+  // The page's half of the split: the stored fields are handed to the editor,
+  // which is what makes a per-row diff possible at all.
+  it('shows the field editor for the type being edited', async () => {
     renderPage()
 
+    expect(screen.queryByLabelText('New field name')).toBeNull()
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add field' }))
-    // The loaded field's own input shares the placeholder, so the fresh row is
-    // the last match.
-    const fieldInputs = screen.getAllByPlaceholderText('Field name')
-    fireEvent.change(fieldInputs[fieldInputs.length - 1], { target: { value: 'author' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
-    await waitFor(() => expect(mocks.update).toHaveBeenCalled())
-    const payload = mocks.update.mock.calls[0][0] as { fields?: unknown[] }
-    expect(payload.fields).toEqual([
-      { name: 'qty', fieldType: 'number' },
-      { name: 'author', fieldType: 'text' },
-    ])
+    expect(await screen.findByLabelText('New field name')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('qty')).toBeInTheDocument()
   })
 
   it('deletes a type once the confirmation is accepted', async () => {
