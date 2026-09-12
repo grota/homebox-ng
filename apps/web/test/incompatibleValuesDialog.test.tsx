@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 
 import { IncompatibleValuesDialog, type Offender } from '../src/features/itemTypes/IncompatibleValuesDialog'
@@ -21,6 +21,7 @@ const defaults: ComponentProps<typeof IncompatibleValuesDialog> = {
   targetType: 'number',
   offenders: offenders(2),
   total: 2,
+  refreshError: null,
   onConfirm: () => {},
   onCancel: () => {},
 }
@@ -88,6 +89,42 @@ describe('incompatible values dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
     expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(window.confirm).not.toHaveBeenCalled()
+  })
+
+  // The caller re-reads the list while this is open, and the count can reach zero —
+  // that is the admin fixing every value in the tab the links opened. Nothing is
+  // left to destroy, so the retype is offered plainly: no clear wording, and no
+  // confirmation of a loss that would no longer happen.
+  it('offers a plain convert once nothing is left to clear', () => {
+    const onConfirm = vi.fn()
+    renderDialog({ offenders: [], total: 0, onConfirm })
+
+    expect(screen.getByText(/No stored value blocks number/)).toBeInTheDocument()
+    expect(screen.queryByText(/Clear/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Convert' }))
+
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(window.confirm).not.toHaveBeenCalled()
+  })
+
+  // A refresh that failed leaves the count unverified, and the form's alert cannot
+  // carry that news into here: it renders outside the portal, behind the overlay,
+  // `aria-hidden` to assistive tech. So the dialog says it itself, and the action
+  // the count would commit to cannot fire.
+  it('surfaces a failed refresh in the dialog and refuses the action', () => {
+    const onConfirm = vi.fn()
+    renderDialog({ refreshError: 'Session expired', onConfirm })
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Session expired')
+
+    const destructive = within(dialog).getByRole('button', { name: 'Clear 2 values and convert' })
+    expect(destructive).toBeDisabled()
+    fireEvent.click(destructive)
+
     expect(onConfirm).not.toHaveBeenCalled()
     expect(window.confirm).not.toHaveBeenCalled()
   })

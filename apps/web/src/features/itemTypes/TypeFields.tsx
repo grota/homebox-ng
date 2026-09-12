@@ -31,6 +31,8 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
   // count shown on the row that is waiting for them.
   const [pending, setPending] = useState<{ row: DraftRow; usage: FieldValueUsage } | null>(null)
   const [usageFor, setUsageFor] = useState<{ key: number; total: number } | null>(null)
+  // The re-check's own failure, which belongs to the dialog rather than the form.
+  const [recheckError, setRecheckError] = useState<string | null>(null)
 
   // The server owns the rows: it assigns an added field its id, and a deletion
   // takes one away. Both come back through the `fields` prop on the refetch, so
@@ -92,6 +94,13 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
     setUsageFor(usage && usage.total > 0 ? { key: row.key, total: usage.total } : null)
   }
 
+  // The one shape a row's save takes — the retype paths below add their flags to it.
+  const upsertRow = (row: DraftRow) => ({
+    id: typeId,
+    upserts: [{ id: row.id, name: row.name, fieldType: row.fieldType, required: row.required, sortOrder: row.sortOrder }],
+    deletedIds: [],
+  })
+
   // A retype is the one edit the API gates while the field still holds values it
   // would strand, so the check happens here and the refusal becomes the dialog. A
   // retype that strands nothing is an ordinary save: no dialog, and no clear flag.
@@ -103,11 +112,12 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
       if (usage.total > 0) {
         // The dialog is handed the offenders, and hands back the count it showed —
         // which is the number the server re-validates before clearing anything.
+        setRecheckError(null)
         setPending({ row, usage })
         return
       }
     }
-    await run({ id: typeId, upserts: [{ id: row.id, name: row.name, fieldType: row.fieldType, required: row.required, sortOrder: row.sortOrder }], deletedIds: [] })
+    await run(upsertRow(row))
   }
 
   // The dialog's list is a snapshot, and the whole point of its links is that the
@@ -118,10 +128,18 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
   useEffect(() => {
     if (!pending) return
     const recheck = async () => {
-      const usage = await readUsage({ fieldId: pending.row.id, fieldType: pending.row.fieldType })
-      if (!usage) return
-      setPending((current) => (current ? { ...current, usage } : current))
-      setUsageFor(usage.total > 0 ? { key: pending.row.key, total: usage.total } : null)
+      try {
+        const usage = await utils.client.itemTypes.fieldValueUsage.query({ typeId, fieldId: pending.row.id, fieldType: pending.row.fieldType })
+        setRecheckError(null)
+        setPending((current) => (current ? { ...current, usage } : current))
+        setUsageFor(usage.total > 0 ? { key: pending.row.key, total: usage.total } : null)
+      } catch (err) {
+        // This one does NOT go through `readUsage`: the form's alert is no use while
+        // the dialog is open (it renders outside Radix's portal, behind the overlay
+        // and its `aria-hidden`), and the count on screen is now unverified — so the
+        // dialog is told, and it refuses the action until a re-check lands.
+        setRecheckError(err instanceof Error ? err.message : 'Could not re-check the values this field holds')
+      }
     }
     window.addEventListener('focus', recheck)
     return () => window.removeEventListener('focus', recheck)
@@ -149,6 +167,7 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
     const row = pending?.row
     setPending(null)
     setUsageFor(null)
+    setRecheckError(null)
     if (row) {
       const saved = fields.find((f) => f.id === row.id)
       if (saved) patch(row.key, { fieldType: saved.fieldType })
@@ -228,22 +247,21 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
           targetType={pending?.row.fieldType ?? 'text'}
           offenders={pending?.usage.items ?? []}
           total={pending?.usage.total ?? 0}
+          refreshError={recheckError}
           onCancel={cancelRetype}
           onConfirm={async () => {
             if (!pending) return
             const { row, usage } = pending
             setPending(null)
             setUsageFor(null)
+            setRecheckError(null)
             // ONE field per call: the API refuses a request that would clear two,
             // because a single acknowledged count cannot attest to both. Cleared
-            // and retyped in one transaction, so they cannot diverge.
-            await run({
-              id: typeId,
-              upserts: [{ id: row.id, name: row.name, fieldType: row.fieldType, required: row.required, sortOrder: row.sortOrder }],
-              deletedIds: [],
-              clearIncompatible: true,
-              acknowledgedValueCount: usage.total,
-            })
+            // and retyped in one transaction, so they cannot diverge. The re-check
+            // can also have emptied the list while this was open — then there is
+            // nothing to clear or attest to, and this is the same plain retype the
+            // unstranded path sends.
+            await run(usage.total > 0 ? { ...upsertRow(row), clearIncompatible: true, acknowledgedValueCount: usage.total } : upsertRow(row))
           }}
         />
       )}

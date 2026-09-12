@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
 // The mutation and query spies live outside the factory so the tests can assert
 // on the calls; `vi.hoisted` is required because `vi.mock` factories are hoisted
@@ -230,6 +230,10 @@ describe('retyping a field', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
     expect(screen.getByText('Hammer')).toBeInTheDocument()
     expect(mocks.updateFields).not.toHaveBeenCalled()
+    // The gate has to be asked about the type being moved TO. Asked about the saved
+    // one, the API answers 0 and waves the stranded values through unlisted.
+    expect(mocks.usageQuery).toHaveBeenCalledWith({ typeId: 7, fieldId: 11, fieldType: 'number' })
+    expect(mocks.usageQuery).toHaveBeenLastCalledWith({ typeId: 7, fieldId: 11, fieldType: 'number' })
   })
 
   // The button commits to the count it displayed — the server re-validates that
@@ -280,8 +284,8 @@ describe('retyping a field', () => {
 
   // Leaving to fix the items in another tab is the entire point of the dialog's
   // links, so coming back re-reads the list: the count the button commits to has
-  // to be the one the server will re-validate.
-  it('re-reads the offenders when the window regains focus', async () => {
+  // to be the one the server will re-validate, and that is the count it sends.
+  it('re-reads the offenders when the window regains focus, and sends the new count', async () => {
     mocks.usageQuery.mockResolvedValue(stranded)
     renderFields()
     fireEvent.change(typeSelects()[0], { target: { value: 'number' } })
@@ -290,8 +294,65 @@ describe('retyping a field', () => {
 
     mocks.usageQuery.mockResolvedValue({ total: 1, missing: 0, items: [{ itemId: 5, name: 'Hammer', value: 'big' }] })
     window.dispatchEvent(new Event('focus'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear 1 value and convert' }))
 
-    expect(await screen.findByRole('button', { name: 'Clear 1 value and convert' })).toBeInTheDocument()
+    await waitFor(() =>
+      expect(mocks.updateFields).toHaveBeenCalledWith({
+        id: 7,
+        upserts: [{ id: 11, name: 'size', fieldType: 'number', required: false, sortOrder: 0 }],
+        deletedIds: [],
+        clearIncompatible: true,
+        acknowledgedValueCount: 1,
+      })
+    )
+  })
+
+  // The admin fixes the values by hand in the tab the links opened, and the count
+  // reaches zero while the dialog is up. Nothing is left to destroy, so the retype
+  // is a plain one: one click, no clear flag, no confirmation.
+  it('applies the retype plainly when the re-check finds nothing left to clear', async () => {
+    mocks.usageQuery.mockResolvedValue(stranded)
+    renderFields()
+    fireEvent.change(typeSelects()[0], { target: { value: 'number' } })
+    fireEvent.click(saveButtons()[0])
+    await screen.findByRole('button', { name: 'Clear 2 values and convert' })
+
+    mocks.usageQuery.mockResolvedValue({ total: 0, missing: 0, items: [] })
+    window.dispatchEvent(new Event('focus'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Convert' }))
+
+    await waitFor(() =>
+      expect(mocks.updateFields).toHaveBeenCalledWith({
+        id: 7,
+        upserts: [{ id: 11, name: 'size', fieldType: 'number', required: false, sortOrder: 0 }],
+        deletedIds: [],
+      })
+    )
+    expect(mocks.confirm).not.toHaveBeenCalled()
+  })
+
+  // A re-check that failed leaves the count on screen unverified. The form's alert
+  // cannot say so: it renders outside Radix's portal, behind the overlay and its
+  // `aria-hidden`. So the dialog carries the failure itself, and the confirm — which
+  // would commit to a count nobody re-read — cannot fire.
+  it('reports a failed re-check inside the dialog and refuses the confirm', async () => {
+    mocks.usageQuery.mockResolvedValue(stranded)
+    renderFields()
+    fireEvent.change(typeSelects()[0], { target: { value: 'number' } })
+    fireEvent.click(saveButtons()[0])
+    await screen.findByRole('button', { name: 'Clear 2 values and convert' })
+
+    mocks.usageQuery.mockRejectedValue(new Error('Session expired'))
+    window.dispatchEvent(new Event('focus'))
+
+    const dialog = screen.getByRole('dialog')
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Session expired')
+    const destructive = within(dialog).getByRole('button', { name: 'Clear 2 values and convert' })
+    expect(destructive).toBeDisabled()
+    fireEvent.click(destructive)
+
+    expect(mocks.updateFields).not.toHaveBeenCalled()
+    expect(mocks.confirm).not.toHaveBeenCalled()
   })
 
   // The pre-save read runs outside `run`'s try/catch, which covers only the

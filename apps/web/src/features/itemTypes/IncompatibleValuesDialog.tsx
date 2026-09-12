@@ -11,18 +11,31 @@ const MAX_ROWS = 50
 // snapshot of a moment, so the caller re-reads it while this is open (see
 // `TypeFields`); everything here renders what it is given.
 export function IncompatibleValuesDialog({
-  open, fieldName, targetType, offenders, total, onConfirm, onCancel,
+  open, fieldName, targetType, offenders, total, refreshError, onConfirm, onCancel,
 }: {
   open: boolean
   fieldName: string
   targetType: FieldType
   offenders: Offender[]
   total: number
+  // Set when the caller's re-read of `offenders`/`total` failed while this is open:
+  // the numbers on screen are then unverified, so the dialog says so and refuses the
+  // action they would commit to. (The form's own alert is no use here — it renders
+  // outside Radix's portal, behind its overlay and its `aria-hidden`.) Null when the
+  // list is current, which is every state a caller can present without a failed read.
+  refreshError: string | null
   onConfirm: () => void
   onCancel: () => void
 }) {
   const shown = offenders.slice(0, MAX_ROWS)
   const plural = total === 1 ? '' : 's'
+  // The caller re-reads this list while the dialog is open, so the count can fall to
+  // zero — that is the admin fixing the values in the other tab the links opened. A
+  // retype with nothing left to clear is not destructive any more, so it is offered
+  // as a plain action: "Clear 0 values" behind a second confirm would be a lie about
+  // what the click does.
+  const clearing = total > 0
+  const heading = clearing ? `“${fieldName}” cannot become ${targetType}` : `Convert “${fieldName}” to ${targetType}`
 
   return (
     // `Modal` is controlled via `onOpenChange`, and its `title` prop renders
@@ -32,24 +45,42 @@ export function IncompatibleValuesDialog({
     <Modal
       open={open}
       onOpenChange={(next) => { if (!next) onCancel() }}
-      title={`“${fieldName}” cannot become ${targetType}`}
+      title={heading}
     >
-      <h2>“{fieldName}” cannot become {targetType}</h2>
+      <h2>{heading}</h2>
       <p>
-        {total} stored value{plural} cannot be read as {targetType}. Fix them, or clear them and convert.
+        {clearing
+          ? `${total} stored value${plural} cannot be read as ${targetType}. Fix them, or clear them and convert.`
+          : `No stored value blocks ${targetType}, so nothing will be cleared.`}
       </p>
 
+      {/* A dead end needs a way out, not just a diagnosis: with the action on hold,
+          cancel and re-saving the row re-reads the list from scratch. */}
+      {refreshError && (
+        <p role="alert" className="text-danger">
+          {refreshError} The list is out of date, so converting is on hold — cancel and try again.
+        </p>
+      )}
+
       {/* The destructive action sits at the top, and asks again: it is
-          irreversible and this dialog is easy to reach by accident. */}
+          irreversible and this dialog is easy to reach by accident. With nothing to
+          clear there is nothing to ask about, so the retype becomes one click. */}
       <div className="flex justify-end">
-        <Button
-          variant="danger"
-          onClick={() => {
-            if (window.confirm(`Clear ${total} stored value${plural}? This cannot be undone.`)) onConfirm()
-          }}
-        >
-          Clear {total} value{plural} and convert
-        </Button>
+        {clearing ? (
+          <Button
+            variant="danger"
+            disabled={refreshError !== null}
+            onClick={() => {
+              if (window.confirm(`Clear ${total} stored value${plural}? This cannot be undone.`)) onConfirm()
+            }}
+          >
+            Clear {total} value{plural} and convert
+          </Button>
+        ) : (
+          <Button variant="primary" disabled={refreshError !== null} onClick={onConfirm}>
+            Convert
+          </Button>
+        )}
       </div>
 
       <ul className="list-none pl-0 max-h-[50vh] overflow-auto">
