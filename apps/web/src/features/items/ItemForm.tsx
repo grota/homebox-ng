@@ -222,20 +222,28 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
       {selectedType && selectedType.fields.length > 0 && (
         <fieldset className="border border-border rounded-lg p-3">
           <legend>Custom fields</legend>
-          {selectedType.fields.map((field) => (
+          {selectedType.fields.map((field) => {
+            // A number input defaults to step=1, so a stored decimal such as 120.50
+            // raises stepMismatch and native validation blocks the whole submit —
+            // the item becomes unsaveable. `fitsFieldType` blesses any float for
+            // these two types, so `any` is the step that matches it.
+            const numeric = field.fieldType === 'number' || field.fieldType === 'currency'
             // Both `required`s are needed: `Field`'s renders the asterisk, `Input`'s
             // is the native constraint. The label was already `name *` before this
             // conversion, so the accessible name is unchanged.
-            <Field key={field.id} label={field.name} htmlFor={`field-${field.id}`} required={field.required}>
-              <Input
-                id={`field-${field.id}`}
-                type={field.fieldType === 'number' || field.fieldType === 'currency' ? 'number' : field.fieldType === 'date' ? 'date' : field.fieldType === 'url' ? 'url' : 'text'}
-                value={fieldValues[field.id] ?? ''}
-                required={field.required}
-                onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }))}
-              />
-            </Field>
-          ))}
+            return (
+              <Field key={field.id} label={field.name} htmlFor={`field-${field.id}`} required={field.required}>
+                <Input
+                  id={`field-${field.id}`}
+                  type={numeric ? 'number' : field.fieldType === 'date' ? 'date' : field.fieldType === 'url' ? 'url' : 'text'}
+                  step={numeric ? 'any' : undefined}
+                  value={fieldValues[field.id] ?? ''}
+                  required={field.required}
+                  onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                />
+              </Field>
+            )
+          })}
         </fieldset>
       )}
 
