@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { itemTypeInput } from '@homebox/shared'
+import { FIELD_TYPES, itemTypeInput } from '@homebox/shared'
 import { t, adminProcedure, protectedProcedure } from '../../trpc.js'
 import * as service from './service.js'
 
@@ -8,7 +8,7 @@ import * as service from './service.js'
 // display order within the type.
 export const ItemTypeFieldInputSchema = z.object({
   name: z.string().min(1),
-  fieldType: z.enum(['text', 'number', 'currency', 'date', 'boolean', 'url']),
+  fieldType: z.enum(FIELD_TYPES),
   required: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   sortOrder: z.number().int().optional(),

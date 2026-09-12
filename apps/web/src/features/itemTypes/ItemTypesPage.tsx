@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { FIELD_TYPES, type FieldType } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
 import { useAuth } from '../../lib/auth'
 import { Button, Field, Input, Select, Textarea } from '../../ui'
 
-const FIELD_TYPES = ['text', 'number', 'currency', 'date', 'boolean', 'url'] as const
-
 // A draft custom-field row being edited in the form. `key` is a local (React)
 // identity so rows can be added/removed without colliding on index.
-type DraftField = { key: number; name: string; fieldType: (typeof FIELD_TYPES)[number] }
+type DraftField = { key: number; name: string; fieldType: FieldType }
 
 type TypeRow = { id: number; name: string; description: string | null; fields: { id: number; name: string; fieldType: DraftField['fieldType'] }[] }
 
