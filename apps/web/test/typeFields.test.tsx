@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   usageQuery: vi.fn(async (): Promise<{ total: number; missing: number; items: { itemId: number; name: string; value: string }[] }> => ({ total: 0, missing: 0, items: [] })),
   invalidate: vi.fn(),
   confirm: vi.fn((_message: string) => true),
+  // Mutable so one case can render the mutation as in flight: the dialog's
+  // buttons have to be gated on it, or a double activation re-sends a write.
+  pending: false,
 }))
 
 vi.mock('../src/api/trpc', async (importOriginal) => {
@@ -26,7 +29,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         client: { itemTypes: { fieldValueUsage: { query: mocks.usageQuery } } },
       }),
       itemTypes: {
-        updateFields: { useMutation: () => ({ mutateAsync: mocks.updateFields, isPending: false, error: null }) },
+        updateFields: { useMutation: () => ({ mutateAsync: mocks.updateFields, isPending: mocks.pending, error: null }) },
       },
       settings: { get: { useQuery: () => ({ data: undefined, isLoading: false }) }, update: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false, error: null }) } },
     },
@@ -37,6 +40,7 @@ import { TypeFields } from '../src/features/itemTypes/TypeFields'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.pending = false
   vi.spyOn(window, 'confirm').mockImplementation((message) => mocks.confirm(String(message)))
   // `mockClear` keeps implementations, so a case that stubs the usage with
   // `mockResolvedValue` would otherwise leak it into the next one.
@@ -58,7 +62,11 @@ describe('type fields editor', () => {
     renderFields()
     expect(screen.getByDisplayValue('size')).toBeInTheDocument()
     expect(screen.getByDisplayValue('note')).toBeInTheDocument()
-    expect(screen.getAllByRole('checkbox', { name: /required/i })).toHaveLength(2)
+    // One per row, named after the field so the row's own toggle is addressable —
+    // and a third on the add row, which §9 requires alongside the create form.
+    for (const name of ['size required', 'note required', 'New field required']) {
+      expect(screen.getByRole('checkbox', { name })).toBeInTheDocument()
+    }
   })
 
   // Saving one row must send ONE upsert, so the server's diff can never read it
@@ -81,8 +89,44 @@ describe('type fields editor', () => {
     fireEvent.change(screen.getByLabelText('New field name'), { target: { value: 'colour' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add field' }))
     await waitFor(() =>
-      expect(mocks.updateFields).toHaveBeenCalledWith({ id: 7, upserts: [{ name: 'colour', fieldType: 'text' }], deletedIds: [] })
+      expect(mocks.updateFields).toHaveBeenCalledWith({ id: 7, upserts: [{ name: 'colour', fieldType: 'text', required: false }], deletedIds: [] })
     )
+  })
+
+  // §9 gives the add row the same `required` control as the field row. Without it
+  // on the wire, a field added to an existing type always starts non-required and
+  // making it required costs a second save.
+  it('carries required from the add row', async () => {
+    renderFields()
+    fireEvent.change(screen.getByLabelText('New field name'), { target: { value: 'colour' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'New field required' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add field' }))
+    await waitFor(() =>
+      expect(mocks.updateFields).toHaveBeenCalledWith({ id: 7, upserts: [{ name: 'colour', fieldType: 'text', required: true }], deletedIds: [] })
+    )
+  })
+
+  // `run` swallows its error, so a `.then` that clears the inputs ran whether the
+  // write succeeded or not: a failed Add wiped the name the admin had just typed
+  // and left them retyping it. The inputs are cleared only on success.
+  it('keeps the add-row input when the write fails', async () => {
+    mocks.updateFields.mockRejectedValueOnce(new Error('Session expired'))
+    renderFields()
+    fireEvent.change(screen.getByLabelText('New field name'), { target: { value: 'colour' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add field' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Session expired')
+    expect(screen.getByLabelText('New field name')).toHaveValue('colour')
+  })
+
+  it('clears the add-row input once the write succeeds', async () => {
+    renderFields()
+    fireEvent.change(screen.getByLabelText('New field name'), { target: { value: 'colour' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'New field required' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add field' }))
+
+    await waitFor(() => expect(screen.getByLabelText('New field name')).toHaveValue(''))
+    expect(screen.getByRole('checkbox', { name: 'New field required' })).not.toBeChecked()
   })
 
   it('toggles required on one row only', async () => {
@@ -184,6 +228,49 @@ describe('type fields editor', () => {
     expect(screen.queryByRole('button', { name: 'Add field' })).toBeNull()
     expect(screen.queryByRole('button', { name: /^delete/i })).toBeNull()
     expect(screen.queryByRole('checkbox', { name: /required/i })).toBeNull()
+  })
+})
+
+// §9: turning `required` on for a type in use strands catalog items. The item
+// form renders `required` on the input, so those items cannot be saved until each
+// is filled — which must not arrive silently. Informational, never blocking.
+describe('the required toggle', () => {
+  const toggle = () => screen.getByRole('checkbox', { name: 'size required' })
+
+  it('shows the missing warning only when missing > 0', async () => {
+    mocks.usageQuery.mockResolvedValue({ total: 3, missing: 5, items: [] })
+    renderFields()
+
+    fireEvent.click(toggle())
+    expect(await screen.findByText(/5 items with no value for this field and can't be saved until/)).toBeInTheDocument()
+    // Informational and non-blocking: the toggle still flips.
+    expect(toggle()).toBeChecked()
+    // Read WITHOUT a `fieldType`: `missing` is the whole population of the type,
+    // not the slice a retype would strand.
+    expect(mocks.usageQuery).toHaveBeenCalledWith({ typeId: 7, fieldId: 11 })
+
+    // The other branch: nothing missing, so nothing is claimed — and turning the
+    // toggle back off takes the warning with it.
+    mocks.usageQuery.mockResolvedValue({ total: 0, missing: 0, items: [] })
+    fireEvent.click(toggle())
+    await waitFor(() => expect(screen.queryByText(/no value for this field/)).toBeNull())
+
+    fireEvent.click(toggle())
+    await waitFor(() => expect(mocks.usageQuery).toHaveBeenCalledTimes(2))
+    expect(screen.queryByText(/no value for this field/)).toBeNull()
+  })
+
+  // Same guarded read as every other usage call: a failure says so instead of
+  // rejecting out of the click handler as a silent no-op.
+  it('reports a failed check and still applies the toggle', async () => {
+    mocks.usageQuery.mockRejectedValueOnce(new Error('Session expired'))
+    renderFields()
+
+    fireEvent.click(toggle())
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Session expired')
+    expect(toggle()).toBeChecked()
+    expect(screen.queryByText(/no value for this field/)).toBeNull()
   })
 })
 
@@ -368,5 +455,23 @@ describe('retyping a field', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Session expired')
     expect(mocks.updateFields).not.toHaveBeenCalled()
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  // The dialog is reached by a Save, and every write control behind it is gated
+  // on the same mutation — so its own buttons have to be too. Ungated, a double
+  // activation re-sends an already-applied retype.
+  it('gates the dialog buttons while the write is in flight', async () => {
+    mocks.usageQuery.mockResolvedValue(stranded)
+    const view = renderFields()
+    fireEvent.change(typeSelects()[0], { target: { value: 'number' } })
+    fireEvent.click(saveButtons()[0])
+    const clear = await screen.findByRole('button', { name: 'Clear 2 values and convert' })
+    expect(clear).toBeEnabled()
+
+    mocks.pending = true
+    view.rerender(<TypeFields typeId={7} fields={fields} canEdit />)
+
+    expect(screen.getByRole('button', { name: 'Clear 2 values and convert' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
   })
 })

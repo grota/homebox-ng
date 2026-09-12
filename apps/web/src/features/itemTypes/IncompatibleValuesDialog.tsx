@@ -11,7 +11,7 @@ const MAX_ROWS = 50
 // snapshot of a moment, so the caller re-reads it while this is open (see
 // `TypeFields`); everything here renders what it is given.
 export function IncompatibleValuesDialog({
-  open, fieldName, targetType, offenders, total, refreshError, onConfirm, onCancel,
+  open, fieldName, targetType, offenders, total, refreshError, busy = false, onConfirm, onCancel,
 }: {
   open: boolean
   fieldName: string
@@ -24,6 +24,10 @@ export function IncompatibleValuesDialog({
   // outside Radix's portal, behind its overlay and its `aria-hidden`.) Null when the
   // list is current, which is every state a caller can present without a failed read.
   refreshError: string | null
+  // Set while the caller's write is in flight. The dialog is reached BY a write
+  // control, so its own buttons carry the same gate as the rest of the form —
+  // ungated, a double activation re-sends an already-applied retype.
+  busy?: boolean
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -69,7 +73,7 @@ export function IncompatibleValuesDialog({
         {clearing ? (
           <Button
             variant="danger"
-            disabled={refreshError !== null}
+            disabled={refreshError !== null || busy}
             onClick={() => {
               if (window.confirm(`Clear ${total} stored value${plural}? This cannot be undone.`)) onConfirm()
             }}
@@ -77,7 +81,7 @@ export function IncompatibleValuesDialog({
             Clear {total} value{plural} and convert
           </Button>
         ) : (
-          <Button variant="primary" disabled={refreshError !== null} onClick={onConfirm}>
+          <Button variant="primary" disabled={refreshError !== null || busy} onClick={onConfirm}>
             Convert
           </Button>
         )}
@@ -99,7 +103,7 @@ export function IncompatibleValuesDialog({
       {total > shown.length && <p className="text-text-muted">+ {total - shown.length} more</p>}
 
       <div className="flex justify-end gap-2">
-        <Button onClick={onCancel}>Cancel</Button>
+        <Button disabled={busy} onClick={onCancel}>Cancel</Button>
       </div>
     </Modal>
   )

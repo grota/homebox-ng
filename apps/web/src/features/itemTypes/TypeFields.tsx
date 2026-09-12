@@ -26,11 +26,15 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
   const [rows, setRows] = useState<DraftRow[]>(() => fields.map((f, index) => ({ key: index, ...f })))
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState<FieldType>('text')
+  const [newRequired, setNewRequired] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // The retype whose values do not fit, held until the admin settles it, and the
   // count shown on the row that is waiting for them.
   const [pending, setPending] = useState<{ row: DraftRow; usage: FieldValueUsage } | null>(null)
   const [usageFor, setUsageFor] = useState<{ key: number; total: number } | null>(null)
+  // The other inline warning: turning `required` ON strands the type's published
+  // items that have no value yet, so the row says how many (§9).
+  const [missingFor, setMissingFor] = useState<{ key: number; count: number } | null>(null)
   // The re-check's own failure, which belongs to the dialog rather than the form.
   const [recheckError, setRecheckError] = useState<string | null>(null)
 
@@ -52,14 +56,20 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
     })
   }, [fields])
 
+  // Reports whether the write landed. The failure is swallowed into `error`
+  // rather than rethrown, so without this every caller's continuation runs
+  // whether the save succeeded or not — which is how a failed Add used to wipe
+  // the name the admin had just typed.
   const run = async (input: Parameters<typeof updateFields.mutateAsync>[0]) => {
     setError(null)
     try {
       await updateFields.mutateAsync(input)
       await utils.itemTypes.list.invalidate()
       await utils.items.list.invalidate()
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the field')
+      return false
     }
   }
 
@@ -145,11 +155,30 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
     return () => window.removeEventListener('focus', recheck)
   }, [pending])
 
-  const add = () =>
-    run({ id: typeId, upserts: [{ name: newName, fieldType: newType }], deletedIds: [] }).then(() => {
-      setNewName('')
-      setNewType('text')
-    })
+  // `required` rides along with the add: §9 gives the add row the same control as
+  // the field row, and omitting it here would mean a field added to an existing
+  // type always starts non-required, costing a second save to make it required.
+  const add = async () => {
+    const saved = await run({ id: typeId, upserts: [{ name: newName, fieldType: newType, required: newRequired }], deletedIds: [] })
+    if (!saved) return
+    setNewName('')
+    setNewType('text')
+    setNewRequired(false)
+  }
+
+  // Turning `required` on strands catalog items: the item form renders `required`
+  // on the input, so every published item of the type with no value for this field
+  // cannot be saved until it is filled. Informational and non-blocking — the
+  // toggle flips either way, and the read says so rather than claiming a count.
+  const toggleRequired = async (row: DraftRow, required: boolean) => {
+    patch(row.key, { required })
+    if (!required) {
+      setMissingFor((current) => (current?.key === row.key ? null : current))
+      return
+    }
+    const usage = await readUsage({ fieldId: row.id })
+    setMissingFor(usage && usage.missing > 0 ? { key: row.key, count: usage.missing } : null)
+  }
 
   // The count is read first so the confirmation can name what it destroys.
   const remove = async (row: DraftRow) => {
@@ -181,7 +210,17 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
       {rows.map((row) => (
         <div className="flex gap-3 items-end" key={row.key}>
           <Field label="Name" htmlFor={`field-name-${row.key}`} className="flex-1 min-w-0">
-            <Input id={`field-name-${row.key}`} value={row.name} disabled={!canEdit} onChange={(e) => patch(row.key, { name: e.target.value })} className="w-full" />
+            {/* Named after the field, like the `required` toggle below: the visible
+                label is a bare "Name", which the page's own type-name input also
+                carries, so an accessible name is what tells the two apart. */}
+            <Input
+              id={`field-name-${row.key}`}
+              aria-label={`${row.name} name`}
+              value={row.name}
+              disabled={!canEdit}
+              onChange={(e) => patch(row.key, { name: e.target.value })}
+              className="w-full"
+            />
           </Field>
           <Field label="Type" htmlFor={`field-type-${row.key}`}>
             <Select id={`field-type-${row.key}`} value={row.fieldType} disabled={!canEdit} onChange={(e) => previewRetype(row, e.target.value as FieldType)}>
@@ -199,13 +238,20 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
           </Field>
           {canEdit && (
             <>
-              {/* The toggle is a write control, so a non-admin is not shown it at
-                  all — the type list below the form still marks required fields
-                  with an asterisk. */}
-              <label className="flex items-center gap-1">
-                <input type="checkbox" aria-label={`${row.name} required`} checked={row.required} onChange={(e) => patch(row.key, { required: e.target.checked })} />
-                required
-              </label>
+              <div className="flex flex-col gap-1">
+                {/* The toggle is a write control, so a non-admin is not shown it at
+                    all — the type list below the form still marks required fields
+                    with an asterisk. */}
+                <label className="flex items-center gap-1">
+                  <input type="checkbox" aria-label={`${row.name} required`} checked={row.required} onChange={(e) => toggleRequired(row, e.target.checked)} />
+                  required
+                </label>
+                {missingFor?.key === row.key && (
+                  <span className="text-danger text-xs">
+                    {missingFor.count} item{missingFor.count === 1 ? '' : 's'} with no value for this field and can't be saved until it's filled
+                  </span>
+                )}
+              </div>
               <Button size="sm" variant="primary" disabled={!isDirty(row) || updateFields.isPending} onClick={() => save(row)}>
                 Save
               </Button>
@@ -229,6 +275,12 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
               ))}
             </Select>
           </Field>
+          {/* §9's third home for the control, alongside the field row and the
+              create-type form. */}
+          <label className="flex items-center gap-1">
+            <input type="checkbox" aria-label="New field required" checked={newRequired} onChange={(e) => setNewRequired(e.target.checked)} />
+            required
+          </label>
           <Button disabled={newName.trim() === '' || updateFields.isPending} onClick={add}>
             Add field
           </Button>
@@ -248,6 +300,7 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
           offenders={pending?.usage.items ?? []}
           total={pending?.usage.total ?? 0}
           refreshError={recheckError}
+          busy={updateFields.isPending}
           onCancel={cancelRetype}
           onConfirm={async () => {
             if (!pending) return

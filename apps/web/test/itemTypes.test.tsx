@@ -107,9 +107,12 @@ describe('item types page', () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
-    // The field editor's own rows are labelled "Name" too, so the type's input
-    // has to be picked out by its id.
-    fireEvent.change(screen.getByLabelText('Name', { selector: '#type-name' }), { target: { value: 'Renamed' } })
+    // No selector hack, and no ambiguity: queried by ACCESSIBLE NAME, the field
+    // editor's row inputs are their field's (`"qty name"`), so the plain "Name"
+    // is the type's own input. (`getByLabelText` would not separate them — the
+    // row's visible `Name` label still associates with its input even though its
+    // accessible name comes from the `aria-label`.)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Renamed' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ id: 1, name: 'Renamed', description: '' }))
