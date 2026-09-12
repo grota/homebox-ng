@@ -25,19 +25,19 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   Field types: `text`,`number`,`currency`,`date`,`boolean`,`url`, plus `required`,`config`,`sortOrder`.
   `(packages/db/src/schema.ts:45)` `(packages/db/src/schema.ts:71)`
 - **tag** — a free-form label (unique name + color), attachable to many items via the
-  `item_tags` join. `(packages/db/src/schema.ts:78)`
-- **image / photo** — an item's photo, the fork's analog of an attachment (there is no separate
-  `attachments` entity). `originalPath` is always preserved; `editedPath` is set only after a
+  `item_tags` join. `(packages/db/src/schema.ts:82)`
+- **image / photo** — an item's photo, the fork's analog of an attachment and the only one:
+  attachments were dropped, so there is no separate `attachments` entity (v1 spec, non-goals).
+  `originalPath` is always preserved; `editedPath` is set only after a
   non-destructive edit; `thumbPath` is always present; `isPrimary` marks the cover.
-  `(packages/db/src/schema.ts:112)`
+  `(packages/db/src/schema.ts:116)`
 - **non-destructive editor** — crop/rotate/resize writes a new `editedPath` and leaves the
   original buffer intact; the original is never overwritten.
 - **photo viewer** — opens any thumbnail's photo in a full-viewport overlay, showing the same
   rendition as the grid (`editedPath` when one exists, else `originalPath`). Starts fit to the
   viewport when the photo is larger than it and at natural size when it is not; clicking the
   photo toggles between the two, and a **navigator** shows which region of an oversized photo
-  is on screen and jumps to another. Not yet in code — added with the viewer itself, and no
-  back-reference exists until it lands.
+  is on screen and jumps to another. `(apps/web/src/ui/PhotoViewer.tsx:59)`
 
 ## Unpack → drafts → publish (the background flow)
 
@@ -50,7 +50,7 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
 - **publish** — flip a draft's `published` to `true` so it joins the shared catalog.
   `publishDraft` (one) / `publishAll` (all, or a subset of ids). `(apps/api/src/modules/drafts/service.ts:15)`
 - **rename** a draft gives it a real name before publishing; **discard** a draft deletes the
-  row (cascade) and best-effort removes its images. `(apps/api/src/modules/drafts/service.ts:12)` `(apps/api/src/modules/drafts/service.ts:26)`
+  row (cascade) and best-effort removes its images. `(apps/api/src/modules/drafts/service.ts:12)` `(apps/api/src/modules/drafts/service.ts:45)`
 
 ## Detection
 
@@ -64,15 +64,15 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   (returned when `DETECTION_MOCK=1`, fixed boxes for a reproducible flow).
   `(apps/api/src/modules/detection/provider.ts:7)` `(apps/api/src/modules/detection/mock.ts:5)`
 - Selected at the **instance settings** level. Every box is guaranteed in-bounds for cropping:
-  providers clamp here, and `runUnpack` only drops 0-area boxes.
+  providers clamp here, and `createItemsFromImage` only drops 0-area boxes.
   `(apps/api/src/modules/detection/coords.ts:7)`
 
 ## Settings
 
 - **instance settings** — instance-wide admin configuration, a single fixed row (`id=1`):
-  `maxUploadMb`, `detectionProvider`, `detectionConfig`. `(packages/db/src/schema.ts:95)`
+  `maxUploadMb`, `detectionProvider`, `detectionConfig`. `(packages/db/src/schema.ts:99)`
 - **user settings** — per-user one-to-one preferences: `language`, `locale`, `themeMode`
-  (`auto`/`light`/`dark`), `lightThemeId`, `darkThemeId`. `(packages/db/src/schema.ts:85)`
+  (`auto`/`light`/`dark`), `lightThemeId`, `darkThemeId`. `(packages/db/src/schema.ts:89)`
 
 ## Search
 
@@ -80,7 +80,7 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   name, description, tags, customFields, typeName, locationPath), with live **facet** counts per
   dimension (types/tags/locations), FTS **snippets** when a search term is set, and URL-param
   state. The catalog's `published=true` guard keeps drafts out of every result and count.
-  `(packages/db/src/schema.ts:133)` `(apps/api/src/modules/items/repo.ts:96)`
+  `(packages/db/src/schema.ts:137)` `(apps/api/src/modules/items/repo.ts:96)`
 
 ## Auth & provisioning
 

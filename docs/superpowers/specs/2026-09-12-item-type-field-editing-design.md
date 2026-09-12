@@ -82,7 +82,7 @@ decision.
 ### 1. The invariant
 
 **No write destroys stored values unless the request explicitly acknowledges it, and the server
-re-validates that acknowledgment inside the transaction.**
+re-checks that acknowledgment against the live data immediately before writing.**
 
 Two acknowledgments, one mechanism: `clearIncompatible` (retype) and `acknowledgeValueLoss`
 (field deletion). Each means "I know N non-empty values will be destroyed". Neither is
@@ -117,7 +117,7 @@ or the gate is wrong.
 |---|---|---|
 | `text` | always | — |
 | `boolean` | `true`/`false`/`0`/`1`, case-insensitive | rendered as text, no constraint |
-| `number`, `currency` | the trimmed value parses as a finite number | input blanks the display |
+| `number`, `currency` | the value is the browser's valid floating-point number — no surrounding whitespace, a leading `-` only, a fraction needing digits on both sides | input blanks the display |
 | `date` | exactly `YYYY-MM-DD` and a real calendar date | input blanks the display |
 | `url` | `new URL(v)` succeeds | **submit blocked** (typeMismatch) |
 
@@ -181,11 +181,16 @@ values or refuses to submit.
 
 The destructive retype is **one** request: *"retype field F to T, clearing the values of F that
 do not fit T, of which I saw N."* `N` is the number of non-fitting **values** the client was
-shown — one per affected item, since a value is unique per `(item, field)`. Inside the
-transaction the server recomputes the non-fitting set and:
+shown — one per affected item, since a value is unique per `(item, field)`. The server recomputes
+the non-fitting set and:
 
 - **recomputed count ≠ N** → `CONFLICT`, "the values changed — re-check". Nothing written.
 - **equal** → clear exactly the non-fitting values of F and retype, atomically.
+
+The comparison runs *before* the transaction opens — which is why a refusal writes nothing — and
+the transaction then re-derives the set it clears for itself. Both reads happen synchronously on
+the same connection with no `await` between them, and *that* is what makes the pin sound; it does
+not depend on the check sitting inside the transaction.
 
 Without the pin, a value added between opening the modal and clicking the button would be
 destroyed without ever being shown. Splitting "clear" and "retype" into two requests is

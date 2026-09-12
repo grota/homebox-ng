@@ -1,4 +1,5 @@
 import { mkdir } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { eq } from 'drizzle-orm'
 import {
   createDb,
@@ -12,6 +13,7 @@ import {
 } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import { hashPassword } from '../src/auth/password.js'
+import { DEFAULT_DATA_DIR, DEFAULT_DATABASE_PATH, resolveDataPath } from '../src/env.js'
 import { rebuildFTS } from '../src/modules/items/fts.js'
 
 // Dev fixtures for eyeballing the catalog and the item-type editor. Runs
@@ -26,21 +28,13 @@ import { rebuildFTS } from '../src/modules/items/fts.js'
 // has something to report.
 const ADMIN = { name: 'Admin', email: 'a@a.com', password: 'aaaaaaaa' }
 
-// These defaults are cwd-relative ON PURPOSE, and must not be "fixed" to resolve
-// against the repo root. On this branch the agreement holds: `pnpm --filter
-// @homebox/api seed` runs with `apps/api` as the cwd, and the API resolves its
-// own relative defaults the same way, so both land on `apps/api/data/homebox.db`.
-//
-// The hazard is a sibling branch (not merged here) that resolves a relative
-// `DATABASE_PATH`/`DATA_DIR` against the REPO ROOT. Once it lands, a bare
-// `pnpm --filter @homebox/api seed` would populate `apps/api/data/homebox.db`
-// while the server reads `<root>/data/homebox.db` — silently, seeding a database
-// nothing serves. The owed reconciliation is to make BOTH ends resolve the same
-// way in one commit (either both root-relative, or the script re-rooted to match
-// the server); changing this line alone first would break today's agreement and
-// is not the fix.
-const dbPath = process.env.DATABASE_PATH ?? './data/homebox.db'
-const dataDir = process.env.DATA_DIR ?? './data'
+// Both paths go through the server's own rule (`resolveDataPath`) and its own
+// defaults, so a bare `pnpm --filter @homebox/api seed` writes the database the
+// server will open — whatever directory the process was started from. A relative
+// value resolves against the workspace root, never the cwd; `detection-model.ts`
+// reads the environment the same way.
+const dataDir = resolveDataPath(process.env.DATA_DIR ?? DEFAULT_DATA_DIR)
+const dbPath = resolveDataPath(process.env.DATABASE_PATH ?? DEFAULT_DATABASE_PATH)
 
 // `Home / Garage` etc. are paths, not names: Garage and Study hang off Home.
 const LOCATIONS: { name: string; parent: string | null }[] = [
@@ -197,7 +191,11 @@ const seedItems = (db: DrizzleDb): void => {
 }
 
 const main = async () => {
+  // Both directories: the data dir holds the uploads, and the database may be
+  // pointed outside it. better-sqlite3 will not create either's parent, which is
+  // the same reason `apps/api/src/index.ts` mkdirs the db's directory.
   await mkdir(dataDir, { recursive: true })
+  await mkdir(dirname(dbPath), { recursive: true })
   const db = createDb(dbPath)
   runMigrations(db)
 

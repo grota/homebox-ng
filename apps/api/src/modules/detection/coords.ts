@@ -3,7 +3,7 @@ import type { DetectionBox } from './provider.js'
 // Clamp a pixel box (top-left origin) to the decoded image bounds so a
 // malformed/out-of-range box can never drive `sharp.extract` into a negative or
 // overflowing crop. A fully-outside box degenerates to a 0-area box, which callers
-// (runUnpack) filter out.
+// (createItemsFromImage) filter out.
 export const clampBox = (box: DetectionBox['box'], width: number, height: number): DetectionBox['box'] => {
   const x = Math.max(0, Math.min(width, Math.round(box.x)))
   const y = Math.max(0, Math.min(height, Math.round(box.y)))

@@ -46,9 +46,11 @@ const DEFAULTS = {
   DATA_DIR: './data',
 } as const
 
-// The data dir used when `DATA_DIR` is unset — and the fallback for callers that
-// never read env at all (`buildApp`, the `detection:model` CLI).
+// The data paths used when the corresponding var is unset — and the fallback for
+// callers that never read env at all (`buildApp`, the `detection:model` and
+// `seed` CLIs). Already resolved, so a caller can use them as given.
 export const DEFAULT_DATA_DIR = resolveDataPath(DEFAULTS.DATA_DIR)
+export const DEFAULT_DATABASE_PATH = resolveDataPath(DEFAULTS.DATABASE_PATH)
 
 // Lazily read env so importing this module has no side effects — `buildApp`
 // never calls `loadEnv`, so tests (which build the app with an explicit in-memory

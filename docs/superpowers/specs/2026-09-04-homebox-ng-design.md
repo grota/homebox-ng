@@ -19,14 +19,13 @@ their own account.
 
 **In (v1):**
 - Accounts: name + email + password, login, admin-invited users, initial admin on first run.
-- Items: name, long description, quantity (+ optional unit), multiple photos, documents (attachments).
+- Items: name, long description, quantity (+ optional unit), multiple photos.
 - Item types: instance-wide, admin-managed, each with custom fields.
 - Custom fields: text, number, currency, date, boolean, url (money via the currency type).
 - Locations: nested tree.
 - Tags: free-form labels on items, searchable.
 - Photos: upload → rich client-side editor (crop/resize/text/draw) → **non-destructive** store
   (original + edited kept), re-editable from the original; auto-generated thumbnails.
-- Documents: non-photo file attachments.
 - Search: SQLite FTS5 full-text + facet filters (location tree, type, tags).
 - Admin settings: max upload size (MB), backup/restore.
 - **Unpack (multi-item photo import)**: unpack a photo of clustered items into separate draft
@@ -48,6 +47,8 @@ their own account.
 - Per-user private catalogs (catalog is household-shared).
 - Translation files beyond English (architecture ready, more languages added later).
 - S3/object storage (images on local disk).
+- Attachments / non-photo documents — **dropped, not deferred.** An item's images are the analog
+  (there is no separate `attachments` entity; see `CONTEXT.md`), and none is planned.
 
 ## Tech stack
 
@@ -75,7 +76,7 @@ homebox-ng/
 │   └── api/                       # Fastify server
 │       ├── src/
 │       │   ├── modules/           # auth, users, items, locations, itemTypes, tags,
-│       │   │                      #   images, attachments, search, settings, backup
+│       │   │                      #   images, search, settings, backup
 │       │   ├── routes/            # tRPC router + upload/download routes
 │       │   └── mount.ts
 │       └── drizzle/               # schema, migrations, FTS sync
@@ -114,8 +115,6 @@ homebox-ng/
 - **images** (non-destructive): `id`, `item_id` → `items`, `original_path`, `edited_path`
   (nullable — falls back to `original_path`), `thumb_path`, `width`, `height`, `format`,
   `size_bytes`, `sort_order`, `is_primary` (bool, one per item).
-- **attachments**: `id`, `item_id` → `items`, `file_path`, `original_name`, `mime_type`,
-  `size_bytes`, `created_at`.
 - **instance_settings** (single row): `id` (fixed), `max_upload_mb` (int, default e.g. 10),
   `detection_provider` (`remote` | `local`, default `remote`),
   `detection_config` (JSON — remote: provider + model id + API-key reference; local: model path,
@@ -139,7 +138,7 @@ homebox-ng/
   (name, email, password).
 - **Invite / create:** admins create users (name, email, temp password). The user is prompted
   to change the password on first login. Roles: `admin` (manage users, item types, instance
-  settings, backup/restore, rebuild index) and `user` (CRUD items/attachments/docs, own settings).
+  settings, backup/restore, rebuild index) and `user` (CRUD items, own settings).
 - **Login:** email + password → httpOnly, SameSite=Lax session cookie. argon2id hashing.
   Sessions expire; logout invalidates the session. Rate-limit login attempts.
 
@@ -157,7 +156,7 @@ homebox-ng/
 - Nested locations (create child under a location).
 - Assign tags to items (create-on-the-fly with a color).
 
-## Image & attachment pipeline
+## Image pipeline
 
 1. **Upload**: `POST /upload/image` (multipart) validates MIME (image/*) and size against
    `max_upload_mb`. Original saved to `data/uploads/originals/`.
@@ -167,11 +166,8 @@ homebox-ng/
    (non-destructive). Re-editing later reloads the `original_path` and replaces `edited_path`.
 3. **Thumbnails**: `sharp` derives a ~400px thumbnail (`thumb_path`) for listing cards and
    search results. Full image loads only in the photo detail view. Thumbnails are regenerable.
-4. **Documents**: uploaded as raw files to `data/uploads/documents/`, no editing, downloadable
-   via a guarded route. Enforced against the same `max_upload_mb` cap in v1.
 
-`DATA_DIR` layout: `uploads/originals/`, `uploads/edited/`, `uploads/thumbs/`,
-`uploads/documents/`.
+`DATA_DIR` layout: `uploads/originals/`, `uploads/edited/`, `uploads/thumbs/`.
 
 ## Unpack (multi-item photo import)
 
@@ -242,7 +238,7 @@ finger-friendly hit areas.
 
 ## Admin settings & backup/restore
 
-- **Instance settings:** `max_upload_mb` (enforced on image + document uploads).
+- **Instance settings:** `max_upload_mb` (enforced on image uploads).
 - **Back up:** admin action builds a single `.tar.gz` archive = SQL dump of the DB + the entire
   `data/uploads/` tree, and streams it as a download.
 - **Restore:** admin uploads a backup archive; the app validates it, then replaces the DB + uploads
@@ -251,13 +247,13 @@ finger-friendly hit areas.
 ## API contract
 
 - **tRPC** router in `apps/api` with procedures grouped by module (`auth`, `users`, `locations`,
-  `itemTypes`, `items`, `tags`, `images`, `attachments`, `search`, `settings`, `backup`,
+  `itemTypes`, `items`, `tags`, `images`, `search`, `settings`, `backup`,
   **`unpack`, `drafts`**).
 - **Unpack/drafts procedures:** `unpack.run` (detect + crop + create drafts), `drafts.list`,
   `draft.update` (edit label), `draft.publish` (single), `drafts.publishAll`, `draft.discard`.
 - **Multipart** upload/download routes are raw Fastify routes (tRPC doesn't handle multipart well):
-  `POST /upload/image`, `POST /upload/image/edit`, `POST /upload/document`,
-  `GET /download/<attachment-id>`, `GET /image/<image-id>/original|edited|thumb`, `GET /file/<path>`.
+  `POST /upload/image`, `POST /upload/image/edit`,
+  `GET /image/<image-id>/original|edited|thumb`, `GET /file/<path>`.
 - Auth via httpOnly session cookie read by tRPC middleware. Validation via zod schemas in
   `packages/shared`, reused by client and server.
 

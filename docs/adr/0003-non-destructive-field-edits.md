@@ -30,7 +30,7 @@ longer fit; or refuse and enumerate what is in the way.
 ## Decision
 
 **A field-set edit never destroys a stored value unless the request explicitly acknowledges it,
-and the server re-validates that acknowledgment inside the transaction.**
+and the server re-checks that acknowledgment against the live data immediately before writing.**
 
 1. **Field identity, with an explicit diff.** `ItemTypeFieldInputSchema` gains an optional
    `id`; an upsert carrying an `id` updates that row in place — same id, so its values survive.
@@ -42,8 +42,11 @@ and the server re-validates that acknowledgment inside the transaction.**
 3. **A refused type change enumerates the offenders** — item name and current value, each
    linking to the item — so the refusal is a task, not a wall.
 4. **Destroying is one request.** The retype request carries `clearIncompatible` plus
-   `acknowledgedValueCount`; the server recomputes the non-fitting set inside the transaction,
-   refuses with `CONFLICT` if the count moved, and otherwise clears and retypes atomically.
+   `acknowledgedValueCount`; the server recomputes the non-fitting set, refuses with `CONFLICT`
+   if the count moved, and otherwise clears and retypes atomically. The comparison precedes the
+   transaction — so a refusal writes nothing — and the transaction re-derives the set it clears
+   for itself; both reads are synchronous on one connection, which is what makes the pin sound
+   rather than the check's placement.
    Deleting a field requires the same shape of acknowledgment (`acknowledgeValueLoss`). The
    count describes **one** field, so a request in which two fields would need clearing is
    refused (`BAD_REQUEST`, "Only one field can be converted at a time") rather than summed: a

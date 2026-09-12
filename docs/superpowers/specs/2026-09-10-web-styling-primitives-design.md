@@ -87,8 +87,10 @@ becomes the *non*-primary choice rather than the only one.
 Two packages now, a third deferred. All styled with the existing tokens:
 
 - `@radix-ui/react-dialog` → `ui/Modal.tsx`, used by `PhotoEditor` — and by
-  nothing else. It is **not** used by the delete confirmations, which stay on
-  `window.confirm`. `PhotoEditor` currently puts `role="dialog"
+  nothing else **at the time of writing**; the photo viewer became a second
+  consumer, which ADR-0002 served by adding a full-viewport `size` rather than a
+  second primitive. It is still **not** used by the delete confirmations, which
+  stay on `window.confirm`. `PhotoEditor` currently puts `role="dialog"
   aria-modal="true"` on a plain `<div>` with no focus trap, no Escape handler and
   no focus restore — an `aria-modal` without a trap is worse than omitting it.
 - `@radix-ui/react-tabs` → `ui/Tabs.tsx`, used by `AdminPage`, whose tabs
@@ -99,12 +101,13 @@ Two packages now, a third deferred. All styled with the existing tokens:
   behaviour to style. Revisit only if a native select proves inadequate.
 
 Replacing `window.confirm` is **deferred, not rejected.** Two call sites exist
-(`ItemDetail.tsx:72`, `:124`). Its real weakness is not mobile — iOS and Android
+(`ItemDetail.tsx:83`, `:148`). Its real weakness is not mobile — iOS and Android
 render it as a native platform alert with proper touch targets, which is arguably
 better than a hand-rolled dialog — but that it offers only generic *OK / Cancel*:
 no way to label the destructive action, default to Cancel, or style it as danger.
-That matters for a destructive action. Deferring means `Modal` is designed
-against one real consumer (`PhotoEditor`) instead of two guesses, and swapping
+That matters for a destructive action. Deferring meant `Modal` was designed
+against one real consumer (`PhotoEditor`) instead of two guesses — the second
+consumer arrived later and ADR-0002 widened the primitive for it — and swapping
 these two call sites later is ~20 lines once the primitive exists.
 
 ### 4. Layout (`app/Shell.tsx`)
