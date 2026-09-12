@@ -1604,7 +1604,14 @@ Then:
    `Probe texture`, at least three with `finish` values that are deliberately **not** numbers
    (`'matte'`, `'brushed steel'`, `'n/a'`), plus one item that leaves `width` blank so the
    "missing a value" warning has something to report.
-6. Print a summary of what was created versus already present, and `process.exit(0)`.
+6. **Rebuild the FTS index** — this step was missing from the plan as written and was added by a
+   controller ruling while dispatching the task. The search index is maintained at the
+   **application layer**, not by SQL triggers (`apps/api/src/modules/items/fts.ts` says so in its
+   header), so a script inserting items straight into the database leaves `items_fts` empty: the
+   seeded catalog lists fine but returns nothing for any search, which would make the fixtures look
+   broken during the manual pass. Call `rebuildFTS(db)` from that module, on the path that actually
+   inserted items only, so a re-run over an existing catalog does not rebuild needlessly.
+7. Print a summary of what was created versus already present, and `process.exit(0)`.
 
 - [ ] **Step 2: Add the script entry**
 
