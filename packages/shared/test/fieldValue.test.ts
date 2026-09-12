@@ -9,13 +9,16 @@ describe('fitsFieldType', () => {
   })
 
   it('accepts only real numbers for number and currency', () => {
-    for (const v of ['1', '-2.5', '1e3', '.5', '120.00', ' 7 ']) {
+    for (const v of ['1', '-2.5', '1e3', '.5', '120.00', '0']) {
       expect(fitsFieldType('number', v)).toBe(true)
       expect(fitsFieldType('currency', v)).toBe(true)
     }
     // '' is not a number (Number('') is 0), and these are the cases where
     // Number() is more permissive than the browser's valid floating-point number.
-    for (const v of ['', '   ', 'large', '120 cm', '1,000', '0x10', 'Infinity', 'NaN']) {
+    // The last three are the shapes the browser's own grammar rejects even though
+    // a human would read them as numbers: no surrounding whitespace, no leading
+    // '+', and no bare trailing '.' — Chromium blanks all three in a number input.
+    for (const v of ['', '   ', 'large', '120 cm', '1,000', '0x10', 'Infinity', 'NaN', ' 7 ', '1.', '+5']) {
       expect(fitsFieldType('number', v)).toBe(false)
       expect(fitsFieldType('currency', v)).toBe(false)
     }

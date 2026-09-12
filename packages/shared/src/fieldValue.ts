@@ -9,15 +9,21 @@
 // value. A value that does not fit must never be allowed to survive a type
 // change.
 //
-// It errs strict: `number` uses an explicit floating-point grammar rather than
-// `Number()`, which would wrongly accept '0x10' and 'Infinity'.
+// It errs strict: `number` uses HTML's "valid floating-point number" grammar
+// rather than `Number()`, which would wrongly accept '0x10' and 'Infinity' — and
+// the grammar is the browser's exact one, so ' 7 ', '1.' and '+5' are out too:
+// a number input holds none of them, it blanks them.
 
 export const FIELD_TYPES = ['text', 'number', 'currency', 'date', 'boolean', 'url'] as const
 
 export type FieldType = (typeof FIELD_TYPES)[number]
 
-// HTML's "valid floating-point number", which is what a number input holds.
-const FLOAT = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/
+// HTML's "valid floating-point number", which is what a number input holds:
+// an optional '-' (never '+'), then digits with an optional fraction that needs
+// digits on both sides of the '.', then an optional signed exponent. No
+// surrounding whitespace — the input holds the string verbatim, so ' 7 ' is as
+// blank to it as '' is.
+const FLOAT = /^-?(\d+(\.\d+)?|\.\d+)([eE][+-]?\d+)?$/
 
 // `<input type="date">` holds exactly YYYY-MM-DD, and only a real calendar date
 // fits it — the Date constructor rolls '2026-02-30' over into March, so the
@@ -45,11 +51,10 @@ export const fitsFieldType = (fieldType: FieldType, value: string): boolean => {
     case 'text':
       return true
     case 'number':
-    case 'currency': {
-      const trimmed = value.trim()
-      // `trimmed !== ''` matters: Number('') is 0, and Number('  ') too.
-      return trimmed !== '' && FLOAT.test(trimmed)
-    }
+    case 'currency':
+      // Tested untrimmed: `FLOAT` already rejects '' and '  ', which is what
+      // Number() would have called 0.
+      return FLOAT.test(value)
     case 'date':
       return isRealDate(value)
     case 'boolean':
