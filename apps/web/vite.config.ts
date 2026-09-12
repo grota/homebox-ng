@@ -18,6 +18,8 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',
+    allowedHosts: ['.localhost', '.local', 'thinkpad-x1'],
     proxy: {
       '/trpc': 'http://localhost:3000',
       '/upload': 'http://localhost:3000',
