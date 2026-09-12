@@ -38,6 +38,9 @@ import { TypeFields } from '../src/features/itemTypes/TypeFields'
 beforeEach(() => {
   vi.clearAllMocks()
   vi.spyOn(window, 'confirm').mockImplementation((message) => mocks.confirm(String(message)))
+  // `mockClear` keeps implementations, so a case that stubs the usage with
+  // `mockResolvedValue` would otherwise leak it into the next one.
+  mocks.usageQuery.mockImplementation(async () => ({ total: 0, missing: 0, items: [] }))
 })
 
 const fields = [
@@ -181,5 +184,128 @@ describe('type fields editor', () => {
     expect(screen.queryByRole('button', { name: 'Add field' })).toBeNull()
     expect(screen.queryByRole('button', { name: /^delete/i })).toBeNull()
     expect(screen.queryByRole('checkbox', { name: /required/i })).toBeNull()
+  })
+})
+
+// Retyping is the one edit the API can refuse: the values already stored for the
+// field may no longer be readable as the new type, and saving would either blank
+// them or fail outright. So the editor asks what a retype would strand BEFORE it
+// saves, and turns a refusal into a task — the offenders dialog.
+describe('retyping a field', () => {
+  const typeSelects = () => screen.getAllByLabelText('Type')
+  const saveButtons = () => screen.getAllByRole('button', { name: /^save/i })
+
+  const stranded = {
+    total: 2,
+    missing: 1,
+    items: [
+      { itemId: 5, name: 'Hammer', value: 'big' },
+      { itemId: 6, name: 'Nail', value: 'small' },
+    ],
+  }
+
+  // A retype nothing is stranded by is an ordinary save: no dialog, and no clear
+  // flag on the wire.
+  it('saves a retype that strands nothing, with no dialog and no flag', async () => {
+    renderFields()
+    fireEvent.change(typeSelects()[0], { target: { value: 'number' } })
+    fireEvent.click(saveButtons()[0])
+
+    await waitFor(() =>
+      expect(mocks.updateFields).toHaveBeenCalledWith({
+        id: 7,
+        upserts: [{ id: 11, name: 'size', fieldType: 'number', required: false, sortOrder: 0 }],
+        deletedIds: [],
+      })
+    )
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('opens the offenders dialog instead of saving a retype that strands values', async () => {
+    mocks.usageQuery.mockResolvedValue(stranded)
+    renderFields()
+    fireEvent.change(typeSelects()[0], { target: { value: 'number' } })
+    fireEvent.click(saveButtons()[0])
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Hammer')).toBeInTheDocument()
+    expect(mocks.updateFields).not.toHaveBeenCalled()
+  })
+
+  // The button commits to the count it displayed — the server re-validates that
+  // exact number — and the write carries ONE field, because the API refuses a
+  // request that would clear two.
+  it('converts with clearIncompatible and the count it displayed', async () => {
+    mocks.usageQuery.mockResolvedValue(stranded)
+    renderFields()
+    fireEvent.change(typeSelects()[0], { target: { value: 'number' } })
+    fireEvent.click(saveButtons()[0])
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear 2 values and convert' }))
+
+    await waitFor(() =>
+      expect(mocks.updateFields).toHaveBeenCalledWith({
+        id: 7,
+        upserts: [{ id: 11, name: 'size', fieldType: 'number', required: false, sortOrder: 0 }],
+        deletedIds: [],
+        clearIncompatible: true,
+        acknowledgedValueCount: 2,
+      })
+    )
+  })
+
+  // Cancel is inert: nothing is written, and the row returns to the type the
+  // server still has, so a later save cannot strand values the admin declined to
+  // clear.
+  it('leaves the row untouched when the dialog is cancelled', async () => {
+    mocks.usageQuery.mockResolvedValue(stranded)
+    renderFields()
+    fireEvent.change(typeSelects()[0], { target: { value: 'number' } })
+    fireEvent.click(saveButtons()[0])
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(mocks.updateFields).not.toHaveBeenCalled()
+    expect(typeSelects()[0]).toHaveValue('text')
+  })
+
+  // The warning lands as soon as the type is picked, so the wall the API would
+  // raise is on screen before Save is even reachable.
+  it('warns on the row when the picked type strands values', async () => {
+    mocks.usageQuery.mockResolvedValue(stranded)
+    renderFields()
+    fireEvent.change(typeSelects()[0], { target: { value: 'number' } })
+
+    expect(await screen.findByText("2 values won't fit number")).toBeInTheDocument()
+  })
+
+  // Leaving to fix the items in another tab is the entire point of the dialog's
+  // links, so coming back re-reads the list: the count the button commits to has
+  // to be the one the server will re-validate.
+  it('re-reads the offenders when the window regains focus', async () => {
+    mocks.usageQuery.mockResolvedValue(stranded)
+    renderFields()
+    fireEvent.change(typeSelects()[0], { target: { value: 'number' } })
+    fireEvent.click(saveButtons()[0])
+    await screen.findByRole('button', { name: 'Clear 2 values and convert' })
+
+    mocks.usageQuery.mockResolvedValue({ total: 1, missing: 0, items: [{ itemId: 5, name: 'Hammer', value: 'big' }] })
+    window.dispatchEvent(new Event('focus'))
+
+    expect(await screen.findByRole('button', { name: 'Clear 1 value and convert' })).toBeInTheDocument()
+  })
+
+  // The pre-save read runs outside `run`'s try/catch, which covers only the
+  // mutation: unguarded it would reject out of the click handler as a silent
+  // no-op. A save that cannot be checked must say so and write nothing.
+  it('reports a failed pre-save check and does not save', async () => {
+    mocks.usageQuery.mockResolvedValueOnce({ total: 0, missing: 0, items: [] })
+    mocks.usageQuery.mockRejectedValueOnce(new Error('Session expired'))
+    renderFields()
+    fireEvent.change(typeSelects()[0], { target: { value: 'number' } })
+    fireEvent.click(saveButtons()[0])
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Session expired')
+    expect(mocks.updateFields).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })

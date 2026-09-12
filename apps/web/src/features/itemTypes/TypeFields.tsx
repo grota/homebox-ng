@@ -3,11 +3,18 @@ import { FIELD_TYPES } from '@homebox/shared'
 import type { FieldType } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
 import { Button, Field, Input, Select } from '../../ui'
+import { IncompatibleValuesDialog, type Offender } from './IncompatibleValuesDialog'
 
 export type TypeField = { id: number; name: string; fieldType: FieldType; required: boolean; sortOrder: number }
 
 // A locally-edited copy of one row, so a rename is only sent when Save is hit.
 type DraftRow = { key: number; id: number; name: string; fieldType: FieldType; required: boolean; sortOrder: number }
+
+// What `fieldValueUsage` answers with: `total` is the count a warning or a
+// destructive button commits to, `items` the rows it shows. Without `fieldType`
+// it counts every value a deletion destroys; with one, only the values that do
+// not fit it — which is what a retype strands.
+type FieldValueUsage = { total: number; missing: number; items: Offender[] }
 
 // The field-set editor. Every row saves on its own, and each save sends exactly
 // one upsert plus no deletions — which is only safe because the API's diff never
@@ -20,6 +27,10 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState<FieldType>('text')
   const [error, setError] = useState<string | null>(null)
+  // The retype whose values do not fit, held until the admin settles it, and the
+  // count shown on the row that is waiting for them.
+  const [pending, setPending] = useState<{ row: DraftRow; usage: FieldValueUsage } | null>(null)
+  const [usageFor, setUsageFor] = useState<{ key: number; total: number } | null>(null)
 
   // The server owns the rows: it assigns an added field its id, and a deletion
   // takes one away. Both come back through the `fields` prop on the refetch, so
@@ -58,8 +69,63 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
     return !saved || saved.name !== row.name || saved.fieldType !== row.fieldType || saved.required !== row.required
   }
 
-  const save = (row: DraftRow) =>
-    run({ id: typeId, upserts: [{ id: row.id, name: row.name, fieldType: row.fieldType, required: row.required, sortOrder: row.sortOrder }], deletedIds: [] })
+  // Every read of the usage goes through here, and every call site gets a guarded
+  // read: they run outside `run`'s try/catch, which covers only the mutation, so an
+  // unguarded rejection would escape the click handler as a silent no-op — the
+  // admin clicks, nothing happens, and no message ever appears.
+  const readUsage = async (input: { fieldId: number; fieldType?: FieldType }) => {
+    try {
+      return await utils.client.itemTypes.fieldValueUsage.query({ typeId, ...input })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not count the values this field holds')
+      return null
+    }
+  }
+
+  // Changing a row's type asks what it would strand, so the warning is on the row
+  // BEFORE Save rather than arriving as a refusal after it.
+  const previewRetype = async (row: DraftRow, fieldType: FieldType) => {
+    patch(row.key, { fieldType })
+    const usage = await readUsage({ fieldId: row.id, fieldType })
+    // A failed read claims nothing: a warning left over from the type picked
+    // before would be a claim about a value nobody re-checked.
+    setUsageFor(usage && usage.total > 0 ? { key: row.key, total: usage.total } : null)
+  }
+
+  // A retype is the one edit the API gates while the field still holds values it
+  // would strand, so the check happens here and the refusal becomes the dialog. A
+  // retype that strands nothing is an ordinary save: no dialog, and no clear flag.
+  const save = async (row: DraftRow) => {
+    const saved = fields.find((f) => f.id === row.id)
+    if (saved && saved.fieldType !== row.fieldType) {
+      const usage = await readUsage({ fieldId: row.id, fieldType: row.fieldType })
+      if (!usage) return
+      if (usage.total > 0) {
+        // The dialog is handed the offenders, and hands back the count it showed —
+        // which is the number the server re-validates before clearing anything.
+        setPending({ row, usage })
+        return
+      }
+    }
+    await run({ id: typeId, upserts: [{ id: row.id, name: row.name, fieldType: row.fieldType, required: row.required, sortOrder: row.sortOrder }], deletedIds: [] })
+  }
+
+  // The dialog's list is a snapshot, and the whole point of its links is that the
+  // admin LEAVES to fix the items in another tab — so it is re-read when they come
+  // back, and the count the destructive button commits to follows. Re-subscribing
+  // on each `pending` change is cheaper than a ref would be to keep `readUsage`
+  // (which only closes over the constant `typeId`) out of the dependencies.
+  useEffect(() => {
+    if (!pending) return
+    const recheck = async () => {
+      const usage = await readUsage({ fieldId: pending.row.id, fieldType: pending.row.fieldType })
+      if (!usage) return
+      setPending((current) => (current ? { ...current, usage } : current))
+      setUsageFor(usage.total > 0 ? { key: pending.row.key, total: usage.total } : null)
+    }
+    window.addEventListener('focus', recheck)
+    return () => window.removeEventListener('focus', recheck)
+  }, [pending])
 
   const add = () =>
     run({ id: typeId, upserts: [{ name: newName, fieldType: newType }], deletedIds: [] }).then(() => {
@@ -67,20 +133,26 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
       setNewType('text')
     })
 
-  // The count is read first so the confirmation can name what it destroys, and
-  // the read is guarded on its own: a failed query must say so rather than reject
-  // out of the click handler and leave the admin with no feedback at all.
+  // The count is read first so the confirmation can name what it destroys.
   const remove = async (row: DraftRow) => {
-    let usage: { total: number }
-    try {
-      usage = await utils.client.itemTypes.fieldValueUsage.query({ typeId, fieldId: row.id })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not count the values this field holds')
-      return
-    }
+    const usage = await readUsage({ fieldId: row.id })
+    if (!usage) return
     const warning = usage.total === 0 ? `Delete the field “${row.name}”?` : `Delete the field “${row.name}”? This also destroys ${usage.total} stored value${usage.total === 1 ? '' : 's'}.`
     if (!window.confirm(warning)) return
     await run({ id: typeId, upserts: [], deletedIds: [row.id], acknowledgeValueLoss: true })
+  }
+
+  // Cancel is inert: no write, and the row goes back to the type the server still
+  // has — so a later save cannot silently clear the values the admin declined to
+  // clear here. Both the warning and the dialog's snapshot go with it.
+  const cancelRetype = () => {
+    const row = pending?.row
+    setPending(null)
+    setUsageFor(null)
+    if (row) {
+      const saved = fields.find((f) => f.id === row.id)
+      if (saved) patch(row.key, { fieldType: saved.fieldType })
+    }
   }
 
   return (
@@ -93,11 +165,18 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
             <Input id={`field-name-${row.key}`} value={row.name} disabled={!canEdit} onChange={(e) => patch(row.key, { name: e.target.value })} className="w-full" />
           </Field>
           <Field label="Type" htmlFor={`field-type-${row.key}`}>
-            <Select id={`field-type-${row.key}`} value={row.fieldType} disabled={!canEdit} onChange={(e) => patch(row.key, { fieldType: e.target.value as FieldType })}>
+            <Select id={`field-type-${row.key}`} value={row.fieldType} disabled={!canEdit} onChange={(e) => previewRetype(row, e.target.value as FieldType)}>
               {FIELD_TYPES.map((t) => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </Select>
+            {/* “won't fit” rather than “don't fit”, so the singular needs no second
+                ternary. The count is the one the dialog will make the admin commit to. */}
+            {usageFor?.key === row.key && (
+              <span className="text-danger text-xs">
+                {usageFor.total} value{usageFor.total === 1 ? '' : 's'} won't fit {row.fieldType}
+              </span>
+            )}
           </Field>
           {canEdit && (
             <>
@@ -138,6 +217,36 @@ export function TypeFields({ typeId, fields, canEdit }: { typeId: number; fields
       )}
 
       {error && <p role="alert" className="text-danger">{error}</p>}
+
+      {/* The dialog's destructive button is a write control, so it stays behind the
+          same gate as the rest of them — `pending` can only be set by a Save or a
+          type change, both of which a non-admin is never shown. */}
+      {canEdit && (
+        <IncompatibleValuesDialog
+          open={pending !== null}
+          fieldName={pending?.row.name ?? ''}
+          targetType={pending?.row.fieldType ?? 'text'}
+          offenders={pending?.usage.items ?? []}
+          total={pending?.usage.total ?? 0}
+          onCancel={cancelRetype}
+          onConfirm={async () => {
+            if (!pending) return
+            const { row, usage } = pending
+            setPending(null)
+            setUsageFor(null)
+            // ONE field per call: the API refuses a request that would clear two,
+            // because a single acknowledged count cannot attest to both. Cleared
+            // and retyped in one transaction, so they cannot diverge.
+            await run({
+              id: typeId,
+              upserts: [{ id: row.id, name: row.name, fieldType: row.fieldType, required: row.required, sortOrder: row.sortOrder }],
+              deletedIds: [],
+              clearIncompatible: true,
+              acknowledgedValueCount: usage.total,
+            })
+          }}
+        />
+      )}
     </div>
   )
 }
