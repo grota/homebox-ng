@@ -40,6 +40,12 @@ describe('env data paths', () => {
   // at a `mkdtemp` directory, and a deploy can point it anywhere on disk.
   it('leaves an absolute data path alone', () => {
     expect(resolveDataPath('/srv/homebox')).toBe('/srv/homebox')
-    expect(loadEnv({ SESSION_SECRET: 'secret', DATA_DIR: '/srv/homebox' }).DATA_DIR).toBe('/srv/homebox')
+    const env = loadEnv({
+      SESSION_SECRET: 'secret',
+      DATA_DIR: '/srv/homebox',
+      DATABASE_PATH: '/srv/homebox/custom.db',
+    })
+    expect(env.DATA_DIR).toBe('/srv/homebox')
+    expect(env.DATABASE_PATH).toBe('/srv/homebox/custom.db')
   })
 })
