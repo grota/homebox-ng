@@ -268,27 +268,31 @@ export function ItemsPage() {
           <p>Loading…</p>
         ) : (
           <div className="flex-1 min-w-0 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Two sibling click targets and nothing else: the photo opens the
+                viewer, the link carries the REST of the card — its own padding
+                included, so the card has no dead zone. The heading stays a
+                heading inside the link (the catalog tests query it by role) and
+                the link keeps the item name as its accessible name via
+                `aria-label`; the wrapped text would otherwise become the name. */}
             {items.map((item) => (
               <Card key={item.id} padding="none" className="overflow-hidden hover:border-text-muted">
-                <div className="p-3">
-                  {item.images?.[0]?.thumbPath ? (
-                    <button
-                      type="button"
-                      aria-label={`View photo of ${item.name}`}
-                      onClick={() =>
-                        setViewing({
-                          src: '/file/' + (item.images[0].editedPath ?? item.images[0].originalPath),
-                          alt: item.name,
-                        })
-                      }
-                      className="block w-full cursor-zoom-in p-0 mb-2"
-                    >
-                      <img src={'/file/' + item.images[0].thumbPath} alt="" className="w-full h-32 object-cover rounded-md" />
-                    </button>
-                  ) : null}
-                  <Link to={`/items/${item.id}`} className="no-underline text-inherit">
-                    <h2 className="mt-0">{item.name}</h2>
-                  </Link>
+                {item.images?.[0]?.thumbPath ? (
+                  <button
+                    type="button"
+                    aria-label={`View photo of ${item.name}`}
+                    onClick={() =>
+                      setViewing({
+                        src: '/file/' + (item.images[0].editedPath ?? item.images[0].originalPath),
+                        alt: item.name,
+                      })
+                    }
+                    className="block w-full cursor-zoom-in px-3 pt-3"
+                  >
+                    <img src={'/file/' + item.images[0].thumbPath} alt="" className="w-full h-32 object-cover rounded-md" />
+                  </button>
+                ) : null}
+                <Link to={`/items/${item.id}`} aria-label={item.name} className="block p-3 no-underline text-inherit">
+                  <h2 className="mt-0">{item.name}</h2>
                   <p>{item.location?.name}</p>
                   <p>{item.type?.name}</p>
                   {item.tags.map((tag) => (
@@ -297,7 +301,7 @@ export function ItemsPage() {
                   {q.trim() && item.snippet ? (
                     <p className="mt-2 text-text-muted text-sm" data-testid="item-snippet">{item.snippet}</p>
                   ) : null}
-                </div>
+                </Link>
               </Card>
             ))}
             {items.length === 0 && <p>No items yet.</p>}
