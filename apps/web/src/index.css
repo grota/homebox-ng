@@ -46,6 +46,27 @@ body {
   line-height: 1.5;
 }
 
+/* Radix's modal `Dialog` clamps `pointer-events` on <body> for as long as it is
+   open and re-enables it only for its own subtree (see
+   @radix-ui/react-dismissable-layer: `ownerDocument.body.style.pointerEvents =
+   "none"`). That assumes the dialog's own DOM is all that must stay live — but
+   PhotoEditor wraps filerobot, which renders its popups (the "Discard changes?"
+   confirm, the pen's opacity/stroke menus) through @scaleflex/ui, and those
+   portal to <body>. As body children they inherited `none` and were no longer
+   hit-testable, so every control inside them was dead: `elementFromPoint` at the
+   centre of that confirm's Cancel button returned the Konva canvas behind it.
+
+   This restores the clamp's actual intent — the page *behind* the dialog stays
+   inert, the dialog and anything layered above it does not — and stops there.
+   Written as `:where()` so it carries no specificity: it only fills a gap no
+   other rule declares, so any explicit `pointer-events`, our own
+   `pointer-events-none` utilities included, still wins. `#root` is the app and
+   stays clamped; the Radix portal already sets `auto` on its own content, so the
+   photo viewer is unaffected. */
+:where(body > :not(#root)) {
+  pointer-events: auto;
+}
+
 /* Visible focus ring for keyboard/Tab users, driven by the semantic focus token. */
 :focus-visible {
   outline: 2px solid var(--color-focus);
