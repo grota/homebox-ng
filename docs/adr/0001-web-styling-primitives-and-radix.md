@@ -134,6 +134,57 @@ they are not rediscovered as bugs.
   contract wins. The alternative — letting the text tool swallow the first Escape — makes
   Escape's behaviour depend on which sub-control has focus.
 
+### Accepted costs: the modal guarantee and third-party portals
+
+Adopting Radix's `Dialog` bought a real modal contract: while it is open, Radix clamps
+`pointer-events` on `<body>` and re-enables it only for its own content subtree, so nothing
+behind the dialog can be clicked. It pairs with the `aria-hidden` Radix applies to siblings.
+
+That guarantee assumes the dialog's DOM contains everything belonging to it. The image editor
+breaks the assumption. Filerobot's popovers — the pen menus, the stroke slider, the "discard
+changes?" confirm — are rendered by `@scaleflex/ui`, which does `createPortal(render(),
+document.body)` into two hosts it appends to `<body>`: **`#SfxPopper`** and **`#SfxPopup`**.
+Visually inside the dialog, structurally outside it. Every control in them was inert:
+visible, unclickable, unfocusable.
+
+**Decision: one global rule re-enables pointer events for `body`-level portals.**
+
+```css
+:where(body > :not(#root)) {
+  pointer-events: auto;
+}
+```
+
+In `index.css`. `:where()` gives it zero specificity, so it fills a gap no other rule declares
+and any explicit `pointer-events` — our own `pointer-events-none` utilities included — still
+wins. `#root` is excluded, so **the app itself stays inert**: no control behind the dialog
+becomes clickable. The relaxation reaches only elements a library portals to `<body>`.
+
+**Alternatives evaluated and rejected:**
+
+- **Retarget the portal into the dialog's content.** Not reachable. `usePortal(id)` in
+  `@scaleflex/ui` takes only an id and unconditionally appends to `document.body`; `Popper`
+  has a `disablePortal` prop but filerobot uses it only for a `Drawer`, never the pen menus;
+  `Popup` has no `disablePortal` at all. It would also trade inertness for **clipping** —
+  `Modal`'s content is `overflow-auto`, and portalling to `<body>` is precisely what lets a
+  popover escape that. Not a shortcut in the library; the point of it.
+- **Name the two hosts** (`#SfxPopper, #SfxPopup`). Precisely scoped, but pinned to
+  `@scaleflex/ui@2.10.27`'s internal naming. A version bump that renames them **silently
+  resurrects the bug**, and no test can catch it — the committed regression test pins the CSS
+  cascade, since jsdom cannot hit-test. A rule that fails loudly outranks one that fails
+  silently.
+
+**The breadth is latent, not active.** Outside a modal, `body` carries no clamp, so the rule
+is a no-op. It acts only while a dialog is open, and in that window the only `body` portals
+here are those two hosts — so today it behaves identically to the named version. The
+difference is only what a future dependency might portal.
+
+**When to revisit:** a dependency portalling something that must stay inert while a modal is
+open. That, not the rule's existence, is the trigger to narrow it. Note also that `usePortal`
+never removes its host — its cleanup checks `childNodes.length === -1`, never true, a typo for
+`=== 0` — so the hosts persist as empty divs after the editor closes, and a rule naming them
+would apply to a permanently-present element rather than only during editing.
+
 ### When to revisit
 
 Adopt shadcn (or another styled library) for a **specific component whose design we do not

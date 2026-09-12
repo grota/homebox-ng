@@ -62,7 +62,12 @@ body {
    other rule declares, so any explicit `pointer-events`, our own
    `pointer-events-none` utilities included, still wins. `#root` is the app and
    stays clamped; the Radix portal already sets `auto` on its own content, so the
-   photo viewer is unaffected. */
+   photo viewer is unaffected.
+
+   A rule this broad is deliberate, not lazy — read the reasoning, the two
+   rejected alternatives (retargeting the portal, naming the hosts) and the
+   revisit trigger in ADR-0001, "Accepted costs: the modal guarantee and
+   third-party portals", before narrowing it. */
 :where(body > :not(#root)) {
   pointer-events: auto;
 }
