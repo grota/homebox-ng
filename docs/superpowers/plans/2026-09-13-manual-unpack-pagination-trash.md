@@ -26,7 +26,8 @@
 2. **`regions` are `{ name: string; box: { x, y, width, height } }[]`**, validated by zod with positive width/height. The server does not verify they are inside the image; the client clamps and the crop is best-effort. A region with a blank name is legal and falls through to `Draft N`.
 3. **Two endpoints, one core.** `POST /upload/unpack/manual` (multipart: `photo`, `itemTypeId`, `regions` as a JSON field) and `unpack.manual` (tRPC: `{ imageId, regions }`). Both build the provider and call `createItemsFromImage`. Neither is a discriminated union with the auto paths.
 4. **The modal owns its own `<img>` + `<svg>` pair.** It does not compose `PhotoViewer`, which has no overlay hook and whose dismissal rule (click the backdrop) would fight drawing.
-5. **Pan is Space+drag; wheel zooms.** `zoom.ts`'s `zoomAt` clamps scale to `[fitScale, 1]`, so the modal cannot zoom past 1:1 — that is intended, not a bug to fix.
+5. **Pan is a mode, toggled by Space or the header button; wheel zooms.** `zoom.ts`'s `zoomAt` clamps scale to `[fitScale, 1]`, so the modal cannot zoom past 1:1 — that is intended, not a bug to fix.
+   *Revised 2026-09-13 after a real session.* A **held** Space was the first design and it failed twice: it required the key to be down at the instant the mouse button went down, and in testing it never fired at all. Note also that panning is only possible *past fit* — at fit the image is letterboxed on both axes and `panBy` correctly clamps every offset back to the centre — and that Space stays a text character in the name fields, so the shortcut is live only while the drawing surface has focus.
 6. **The hue cycle is a fixed array of ~8 colours** in the modal module. No theme token, no palette config.
 7. **Trash is per-instance, not per-user** — every user sees every trashed item, as they see every draft.
 
@@ -176,13 +177,13 @@
 **Files:** `apps/web/src/features/drafts/ManualUnpackModal.tsx` (new), `apps/web/test/manualUnpack.test.tsx` (new).
 
 - [x] Compose `Modal size="full"`. Inside: the image area (an `<img>` and an `<svg>` in one transformed wrapper), the row list, and the footer (Cancel / X / Submit).
-- [x] Measure the natural size on the image's `load` and call `initialView` from `ui/zoom.ts`; wheel → `zoomAt`, Space+drag → `panBy`. The `space` keydown/keyup listeners go on the container, and Space must not scroll the page or re-trigger a focused button.
+- [x] Measure the natural size on the image's `load` and call `initialView` from `ui/zoom.ts`; wheel → `zoomAt`, pan mode → `panBy`. *Revised 2026-09-13:* Space **toggles** that mode rather than being held — a held key has to be down at the instant the mouse button goes down, and it never fired in a real session. Space is `preventDefault`ed so it cannot scroll the page, and is never taken from a text field (names contain spaces) or from a control that activates on it; the modal therefore opens with focus on the drawing surface, or the shortcut would be dead.
 - [x] The `<svg>` carries `viewBox="0 0 <naturalWidth> <naturalHeight>"` and the wrapper carries `translate(x,y) scale(s)` with `transform-origin: 0 0` — the same transform string `PhotoViewer.tsx:261-271` uses — so a rectangle's coordinates are image pixels and need no conversion.
 - [x] Convert a drag to image pixels by inverting that transform (or by measuring the overlay's own client rect and dividing by scale). **Test this**: a drag from screen point A to B produces the box you would compute by hand, at a non-1 scale and at a non-zero pan offset.
 - [x] Rectangles: drag-empty draws, body-drag moves, 8 handles resize, all clamped to the image with a minimum size. Click selects; Delete removes the selection. **Escape is not bound** — it belongs to `Modal`.
 - [x] Rows: crop preview, index + hue-cycle colour, name `<Input>`, delete button. Drawing focuses the new row's name field.
 - [x] Submit is disabled with zero rectangles. Cancel/X/Escape confirm when rectangles exist (`window.confirm`).
-- [x] Help text, visible in the modal: *"Drag on the photo to draw a box. Hold Space and drag to move the photo. Scroll to zoom. Click a box to select it; press Delete to remove it."*
+- [x] Help text, visible in the modal, naming the *current* mode: a plain Space toggles it (or the **Move photo** button), panning needs the photo zoomed past fit, and the hint says so when it is not.
 - [x] Tests: draw → a row appears and is focused; delete removes both; clamping holds at the edges; the minimum size rejects a click without a drag; submit is disabled with nothing drawn; submit sends pixel coordinates in natural size.
 
 **Verify:** `pnpm --filter @homebox/web test`.

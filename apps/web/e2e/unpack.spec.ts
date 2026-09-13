@@ -131,6 +131,7 @@ test('manual unpack turns drawn rectangles into named drafts', async ({ page }) 
   // alone would silently swallow the first drag and leave one rectangle.
   await expect(page.locator('[data-testid="manual-unpack-image"] svg')).toBeVisible()
 
+
   // Drawn against the *image*, not the canvas: the image is fitted and centred
   // inside the canvas, so canvas-relative coordinates near an edge land outside
   // the photo, where the clamp turns the drag into a sliver that the minimum-size
@@ -151,6 +152,41 @@ test('manual unpack turns drawn rectangles into named drafts', async ({ page }) 
   await expect(names).toHaveCount(2)
   await names.nth(0).fill('Left thing')
   await names.nth(1).fill('Right thing')
+
+  // Panning is a *mode*: Space toggles the same state the header button does, so
+  // there is nothing to hold and nothing to get in the right order. Pinned with
+  // real input because jsdom cannot see the focus or the keystroke routing this
+  // failed on.
+  //
+  // The click first is the point of the test, not setup. Filling a name leaves
+  // focus in that text box, and a text field must keep Space as a character — item
+  // names contain spaces — so Space toggles only while the drawing surface has
+  // focus. Pressing it with a name box focused types a space and does nothing,
+  // which is exactly how this failed in a real session, and is why the modal now
+  // opens with focus on the photo.
+  await canvas.click({ position: { x: 6, y: 6 } })
+  const centre = (await image.boundingBox())!
+  const tx = centre.x + centre.width / 2
+  const ty = centre.y + centre.height / 2
+  await page.mouse.move(tx, ty)
+  await page.mouse.wheel(0, -400)
+  await page.waitForTimeout(250)
+
+  await page.keyboard.press('Space')
+  await expect(page.getByRole('button', { name: 'Moving', exact: true })).toBeVisible()
+
+  const readTransform = () => image.evaluate((el) => (el as HTMLElement).style.transform)
+  const beforePan = await readTransform()
+  await page.mouse.move(tx, ty)
+  await page.mouse.down()
+  for (let i = 1; i <= 4; i++) await page.mouse.move(tx + i * 25, ty + i * 15)
+  await page.mouse.up()
+  expect(await readTransform()).not.toBe(beforePan)
+
+  // Back to drawing, and the stray click above must not have drawn anything: the
+  // submit below still says two.
+  await page.keyboard.press('Space')
+  await expect(page.getByRole('button', { name: 'Move photo', exact: true })).toBeVisible()
 
   const done = page.waitForResponse((res) => res.url().includes('/upload/unpack/manual'))
   await page.getByRole('button', { name: 'Create 2 drafts', exact: true }).click()

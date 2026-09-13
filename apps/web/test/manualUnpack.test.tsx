@@ -247,6 +247,30 @@ describe('ManualUnpackModal', () => {
     await waitFor(() => expect(wrapper.style.transform).not.toBe(before))
   })
 
+  // Space is a *toggle* of the same state the button drives, not a key to hold.
+  // The held version only worked if the key was down at the instant the mouse
+  // button went down, which is a rule nobody should have to learn — and on a real
+  // session it never fired at all.
+  it('toggles the move mode with Space, exactly like the button', () => {
+    const { canvas } = open()
+    fireEvent.keyDown(window, { code: 'Space' })
+    expect(screen.getByRole('button', { name: 'Moving' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.keyDown(window, { code: 'Space' })
+    expect(screen.getByRole('button', { name: 'Move photo' })).toHaveAttribute('aria-pressed', 'false')
+    expect(canvas.className).toContain('cursor-crosshair')
+  })
+
+  // Space is a control's own activation key. Eating it would make the modal
+  // unusable by keyboard in exchange for a shortcut.
+  it('leaves Space alone when a control has focus', () => {
+    open()
+    const button = screen.getByRole('button', { name: 'Move photo' })
+    button.focus()
+    fireEvent.keyDown(button, { code: 'Space' })
+    expect(button).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('does not draw a rectangle while the Move toggle is on', () => {
     const { canvas } = open()
     fireEvent.click(screen.getByRole('button', { name: 'Move photo' }))
@@ -263,6 +287,21 @@ describe('ManualUnpackModal', () => {
     const { canvas } = open()
     await waitFor(() => expect(canvas).toHaveFocus())
     expect(screen.getByRole('button', { name: 'Cancel' })).not.toHaveFocus()
+  })
+
+  // What the dialog library leaves focus on is its choice, not the user's, and it
+  // is not always a button: a real session had it in a text box, which then ate
+  // Space so the shortcut never fired. Whatever it was, the drawing surface wins.
+  it('takes focus back from a text box, which would otherwise swallow Space', async () => {
+    const { canvas } = open()
+    // Inside the dialog: a box outside it would be pulled back by the focus trap,
+    // so it would never hold focus long enough to swallow anything.
+    const stray = document.createElement('input')
+    canvas.appendChild(stray)
+    stray.focus()
+    expect(stray).toHaveFocus()
+
+    await waitFor(() => expect(canvas).toHaveFocus())
   })
 
   it('keeps the modal open and shows why when the request fails', async () => {

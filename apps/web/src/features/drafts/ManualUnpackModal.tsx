@@ -50,16 +50,21 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
   const [pending, setPending] = useState<{ id: number; box: Box } | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
   const [mode, setMode] = useState<Mode | null>(null)
-  const [spaceDown, setSpaceDown] = useState(false)
-  // The keyboard-free way to pan. Space worked, but only for people whose
-  // browser and focus happened to cooperate, and a held modifier that silently
-  // does nothing is indistinguishable from a broken drag — reported twice from a
-  // real session. A plain toggle is discoverable and depends on nothing.
+  // Moving the photo is a *mode*, not a held modifier. Space toggles it and the
+  // header button toggles it, and they are the same state — so there is no order
+  // of operations to get right and nothing to hold down.
+  //
+  // A held Space was the first design and it was wrong twice over: it only works
+  // if the key is down at the instant the button goes down (press-then-click, not
+  // click-then-press), and on a real session it simply never fired. A mode cannot
+  // have that failure.
   const [panMode, setPanMode] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const nextId = useRef(1)
   const focusNameFor = useRef<number | null>(null)
+  // Read by the mount-focus frame, which runs after this render's closure.
+  const drawnAnything = useRef(false)
 
   // Start on the drawing surface, not on the first button in the DOM. Radix
   // focuses the first focusable element, which is "Cancel" — a poor default for
@@ -70,31 +75,39 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
     // The frame is not decoration: Radix focuses on mount, after this effect, so
     // a synchronous focus here would simply be overwritten.
     const frame = requestAnimationFrame(() => {
-      // Correct Radix's default and nothing else. If focus has already moved on —
-      // to a rectangle's name field, say — leave it where the user put it.
-      const active = document.activeElement
-      if (active && active !== document.body && active.tagName !== 'BUTTON') return
+      // Focus the drawing surface unless the user has already started drawing.
+      //
+      // Not "unless something else has focus": what Radix focuses at mount is its
+      // own choice, not the user's, and it does not always land on a button — a
+      // real session had it on a text box, which then swallowed Space, so the
+      // keyboard shortcut never fired. The one focus worth preserving is a name
+      // field, and that only exists once a rectangle has been drawn.
+      if (drawnAnything.current) return
       containerRef.current?.focus()
     })
     return () => cancelAnimationFrame(frame)
   }, [])
 
-  // Space pans, so it must not also scroll the page or re-fire a focused button.
+  // Space toggles the move mode. It doubles as the shortcut for the header
+  // button, which is why this is a toggle and not a hold.
+  //
+  // Space is never taken from a control that needs it: in a text field it types a
+  // space, and on a button, link or select it is that control's own activation
+  // key. Stealing it there would break keyboard operation of the modal to serve a
+  // shortcut. Focus starts on the drawing surface, so the shortcut is live as
+  // soon as the modal opens.
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code !== 'Space') return
       const el = e.target as HTMLElement | null
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      const tag = el?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A' || el?.isContentEditable) return
+      // Otherwise a plain Space would also scroll the page behind the modal.
       e.preventDefault()
-      setSpaceDown(true)
+      setPanMode((on) => !on)
     }
-    const up = (e: KeyboardEvent) => { if (e.code === 'Space') setSpaceDown(false) }
     window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-    }
+    return () => window.removeEventListener('keydown', down)
   }, [])
 
   // Delete removes the selection. Escape is deliberately NOT bound here: it is
@@ -167,7 +180,7 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
 
     // Space pans, and panning beats everything: with the key held, a drag that
     // starts inside a rectangle must not move it.
-    if (spaceDown || panMode) { setMode({ kind: 'pan', from: { x: event.clientX, y: event.clientY } }); return }
+    if (panMode) { setMode({ kind: 'pan', from: { x: event.clientX, y: event.clientY } }); return }
 
     const target = event.target as HTMLElement
     const handle = target.dataset.handle as Handle | undefined
@@ -223,6 +236,7 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
       // A click with no drag is not a rectangle.
       if (isDrawable(pending.box)) {
         const id = pending.id
+        drawnAnything.current = true
         setRegions((rs) => [...rs, { id, name: '', box: pending.box }])
         setSelected(id)
         focusNameFor.current = id
@@ -277,16 +291,16 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
               nothing off-screen". */}
           <p className="text-sm text-text-muted">
             {panMode
-              ? 'Dragging moves the photo. Click “Moving” to go back to drawing boxes.'
-              : spaceDown && !canPan
-                ? 'The whole photo is already visible — zoom in first, then drag to move it.'
-                : 'Drag on the photo to draw a box. Click a box to select it; press Delete to remove it. To move the photo: zoom in, then hold Space and drag — or turn on Move photo.'}
+              ? canPan
+                ? 'Dragging moves the photo. Press Space again, or click “Moving”, to go back to drawing boxes.'
+                : 'The whole photo is already visible — zoom in first, then drag to move it.'
+              : 'Drag on the photo to draw a box. Click a box to select it; press Delete to remove it. To move the photo: zoom in, then press Space (or click Move photo).'}
           </p>
           <div className="flex shrink-0 gap-2">
             <Button
               aria-pressed={panMode}
               onClick={() => setPanMode((on) => !on)}
-              title={canPan ? 'Drag to move the photo' : 'Zoom in first — the whole photo is already visible'}
+              title={canPan ? 'Move the photo — or press Space' : 'Zoom in first — the whole photo is already visible'}
             >
               {panMode ? 'Moving' : 'Move photo'}
             </Button>
@@ -304,7 +318,7 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
           data-testid="manual-unpack-canvas"
           tabIndex={-1}
           className={`relative min-h-0 flex-1 touch-none overflow-hidden bg-black/90 focus:outline-none ${
-            spaceDown || panMode ? (canPan ? 'cursor-grab' : 'cursor-not-allowed') : 'cursor-crosshair'
+            panMode ? (canPan ? 'cursor-grab' : 'cursor-not-allowed') : 'cursor-crosshair'
           }`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}

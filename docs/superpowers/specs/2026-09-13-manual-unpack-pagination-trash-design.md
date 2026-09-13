@@ -72,8 +72,14 @@ included. Nothing records that any of this is a guarantee, because it isn't one.
    app is applied to a bare `<img>` (`PhotoViewer.tsx:261-271`), because the viewer has no
    overlay to carry along.
 8. **Gestures, in one sentence, and stated in the modal:** drag on the photo to draw; drag a box
-   to move it; drag a box's edge or corner to resize; hold **Space** and drag to move the photo;
-   scroll to zoom. Click a box to select it; press **Delete** to remove it.
+   to move it; drag a box's edge or corner to resize; scroll to zoom; to move the photo, turn on
+   **Move photo** (in the modal header) or press **Space**, then drag. Click a box to select it;
+   press **Delete** to remove it.
+   *Revised after a real session (2026-09-13).* Moving the photo was originally a **held** Space,
+   which required the key to be down at the instant the mouse button went down — so
+   press-then-click worked and click-then-press silently did not, and in testing it never fired
+   at all. It is now a **mode** that Space and the button toggle between, with no ordering rule
+   and nothing to hold.
 9. **Rectangles clamp to the image and enforce a minimum size** on both draw and resize. The
    crop is `sharp.extract`, which needs an in-bounds box; clamping in the UI means the server
    never has to reject a hand-drawn box.
