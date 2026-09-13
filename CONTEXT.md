@@ -4,7 +4,8 @@
 is a self-hosted, household-shared inventory manager — a Homebox-inspired rebuild as a 
 type-safe pnpm/Turbo monorepo. One Fastify server serves both the tRPC API and the built 
 SPA over one SQLite DB. Every user shares one catalog of items.
-Its distinctive feature is a background object-detection path that turns a photo into proposed **drafts**.
+Its distinctive feature is the **unpack** path that turns a photo into proposed **drafts** —
+either by object detection or by hand.
 
 This is the project's **domain glossary** — the vocabulary the code already uses. When you name
 a domain concept (an issue title, a spec, a test name, a refactor proposal), use these terms;
@@ -14,8 +15,8 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
 ## Catalog
 
 - **item** — a catalogued physical thing, the unit of the shared inventory. Every row is a
-  row in `items`; `published` decides whether it's on the catalog or the drafts page.
-  `(packages/db/src/schema.ts:57)`
+  row in `items`; `published` decides whether it's on the catalog or the drafts page, and a
+  **trashed** item is on neither. `(packages/db/src/schema.ts:57)`
 - **location** — a place where items live, hierarchical through `parentId` (a room can be
   under a building). `(packages/db/src/schema.ts:30)`
 - **item type** — a category an item belongs to, chosen at creation. Each item type owns its
@@ -45,16 +46,42 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
 
 ## Unpack → drafts → publish (the background flow)
 
-- **unpack** — run object detection over an uploaded photo for a chosen item type, then create
-  one **draft** per detected box, each with a cropped photo (original + thumb) written to disk.
-  Returns `{ detected, drafts }`. `(apps/api/src/modules/unpack/service.ts:35)`
+- **unpack** — turn a photo into **drafts**, one per box, each with a cropped photo
+  (original + thumb) written to disk, for a chosen item type. Returns `{ detected, drafts }`.
+  The pipeline sees only boxes and their labels; where the boxes came from is the *source*.
+  `(apps/api/src/modules/unpack/service.ts:34)`
+- **auto unpack** — unpack whose box source is a **detection provider**. This is what "unpack"
+  alone used to mean, and the rename exists so it no longer has to.
+- **manual unpack** — unpack whose box source is a rectangle the user drew on the photo and
+  named. The name becomes the draft's name, exactly as a detected box's label does. Reached
+  from the drafts page (with an uploaded photo) and from an item's photo.
 - **draft** — an item with `published=false`. There is **no separate drafts table**; it is the
   same `items` row, filtered by the flag. Drafts sit on the drafts page, not the shared catalog.
   `(packages/db/src/schema.ts:66)` `(apps/api/src/modules/unpack/service.ts:62)`
 - **publish** — flip a draft's `published` to `true` so it joins the shared catalog.
   `publishDraft` (one) / `publishAll` (all, or a subset of ids). `(apps/api/src/modules/drafts/service.ts:15)`
-- **rename** a draft gives it a real name before publishing; **discard** a draft deletes the
-  row (cascade) and best-effort removes its images. `(apps/api/src/modules/drafts/service.ts:12)` `(apps/api/src/modules/drafts/service.ts:45)`
+- **rename** a draft gives it a real name before publishing.
+  `(apps/api/src/modules/drafts/service.ts:12)`
+
+## Trash
+
+- **trash** — the holding state for something deleted but not destroyed. **Items and drafts are
+  the only things that can be trashed** (locations, item types and tags are not). A trashed
+  thing keeps its row and its photo files, is on neither the catalog nor the drafts page, and
+  is reachable only from the trash page.
+- **move to trash** — the recoverable delete. This is what **discard** used to mean; the word
+  went with the behaviour, so the two verbs are now unambiguous.
+  `(apps/api/src/modules/drafts/service.ts:45)`
+- **restore** — put a trashed thing back where it came from: a trashed draft returns to the
+  drafts page, a trashed catalog item to the catalog. It keeps whatever it had, so an item
+  trashed with no location comes back with no location.
+- **purge** — the irreversible one: the row, its cascaded children and its photo files all go.
+  Per row the UI calls it *Delete forever*; for the whole trash, *Empty trash*. **Purging is
+  the only operation that destroys an item's photos.**
+  _Avoid_: discard (for the recoverable action — it means the irreversible one now)
+
+_Avoid_: orphan — for a **location**'s items when the location is deleted, which keep their
+rows and simply end up with no location.
 
 ## Detection
 
@@ -67,6 +94,8 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   `local` (transformers.js), `google` (Gemini vision), `openai` (OpenAI vision), plus `mock`
   (returned when `DETECTION_MOCK=1`, fixed boxes for a reproducible flow).
   `(apps/api/src/modules/detection/provider.ts:7)` `(apps/api/src/modules/detection/mock.ts:5)`
+  Manual unpack also satisfies this interface — boxes handed in rather than detected — but it
+  is **not registered and never selectable**; it exists for the length of one request.
 - Selected at the **instance settings** level. Every box is guaranteed in-bounds for cropping:
   providers clamp here, and `createItemsFromImage` only drops 0-area boxes.
   `(apps/api/src/modules/detection/coords.ts:7)`
@@ -83,7 +112,8 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
 - **facet search** — ranked full-text search over an FTS5 virtual table (`items_fts`, columns:
   name, description, tags, customFields, typeName, locationPath), with live **facet** counts per
   dimension (types/tags/locations), FTS **snippets** when a search term is set, and URL-param
-  state. The catalog's `published=true` guard keeps drafts out of every result and count.
+  state. The catalog's `published=true` guard keeps drafts out of every result and count, and
+  the trash guard keeps trashed items out of both the catalog and the drafts list.
   `(packages/db/src/schema.ts:137)` `(apps/api/src/modules/items/repo.ts:96)`
 
 ## Auth & provisioning
