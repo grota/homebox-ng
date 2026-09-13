@@ -208,10 +208,14 @@ Established by reading the code, not assumed. Each one changed a decision.
 
 ## Open, deliberately
 
-- **The `images[0]` vs `isPrimary` disagreement outside this surface.** Rule 6 settles which
-  order the surface and the peek use; `ItemsPage`'s card still builds from `images[0]`, so a
-  catalog card can show a different photo than the surface opens on. Sorting was never tested
-  properly and is left as its own small change rather than folded in here.
+- ~~**The `images[0]` vs `isPrimary` disagreement outside this surface.**~~ **Closed.** The
+  catalog card was the last surface taking `images[0]`, which was never the primary — the card
+  was written before a primary could be set and was not revisited when `ac33300` made it
+  settable, so marking a primary changed nothing the catalog could see. It now takes
+  `find(isPrimary) ?? images[0]`, like the drafts and trash rows always have, which is what the
+  2026-09-04 design asked for in the first place ("one marked primary (used as the card image)").
+  The ordering fix in Rule 6 also changed which photo the card shows as a side effect (newest
+  rather than the arbitrary one an unordered `SELECT` returned); both changes land together.
 - **The trash peek's usefulness.** It is being added to a page that has never had one, on the
   guess that a thumbnail you cannot enlarge is worse than one you can. If it goes unused, it is
   the first thing to delete.

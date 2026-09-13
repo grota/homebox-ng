@@ -36,8 +36,12 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
                   type: { id: 1, name: 'Lighting' },
                   location: { id: 1, name: 'Living Room' },
                   tags: [{ id: 1, name: 'vintage', color: null }],
+                  // The primary is deliberately NOT first: that is how the server
+                  // sends them (`sortOrder desc`, newest-first), and the card must
+                  // show the photo the user marked, not whichever one leads.
                   images: [
-                    { id: 1, originalPath: 'uploads/originals/a.png', editedPath: null, thumbPath: 'uploads/thumbs/x.jpg', isPrimary: true },
+                    { id: 1, originalPath: 'uploads/originals/a.png', editedPath: null, thumbPath: 'uploads/thumbs/newest.jpg', isPrimary: null },
+                    { id: 2, originalPath: 'uploads/originals/b.png', editedPath: null, thumbPath: 'uploads/thumbs/cover.jpg', isPrimary: true },
                   ],
                   snippet: '… Brass **Lamp** …',
                 },
@@ -93,6 +97,16 @@ describe('catalog card click targets', () => {
       expect(within(itemLink()).getByText(text)).toBeInTheDocument()
     }
     expect(within(itemLink()).getByTestId('item-snippet')).toBeInTheDocument()
+  })
+
+  // Marking a primary exists *for* the card image — "one marked primary (used as
+  // the card image)", 2026-09-04 design. The card was the last surface still
+  // taking the first photo in the array instead, so setting a primary changed
+  // nothing anywhere the catalog could see it.
+  it('shows the primary photo, not the first one in the list', () => {
+    renderCatalog()
+
+    expect(itemLink().querySelector('img')).toHaveAttribute('src', '/file/uploads/thumbs/cover.jpg')
   })
 
   it('navigates on a click on the card content', () => {

@@ -281,28 +281,39 @@ export function ItemsPage() {
                 stays a heading inside the link (the catalog tests query it by
                 role) and the link keeps the item name as its accessible name via
                 `aria-label`; the wrapped text would otherwise become the name. */}
-            {items.map((item) => (
-              <Card key={item.id} padding="none" className="overflow-hidden hover:border-text-muted">
-                <Link to={`/items/${item.id}`} aria-label={item.name} className="block p-3 no-underline text-inherit">
-                  {item.images?.[0]?.thumbPath ? (
-                    <img
-                      src={'/file/' + item.images[0].thumbPath}
-                      alt=""
-                      className="mb-3 w-full h-32 object-cover rounded-md"
-                    />
-                  ) : null}
-                  <h2 className="mt-0">{item.name}</h2>
-                  <p>{item.location?.name}</p>
-                  <p>{item.type?.name}</p>
-                  {item.tags.map((tag) => (
-                    <Badge key={tag.id} color={tag.color} className="mr-1">{tag.name}</Badge>
-                  ))}
-                  {q.trim() && item.snippet ? (
-                    <p className="mt-2 text-text-muted text-sm" data-testid="item-snippet">{item.snippet}</p>
-                  ) : null}
-                </Link>
-              </Card>
-            ))}
+            {items.map((item) => {
+              // The card shows the PRIMARY photo — marking one primary is exactly
+              // what that is for (2026-09-04 design: "one marked primary (used as
+              // the card image)"), and it is what the drafts and trash rows do.
+              // This card was the last place still taking `images[0]`, which had
+              // no relationship to the primary at all: the primary became
+              // settable in `ac33300` (item detail only, and this page is not in
+              // that commit), so the card has been showing a photo the user never
+              // chose ever since.
+              const photo = item.images?.find((image) => image.isPrimary) ?? item.images?.[0]
+              return (
+                <Card key={item.id} padding="none" className="overflow-hidden hover:border-text-muted">
+                  <Link to={`/items/${item.id}`} aria-label={item.name} className="block p-3 no-underline text-inherit">
+                    {photo?.thumbPath ? (
+                      <img
+                        src={'/file/' + photo.thumbPath}
+                        alt=""
+                        className="mb-3 w-full h-32 object-cover rounded-md"
+                      />
+                    ) : null}
+                    <h2 className="mt-0">{item.name}</h2>
+                    <p>{item.location?.name}</p>
+                    <p>{item.type?.name}</p>
+                    {item.tags.map((tag) => (
+                      <Badge key={tag.id} color={tag.color} className="mr-1">{tag.name}</Badge>
+                    ))}
+                    {q.trim() && item.snippet ? (
+                      <p className="mt-2 text-text-muted text-sm" data-testid="item-snippet">{item.snippet}</p>
+                    ) : null}
+                  </Link>
+                </Card>
+              )
+            })}
             {items.length === 0 && <p>No items yet.</p>}
           </div>
         )}

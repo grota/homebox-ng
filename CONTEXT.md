@@ -30,8 +30,9 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
 - **image / photo** — an item's photo, the fork's analog of an attachment and the only one:
   attachments were dropped, so there is no separate `attachments` entity (v1 spec, non-goals).
   `originalPath` is always preserved; `editedPath` is set only after a
-  non-destructive edit; `thumbPath` is always present; `isPrimary` marks the cover.
-  `(packages/db/src/schema.ts:116)`
+  non-destructive edit; `thumbPath` is always present; `isPrimary` marks the **primary photo** —
+  the one a catalog card, a drafts row or a trash row shows in place of the rest, and the one an
+  **item surface** opens on. At most one per item. `(packages/db/src/schema.ts:116)`
 - **non-destructive editor** — crop/rotate/resize writes a new `editedPath` and leaves the
   original buffer intact; the original is never overwritten. **Edit photo** opens the *current*
   rendition — `editedPath` when one exists, else the original — so a re-edit builds on the last
