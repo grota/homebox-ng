@@ -18,8 +18,21 @@ RUN_DIR="$ROOT/.dev"
 STATE_FILE="$RUN_DIR/state"
 API_LOG="$RUN_DIR/api.log"
 WEB_LOG="$RUN_DIR/web.log"
-API_PORT="${PORT:-3000}"
 WEB_PORT="${WEB_PORT:-5173}"
+
+# The API's port, resolved the way the server resolves it (`apps/api/src/env.ts`):
+# the shell wins, then the repo-root `.env`, then the default. dev.sh exports the
+# result, so dev.sh's own port checks, the API and Vite's proxy
+# (`apps/web/vite.config.ts`) cannot disagree about where the API lives — a
+# disagreement that shows up as probing the wrong port and tearing down a stack
+# that came up perfectly.
+env_port() {
+  [[ -f "$ROOT/.env" ]] || return 0
+  sed -n 's/^PORT=\([^#]*\).*/\1/p' "$ROOT/.env" | head -1 | tr -d '[:space:]'
+}
+API_PORT="${PORT:-$(env_port)}"
+API_PORT="${API_PORT:-3000}"
+export PORT="$API_PORT"
 
 listener_pid() { # <port> — pid listening on it, if any
   ss -ltnpH "sport = :$1" 2>/dev/null | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | head -1
