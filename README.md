@@ -117,8 +117,9 @@ pnpm stop    # stop both
 ```
 
 `pnpm dev` runs steps 3–5 for you, including the rebuild that step 5 warns about. It seeds on every run;
-the seed is idempotent by name, so a re-run only adds what is missing. Logs land in `.dev/api.log` and
-`.dev/web.log`.
+the seed is idempotent by name, so a re-run only adds what is missing. Both servers' output streams into
+the current shell, each line tagged `[api]` or `[web]` (full logs stay in `.dev/api.log` and
+`.dev/web.log`). Ctrl-C stops the streaming only — the stack keeps running, so end it with `pnpm stop`.
 
 It refuses to start when `:3000` or `:5173` is already held — a half-started stack is worse than none,
 because the API dies on `EADDRINUSE` while Vite quietly moves to `:5174`, leaving the printed URLs
@@ -184,7 +185,7 @@ pnpm --filter @homebox/web test:e2e
 |---|---|---|
 | `pnpm build` | root | `turbo run build` (shared → db → api → web) |
 | `pnpm test` | root | `turbo run test` (all unit suites) |
-| `pnpm dev` | root | build + seed + API `:3000` + Vite `:5173`, backgrounded (`PORT`/`WEB_PORT` to move them) |
+| `pnpm dev` | root | build + seed + API `:3000` + Vite `:5173`, streaming both logs (`PORT`/`WEB_PORT` to move them) |
 | `pnpm stop` | root | stop the stack `pnpm dev` started |
 | `pnpm --filter @homebox/api start` | api | `node dist/index.js` (serve API + SPA) |
 | `pnpm --filter @homebox/web dev` | web | Vite dev server (:5173, proxies to :3000) |

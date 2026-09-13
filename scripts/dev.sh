@@ -113,8 +113,25 @@ cat <<EOF
   Web    http://localhost:$WEB_PORT   (proxies /trpc /upload /file to :$API_PORT)
   Login  a@a.com / aaaaaaaa
 
-  logs   $API_LOG
-         $WEB_LOG
   stop   pnpm stop
 
 EOF
+
+# Follow both servers here, each line tagged with where it came from. Two
+# followers rather than `tail -f "$API_LOG" "$WEB_LOG"`, because tail reprints a
+# full-path banner every time it switches file, which is constant here.
+follow() { # <label> <log>
+  tail -n +1 -f "$2" | sed -u "s/^/[$1] /"
+}
+
+# Ctrl-C must not read as "everything is down": the servers are in their own
+# sessions and outlive this shell, so say which one it is and how to end it.
+stop_following() {
+  jobs -p | xargs -r kill 2>/dev/null || true
+}
+trap 'stop_following; printf "\nDetached. The stack is still running — %s to stop it.\n" "pnpm stop"; exit 0' INT TERM
+
+follow api "$API_LOG" &
+follow web "$WEB_LOG" &
+wait
+stop_following
