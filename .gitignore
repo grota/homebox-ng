@@ -5,6 +5,13 @@ apps/web/dist
 .dev/
 data/
 .env
+
+# The seed's fixture photos: a local, untracked set of ~90 real photographs
+# (13 MB, some carrying EXIF/GPS). `scripts/seed.ts` takes the largest ones when
+# the directory is there and skips photos when it is not, so a checkout without
+# them still seeds a full catalog. Delete this line to track the set instead.
+/apps/api/scripts/seed/images/
+
 .superpowers/
 .worktrees/
 *.tsbuildinfo
