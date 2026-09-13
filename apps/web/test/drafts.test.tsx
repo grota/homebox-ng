@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
-import en from '../public/locales/en/translation.json'
+import en from '../src/locales/en/translation.json'
 
 vi.mock('react-i18next', () => ({
   // Everything still returns its key — that is what the existing assertions
