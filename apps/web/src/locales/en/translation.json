@@ -6,7 +6,21 @@
     "types": "Item types",
     "tags": "Tags",
     "settings": "Settings",
-    "drafts": "Drafts"
+    "drafts": "Drafts",
+    "trash": "Trash"
+  },
+  "trash": {
+    "title": "Trash",
+    "explainer": "Deleted items and drafts wait here. Their photos are kept until you delete them for good.",
+    "empty": "The trash is empty.",
+    "kindItem": "Item",
+    "kindDraft": "Draft",
+    "trashedWhen": "trashed {{when}}",
+    "restore": "Restore",
+    "purgeOne": "Delete forever",
+    "purgeOneConfirm": "Permanently delete \"{{name}}\" and its photos? This cannot be undone.",
+    "purgeAll": "Empty trash ({{count}})",
+    "purgeAllConfirm": "Permanently delete all {{count}} item(s) and their photos? This cannot be undone."
   },
   "drafts": {
     "title": "Drafts",

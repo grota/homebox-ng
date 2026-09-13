@@ -10,6 +10,7 @@ const navItems = [
   { to: '/tags', key: 'tags' },
   { to: '/settings', key: 'settings' },
   { to: '/drafts', key: 'drafts' },
+  { to: '/trash', key: 'trash' },
 ]
 
 function navLinkClass({ isActive }: { isActive: boolean }) {

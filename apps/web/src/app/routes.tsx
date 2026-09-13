@@ -11,6 +11,7 @@ import { ItemsPage } from '../features/items/ItemsPage'
 import { ItemDetail } from '../features/items/ItemDetail'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { DraftsPage } from '../features/drafts'
+import { TrashPage } from '../features/trash'
 import { Shell } from './Shell'
 
 export function AppRoutes() {
@@ -40,6 +41,7 @@ export function AppRoutes() {
         <Route path="/items/:id" element={<ItemDetail />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/drafts" element={<DraftsPage />} />
+    <Route path="/trash" element={<TrashPage />} />
         <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
       </Route>

@@ -212,10 +212,10 @@ The page is edited once, here, so pagination, the second unpack button and the t
 
 **Files:** `apps/web/src/features/trash/TrashPage.tsx` (new), `apps/web/src/features/trash/index.ts` (new), `apps/web/src/app/routes.tsx`, `apps/web/src/app/Shell.tsx`, `apps/web/src/locales/en/translation.json`, `apps/web/test/trash.test.tsx` (new).
 
-- [ ] `/trash` route inside the `Shell` group, next to `/drafts`; a `navItems` entry **after Drafts, before Admin**; a `nav.trash` key.
-- [ ] Rows: name, thumbnail, *trashed N ago*, a Draft/Item label, **Restore** and **Delete forever**. A footer **Empty trash**. Both destructive actions confirm, naming the count.
-- [ ] Paginated with the shared control, same as drafts.
-- [ ] Tests: a trashed draft and a trashed item both render with the right label; restore calls the right procedure; delete-forever and empty-trash confirm first and send the right payload.
+- [x] `/trash` route inside the `Shell` group, next to `/drafts`; a `navItems` entry **after Drafts, before Admin**; a `nav.trash` key.
+- [x] Rows: name, thumbnail, *trashed N ago*, a Draft/Item label, **Restore** and **Delete forever**. A footer **Empty trash**. Both destructive actions confirm, naming the count.
+- [x] Paginated with the shared control, same as drafts.
+- [x] Tests: a trashed draft and a trashed item both render with the right label; restore calls the right procedure; delete-forever and empty-trash confirm first and send the right payload.
 
 **Verify:** `pnpm --filter @homebox/web test`.
 
