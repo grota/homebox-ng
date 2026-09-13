@@ -109,6 +109,21 @@ pnpm --filter @homebox/web dev     # Vite on :5173, proxies /trpc /upload /file 
 Open `http://localhost:5173`. The API still needs to be built for its types; rebuild `shared`/`db`/`api`
 together (`pnpm build`) whenever you change code those packages export.
 
+### 6. Or: the whole stack, up and down
+
+```bash
+pnpm dev     # build shared/db/api, seed, then API :3000 + Vite :5173 in the background
+pnpm stop    # stop both
+```
+
+`pnpm dev` runs steps 3–5 for you, including the rebuild that step 5 warns about. It seeds on every run;
+the seed is idempotent by name, so a re-run only adds what is missing. Logs land in `.dev/api.log` and
+`.dev/web.log`.
+
+It refuses to start when `:3000` or `:5173` is already held — a half-started stack is worse than none,
+because the API dies on `EADDRINUSE` while Vite quietly moves to `:5174`, leaving the printed URLs
+pointing at whatever held the port first. Move the ports with `PORT=… WEB_PORT=… pnpm dev`.
+
 ### First run
 
 A fresh install has no users, so the app routes to `/setup` — create the first admin there. The
@@ -169,6 +184,8 @@ pnpm --filter @homebox/web test:e2e
 |---|---|---|
 | `pnpm build` | root | `turbo run build` (shared → db → api → web) |
 | `pnpm test` | root | `turbo run test` (all unit suites) |
+| `pnpm dev` | root | build + seed + API `:3000` + Vite `:5173`, backgrounded (`PORT`/`WEB_PORT` to move them) |
+| `pnpm stop` | root | stop the stack `pnpm dev` started |
 | `pnpm --filter @homebox/api start` | api | `node dist/index.js` (serve API + SPA) |
 | `pnpm --filter @homebox/web dev` | web | Vite dev server (:5173, proxies to :3000) |
 | `pnpm --filter @homebox/api detection:model` | api | Pre-download the local detection model |
