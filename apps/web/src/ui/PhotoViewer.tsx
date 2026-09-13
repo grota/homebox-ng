@@ -1,8 +1,6 @@
-import { useCallback, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent, SyntheticEvent, WheelEvent } from 'react'
-import { Button, buttonClasses } from './Button'
 import { cn } from './cn'
-import { Modal } from './Modal'
 import {
   KEY_PAN_STEP,
   centerOn,
@@ -21,8 +19,7 @@ import {
 type Scene = { natural: Size; viewport: Size; transform: Transform }
 
 // A pointer that moved less than this many pixels between down and up was a
-// click, not a drag. Without it a pan that happens to end on the backdrop would
-// dismiss the viewer.
+// click, not a drag.
 const DRAG_THRESHOLD = 4
 
 // Arrow keys move the *view*, so the image travels the other way: ArrowRight
@@ -35,7 +32,7 @@ const ARROW_PAN: Record<string, Point> = {
 }
 
 // A pinch's `wheel` event, stopped before the browser can turn it into page
-// zoom. Module-level so the ref callback below is stable.
+// zoom. Module-level so the effect below has a stable function to remove.
 const stopPageZoom = (event: Event) => event.preventDefault()
 
 // The distance between the two fingers of a pinch.
@@ -47,22 +44,22 @@ const spread = (pointers: Map<number, Point>): number => {
 type PhotoViewerProps = {
   /** The full-size rendition — `editedPath ?? originalPath`. */
   src: string
-  /**
-   * The unedited file, and what "Open original" points at. Optional only so a
-   * caller with nothing to distinguish the two (a draft's photo before any edit)
-   * can omit it; when absent the original IS `src`.
-   */
-  originalSrc?: string
-  /** The item or draft name: the image's alt text and the dialog's name. */
+  /** The item or draft name: the image's alt text. */
   alt: string
-  onClose: () => void
 }
 
-// Full-screen photo viewer. It composes `Modal size="full"` for the focus trap,
-// Escape handling and focus restore (ADR-0002), and owns everything else: the
-// fit/zoom maths, the gestures, and the dismissal rule — Radix has no overlay to
-// fire an outside-click on when the dialog fills the viewport.
-export function PhotoViewer({ src, originalSrc, alt, onClose }: PhotoViewerProps) {
+// The stage: one photo of an item surface, and everything about *looking* at it —
+// the fit/zoom maths, the gestures, the navigator, the loading and failed states.
+//
+// It owns no chrome and no dismissal. The surface around it decides which photo
+// this is, where the controls live, and what closing means; "Open original" is a
+// per-photo action and sits with the others on the per-photo bar.
+//
+// The backdrop-click-to-close rule the viewer used to carry went with the overlay
+// it was written for (ADR-0005): a page has no backdrop, and a click on empty
+// space discarding the item you are reading is hostile. Clicking the *photo*
+// still toggles fit ↔ 1:1.
+export function PhotoViewer({ src, alt }: PhotoViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   const [scene, setScene] = useState<Scene | null>(null)
@@ -81,24 +78,25 @@ export function PhotoViewer({ src, originalSrc, alt, onClose }: PhotoViewerProps
   // action is the browser's own page zoom — and nothing else can cancel it:
   // React registers `onWheel` passively on the root (verified in
   // react-dom@19.2.8's `listenToNativeEvent`), so the JSX handler below can
-  // never `preventDefault`, and Radix passes `allowPinchZoom: true` to
-  // react-remove-scroll, whose `shouldCancelEvent` returns false for exactly
-  // this event. This native, non-passive listener runs first and only cancels
-  // the default action — no `stopPropagation` — so the zoom handler fires too.
-  //
-  // Installed from the ref callback rather than an effect, and that is not a
-  // style choice: `Modal` wraps its content in Radix's `Dialog.Portal`, which
-  // renders `null` on the first commit and mounts its subtree from a layout
-  // effect afterwards. So a mount-time effect here runs before the container
-  // exists — and with `[]` deps it never runs again. A callback ref fires when
-  // the node actually attaches, whenever that is; React 19 calls the returned
-  // cleanup on detach.
-  const setContainer = useCallback((node: HTMLDivElement | null) => {
-    containerRef.current = node
+  // never `preventDefault`. This native, non-passive listener runs first and only
+  // cancels the default action — no `stopPropagation` — so the zoom handler fires
+  // too.
+  useEffect(() => {
+    const node = containerRef.current
     if (!node) return
     node.addEventListener('wheel', stopPageZoom, { passive: false })
     return () => node.removeEventListener('wheel', stopPageZoom)
   }, [])
+
+  // A new photo is a new image: the previous photo's scene describes the previous
+  // photo's pixels, and a previous 404 describes the previous file. The hosts key
+  // this component by photo id, which remounts it and makes this redundant — kept
+  // because "the caller must key it" is a rule nobody will remember, and the bug
+  // it prevents is showing photo 3 at photo 2's zoom.
+  useEffect(() => {
+    setScene(null)
+    setFailed(false)
+  }, [src])
 
   const measure = () => containerRef.current?.getBoundingClientRect()
 
@@ -122,13 +120,12 @@ export function PhotoViewer({ src, originalSrc, alt, onClose }: PhotoViewerProps
     setScene((current) => (current ? { ...current, transform: next(current) } : current))
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    // Primary button only: a right-click on the backdrop would otherwise arm a
-    // click that the `pointerup` dismisses on, and one on the photo would toggle
-    // the zoom.
+    // Primary button only: a right-click on the photo would otherwise arm a click
+    // that the `pointerup` toggles the zoom on.
     if (event.button !== 0) return
     const { target } = event
-    // Only the image and the backdrop itself are gesture surfaces. The chrome —
-    // close button, navigator, open-original — is neither, which is what makes
+    // Only the image and the container are gesture surfaces. The chrome —
+    // navigator, and anything the host overlays — is neither, which is what makes
     // `drag.on` provably one of exactly two elements.
     if (target !== containerRef.current && target !== imageRef.current) return
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
@@ -179,14 +176,11 @@ export function PhotoViewer({ src, originalSrc, alt, onClose }: PhotoViewerProps
     if (pointers.current.size < 2) pinch.current = null
     const start = drag.current
     drag.current = null
-    // A drag is not a click: a pan that happens to end on the backdrop must not
-    // dismiss the viewer.
+    // A drag is not a click.
     if (!start || start.moved) return
-    // The whole dismissal rule, in one line: the backdrop closes, the image
-    // toggles. `start.on` is one of those two and nothing else, because
-    // `onPointerDown` refuses every other target.
-    if (start.on === containerRef.current) onClose()
-    else apply((current) => toggleZoom(current.natural, current.viewport, current.transform))
+    // The image toggles; a click on the container around it does nothing at all.
+    if (start.on !== imageRef.current) return
+    apply((current) => toggleZoom(current.natural, current.viewport, current.transform))
   }
 
   const onPointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -209,96 +203,78 @@ export function PhotoViewer({ src, originalSrc, alt, onClose }: PhotoViewerProps
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const delta = ARROW_PAN[event.key]
     if (!delta) return
-    // Inside the dialog the arrow keys are ours: there is nothing else for them
-    // to scroll, and the focus trap guarantees focus is already in here.
+    // The arrow keys are ours while the stage has focus: the surface does not
+    // scroll, and the host's own keys are PageUp/PageDown. The host ignores
+    // arrows and this ignores PageUp/PageDown, so the split is by key and there
+    // is no ordering rule between two handlers.
     event.preventDefault()
     apply((current) => panBy(current.natural, current.viewport, current.transform, delta.x, delta.y))
   }
 
   return (
-    <Modal open onOpenChange={(next) => { if (!next) onClose() }} title={alt} size="full">
-      {/* The backdrop is this element, and the dismissal rule is a positive check
-          on it — see Task 4. `bg-black/90` is painted here rather than on the
-          dialog because a full-viewport content hides the dialog's own overlay. */}
-      <div
-        ref={setContainer}
-        data-testid="photo-viewer"
-        // Focusable but not a tab stop. Without this, clicking the non-focusable
-        // <img> sends focus to the nearest focusable ancestor — Radix's
-        // Dialog.Content, which carries tabindex="-1" — and a keydown there
-        // bubbles *up*, never reaching this container, so arrow-key panning dies
-        // the moment the user clicks the photo to zoom. Verified in Chromium.
-        tabIndex={-1}
-        className="relative h-full w-full touch-none overflow-hidden bg-black/90 focus:outline-none"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onWheel={onWheel}
-        onKeyDown={onKeyDown}
-      >
-        {scene ? null : (
-          // `pointer-events-none` is what keeps backdrop dismissal alive: this
-          // element covers the whole container, and `onPointerDown` refuses any
-          // target that is not the container or the image, so a clickable
-          // message here would swallow every click for as long as it is up —
-          // i.e. for good if the image never loads.
-          <p className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-white/70">
-            {failed ? 'Could not load this photo' : 'Loading…'}
-          </p>
-        )}
-        <img
-          ref={imageRef}
+    <div
+      ref={containerRef}
+      data-testid="photo-viewer"
+      // Focusable but not a tab stop. Clicking the non-focusable <img> sends
+      // focus to the nearest focusable ancestor, which is this element — so
+      // arrow-key panning keeps working after the user clicks the photo to zoom.
+      // Without it, focus would land on <body> and the keydown would never reach
+      // the handler below. Verified in Chromium.
+      tabIndex={-1}
+      className="relative h-full w-full touch-none overflow-hidden bg-black/90 focus:outline-none"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onWheel={onWheel}
+      onKeyDown={onKeyDown}
+    >
+      {scene ? null : (
+        // `pointer-events-none` is what keeps the surfaces underneath reachable
+        // and stops this frame swallowing the click that toggles the zoom: it
+        // covers the whole container, and `onPointerDown` refuses any target that
+        // is not the container or the image — so a clickable message here would
+        // swallow every click for as long as it is up, i.e. for good if the image
+        // never loads.
+        <p className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-white/70">
+          {failed ? 'Could not load this photo' : 'Loading…'}
+        </p>
+      )}
+      <img
+        ref={imageRef}
+        src={src}
+        alt={alt}
+        draggable={false}
+        onLoad={onLoad}
+        onError={() => setFailed(true)}
+        // Preflight caps every <img> at `max-width: 100%`, which would defeat
+        // the natural-size maths; `max-w-none` restores the intrinsic box, and
+        // the explicit width/height make the drawn size exactly `natural`
+        // before the transform scales it.
+        className={cn('absolute left-0 top-0 max-w-none select-none', scene ? '' : 'invisible')}
+        style={
+          scene
+            ? {
+                width: scene.natural.width,
+                height: scene.natural.height,
+                transform: `translate(${scene.transform.x}px, ${scene.transform.y}px) scale(${scene.transform.scale})`,
+                transformOrigin: '0 0',
+              }
+            : undefined
+        }
+      />
+      {scene && overflows(scene.natural, scene.viewport, scene.transform.scale) ? (
+        <PhotoNavigator
           src={src}
-          alt={alt}
-          draggable={false}
-          onLoad={onLoad}
-          onError={() => setFailed(true)}
-          // Preflight caps every <img> at `max-width: 100%`, which would defeat
-          // the natural-size maths; `max-w-none` restores the intrinsic box, and
-          // the explicit width/height make the drawn size exactly `natural`
-          // before the transform scales it.
-          className={cn('absolute left-0 top-0 max-w-none select-none', scene ? '' : 'invisible')}
-          style={
-            scene
-              ? {
-                  width: scene.natural.width,
-                  height: scene.natural.height,
-                  transform: `translate(${scene.transform.x}px, ${scene.transform.y}px) scale(${scene.transform.scale})`,
-                  transformOrigin: '0 0',
-                }
-              : undefined
+          natural={scene.natural}
+          viewport={scene.viewport}
+          transform={scene.transform}
+          onJump={(at) =>
+            apply((current) => centerOn(current.natural, current.viewport, current.transform, at))
           }
         />
-        {/* An <a>, not a <Button> — it opens the file in a new tab, which a
-            <button> cannot. This is the capability the photo card's "View" anchor
-            had, moved inside the viewer. */}
-        <a
-          // `originalSrc`, not `src`: an edited photo is what the viewer opens,
-          // and the whole point of this link is the file underneath it.
-          href={originalSrc ?? src}
-          target="_blank"
-          rel="noreferrer"
-          className={cn(buttonClasses(), 'absolute left-3 top-3 no-underline')}
-        >
-          Open original
-        </a>
-        <Button className="absolute right-3 top-3" onClick={onClose}>
-          Close
-        </Button>
-        {scene && overflows(scene.natural, scene.viewport, scene.transform.scale) ? (
-          <PhotoNavigator
-            src={src}
-            natural={scene.natural}
-            viewport={scene.viewport}
-            transform={scene.transform}
-            onJump={(at) =>
-              apply((current) => centerOn(current.natural, current.viewport, current.transform, at))
-            }
-          />
-        ) : null}
-      </div>
-    </Modal>
+      ) : null}
+    </div>
   )
 }
 

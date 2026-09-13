@@ -457,9 +457,15 @@ export const listTags = (db: DrizzleDb, itemIds: number[]): TagRow[] =>
     .where(inArray(itemTags.itemId, itemIds))
     .all()
 
+// Ordered newest-first, matching `getImagesForItem`, because this is the batch
+// path behind every item DTO (`hydrateRows` → `items.get`, `items.list`,
+// `trash.list`) and the item surface's "3 of 7" counts *this* array. Without the
+// ORDER BY the order was whatever SQLite returned — which happened to look right
+// for a freshly created item and was never guaranteed.
 export const listImages = (db: DrizzleDb, itemIds: number[]): ImageRow[] =>
   db
     .select({ itemId: images.itemId, id: images.id, originalPath: images.originalPath, editedPath: images.editedPath, thumbPath: images.thumbPath, isPrimary: images.isPrimary })
     .from(images)
     .where(inArray(images.itemId, itemIds))
+    .orderBy(desc(images.sortOrder))
     .all()

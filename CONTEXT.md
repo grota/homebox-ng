@@ -36,13 +36,25 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   original buffer intact; the original is never overwritten. **Edit photo** opens the *current*
   rendition — `editedPath` when one exists, else the original — so a re-edit builds on the last
   one rather than starting over; **Edit original photo**, offered only once an edit exists,
-  restarts from the original. The viewer's **Open original** is the UI's only route to the
-  unedited file, which is why it is handed that path separately from the one it displays.
-- **photo viewer** — opens any thumbnail's photo in a full-viewport overlay, showing the same
-  rendition as the grid (`editedPath` when one exists, else `originalPath`). Starts fit to the
-  viewport when the photo is larger than it and at natural size when it is not; clicking the
-  photo toggles between the two, and a **navigator** shows which region of an oversized photo
-  is on screen and jumps to another. `(apps/web/src/ui/PhotoViewer.tsx:59)`
+  restarts from the original. The **per-photo bar**'s **Open original** is the UI's only route
+  to the unedited file, which is why the **photo viewer** is handed that path separately from
+  the one it displays.
+- **photo viewer** — the pane showing **one** photo of an **item surface**, in the same
+  rendition as the grid (`editedPath` when one exists, else `originalPath`). Starts fit when
+  the photo is larger than the pane and at natural size when it is not; clicking the photo
+  toggles between the two, and a **navigator** shows which region of an oversized photo is on
+  screen and jumps to another. It owns no chrome: the surface decides which photo it is handed
+  and where the controls live. `(apps/web/src/ui/PhotoViewer.tsx:59)`
+- **item surface** — where an item is met in full, and the only place its photos are both
+  browsed and acted on: a top bar (position, prev/next, close), the **photo viewer** as its
+  largest pane, the **item panel**, and the **per-photo bar**. One surface serves every item
+  state; only the panel's item-level actions differ. `(apps/web/src/features/items/ItemDetail.tsx:15)`
+- **item panel** — the read-only account of an item on an **item surface**: name, type,
+  description, quantity, location, tags and custom-field values, plus the item-level actions
+  and the control that adds a photo. Reading is the panel's job; **Edit item** hands off to the
+  form, which is the only place an item is edited.
+- **per-photo bar** — the **item surface**'s actions on the photo currently shown: edit, edit
+  original, open original, set primary, auto unpack, manual unpack, delete.
 
 ## Unpack → drafts → publish (the background flow)
 

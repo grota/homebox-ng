@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { RequireAdmin, RequireAuth, SetupGate } from '../lib/auth'
 import { AdminPage } from '../features/admin'
 import { LoginPage } from '../features/auth/LoginPage'
@@ -20,7 +20,23 @@ export function AppRoutes() {
       <Route path="/login" element={<SetupGate><LoginPage /></SetupGate>} />
       <Route path="/setup" element={<SetupPage />} />
 
-      {/* Authenticated, first-run-gated routes all render inside the shared Shell. */}
+      {/* The item surface keeps the gates and drops the Shell: it is the one
+          authenticated page that is full-screen and nav-less, which is what makes
+          it feel like the overlay it replaces without being a dialog (ADR-0005).
+          Its own top bar carries the way out. */}
+      <Route
+        element={
+          <SetupGate>
+            <RequireAuth>
+              <Outlet />
+            </RequireAuth>
+          </SetupGate>
+        }
+      >
+        <Route path="/items/:id" element={<ItemDetail />} />
+      </Route>
+
+      {/* Every other authenticated, first-run-gated route renders inside the shared Shell. */}
       <Route
         element={
           <SetupGate>
@@ -38,7 +54,6 @@ export function AppRoutes() {
         <Route path="/types" element={<ItemTypesPage />} />
         <Route path="/tags" element={<TagsPage />} />
         <Route path="/items" element={<ItemsPage />} />
-        <Route path="/items/:id" element={<ItemDetail />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/drafts" element={<DraftsPage />} />
     <Route path="/trash" element={<TrashPage />} />

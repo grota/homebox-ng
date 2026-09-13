@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { hexColor } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
-import { Badge, Button, Card, Field, hoverScrim, Input, PageHeader, Pagination, PhotoViewer } from '../../ui'
+import { Badge, Button, Card, Field, hoverScrim, Input, PageHeader, Pagination } from '../../ui'
 import { ItemForm } from './ItemForm'
 
 // Sent explicitly rather than left to the server's default, so the request that
@@ -48,7 +48,6 @@ const flattenLocations = (nodes: any[]): FlatLocation[] =>
 export function ItemsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [showForm, setShowForm] = useState(false)
-  const [viewing, setViewing] = useState<{ src: string; originalSrc: string; alt: string } | null>(null)
   const [facetsOpen, setFacetsOpen] = useState(false)
   const utils = trpc.useUtils()
 
@@ -275,31 +274,23 @@ export function ItemsPage() {
           <p>Loading…</p>
         ) : (
           <div className="flex-1 min-w-0 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Two sibling click targets and nothing else: the photo opens the
-                viewer, the link carries the REST of the card — its own padding
-                included, so the card has no dead zone. The heading stays a
-                heading inside the link (the catalog tests query it by role) and
-                the link keeps the item name as its accessible name via
+            {/* One click target, and the whole card is it. The photo and the name
+                used to be two — the image opened the lightbox, the name opened
+                the item — because there were two places to go. There is one now,
+                so the card went back to being one thing (ADR-0005). The heading
+                stays a heading inside the link (the catalog tests query it by
+                role) and the link keeps the item name as its accessible name via
                 `aria-label`; the wrapped text would otherwise become the name. */}
             {items.map((item) => (
               <Card key={item.id} padding="none" className="overflow-hidden hover:border-text-muted">
-                {item.images?.[0]?.thumbPath ? (
-                  <button
-                    type="button"
-                    aria-label={`View photo of ${item.name}`}
-                    onClick={() =>
-                      setViewing({
-                        src: '/file/' + (item.images[0].editedPath ?? item.images[0].originalPath),
-                        originalSrc: '/file/' + item.images[0].originalPath,
-                        alt: item.name,
-                      })
-                    }
-                    className="block w-full cursor-zoom-in px-3 pt-3"
-                  >
-                    <img src={'/file/' + item.images[0].thumbPath} alt="" className="w-full h-32 object-cover rounded-md" />
-                  </button>
-                ) : null}
                 <Link to={`/items/${item.id}`} aria-label={item.name} className="block p-3 no-underline text-inherit">
+                  {item.images?.[0]?.thumbPath ? (
+                    <img
+                      src={'/file/' + item.images[0].thumbPath}
+                      alt=""
+                      className="mb-3 w-full h-32 object-cover rounded-md"
+                    />
+                  ) : null}
                   <h2 className="mt-0">{item.name}</h2>
                   <p>{item.location?.name}</p>
                   <p>{item.type?.name}</p>
@@ -318,10 +309,6 @@ export function ItemsPage() {
       </div>
 
       {data && <Pagination page={page} total={data.total} pageSize={PAGE_SIZE} onPage={setPage} />}
-
-      {viewing && (
-        <PhotoViewer src={viewing.src} alt={viewing.alt} onClose={() => setViewing(null)} />
-      )}
     </section>
   )
 }

@@ -20,13 +20,17 @@
     "purgeOne": "Delete forever",
     "purgeOneConfirm": "Permanently delete \"{{name}}\" and its photos? This cannot be undone.",
     "purgeAll": "Empty trash ({{count}})",
-    "purgeAllConfirm": "Permanently delete all {{count}} item(s) and their photos? This cannot be undone."
+    "purgeAllConfirm": "Permanently delete all {{count}} item(s) and their photos? This cannot be undone.",
+    "closePeek": "Close",
+    "previousPhoto": "Previous photo",
+    "nextPhoto": "Next photo"
   },
   "drafts": {
     "title": "Drafts",
     "empty": "No drafts. Use Unpack a photo to import several items at once.",
     "unpackTitle": "Unpack a photo",
     "unpackAuto": "Auto unpack",
+    "unpacking": "Unpacking…",
     "unpackManual": "Manual unpack",
     "chooseType": "Choose a type…",
     "publish": "Publish",

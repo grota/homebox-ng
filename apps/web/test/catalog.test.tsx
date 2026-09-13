@@ -126,17 +126,14 @@ describe('catalog pages', () => {
     expect(price).toHaveAttribute('step', 'any')
   })
 
-  // The card used to be one <Link> wrapping everything. It now splits: the photo
-  // opens the viewer, the name navigates. Both are siblings with unambiguous
-  // names — an interactive element inside an anchor is invalid HTML.
-  it('opens the viewer from the card photo and links the name to the item', () => {
+  // The card split into two targets while the photo opened a lightbox and the
+  // name opened the item page. The item surface is a page now, so both lead to
+  // the same place and the card went back to being one link (ADR-0005).
+  it('links the whole card, photo included, to the item', () => {
     render(<AppProviders><ItemsPage /></AppProviders>)
-    expect(screen.getByRole('link', { name: 'Lamp' })).toHaveAttribute('href', '/items/1')
-    fireEvent.click(screen.getByRole('button', { name: 'View photo of Lamp' }))
-    const dialog = screen.getByRole('dialog', { name: 'Lamp' })
-    expect(within(dialog).getByRole('img', { name: 'Lamp' })).toHaveAttribute(
-      'src',
-      '/file/uploads/originals/a.png',
-    )
+    const link = screen.getByRole('link', { name: 'Lamp' })
+    expect(link).toHaveAttribute('href', '/items/1')
+    // Decorative (`alt=""`), so it is queried by selector rather than by role.
+    expect(link.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/file/'))
   })
 })

@@ -426,7 +426,10 @@ describe('drafts page', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Detected 2 item(s)')
   })
 
-  it('opens the photo viewer from a row thumbnail', () => {
+  // A draft is an item, and its thumbnail opens the same surface a catalog card
+  // does. A lightbox here would leave the drafts page with a second, poorer photo
+  // experience: no per-photo actions, and no way to publish from it.
+  it('links a row thumbnail to the draft\'s own surface', () => {
     draftData = [
       {
         id: 1,
@@ -439,13 +442,6 @@ describe('drafts page', () => {
         <DraftsPage />
       </MemoryRouter>,
     )
-    fireEvent.click(screen.getByRole('button', { name: 'View photo of Draft Lamp' }))
-    const dialog = screen.getByRole('dialog', { name: 'Draft Lamp' })
-    // The thumbnail is a 400px upscale of the original, so the viewer shows the
-    // original, not the thumbnail.
-    expect(within(dialog).getByRole('img', { name: 'Draft Lamp' })).toHaveAttribute(
-      'src',
-      '/file/uploads/originals/a.png',
-    )
+    expect(screen.getByRole('link', { name: 'Open Draft Lamp' })).toHaveAttribute('href', '/items/1')
   })
 })

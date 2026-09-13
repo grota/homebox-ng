@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
-import { Button, Card, Input, Pagination, PhotoViewer } from '../../ui'
+import { Button, Card, Input, Pagination } from '../../ui'
 import { UnpackModal } from './UnpackModal'
 
 // Sent explicitly so the request that produced `total` and the control that reads
@@ -38,7 +38,6 @@ export function DraftsPage() {
   const publish = trpc.drafts.publish.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const trashOne = trpc.drafts.trash.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [viewing, setViewing] = useState<{ src: string; originalSrc: string; alt: string } | null>(null)
   // Both bulk actions clear the selection on success, as the spec requires — and
   // for the same reason: `selected` is never pruned when the list refetches, so
   // an id that survived a successful bulk action would be sent again by the next
@@ -181,21 +180,18 @@ export function DraftsPage() {
             <li key={d.id}>
               <Card className="flex items-center gap-3">
                 <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />
+                {/* The thumbnail opens the draft's own surface, the same one the
+                    catalog's cards open. Opening a lightbox here instead would
+                    leave the drafts page with a second, poorer photo experience
+                    — no per-photo actions and no way to publish from it. */}
                 {photo && (
-                  <button
-                    type="button"
-                    aria-label={`View photo of ${d.name}`}
-                    onClick={() =>
-                      setViewing({
-                        src: '/file/' + (photo.editedPath ?? photo.originalPath),
-                        originalSrc: '/file/' + photo.originalPath,
-                        alt: d.name,
-                      })
-                    }
-                    className="shrink-0 cursor-zoom-in p-0"
+                  <Link
+                    to={`/items/${d.id}`}
+                    aria-label={`Open ${d.name}`}
+                    className="shrink-0"
                   >
                     <img src={`/file/${photo.thumbPath}`} className="w-16 h-16 object-cover rounded" alt="" />
-                  </button>
+                  </Link>
                 )}
                 <Input
                   className="flex-1"
@@ -211,15 +207,6 @@ export function DraftsPage() {
       </ul>
 
       <Pagination page={page} total={total} pageSize={PAGE_SIZE} onPage={setPage} />
-
-      {viewing && (
-        <PhotoViewer
-          src={viewing.src}
-          originalSrc={viewing.originalSrc}
-          alt={viewing.alt}
-          onClose={() => setViewing(null)}
-        />
-      )}
     </div>
   )
 }

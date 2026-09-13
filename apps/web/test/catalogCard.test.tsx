@@ -71,18 +71,21 @@ const renderCatalog = () =>
     </MemoryRouter>,
   )
 
-const photoButton = () => screen.getByRole('button', { name: 'View photo of Brass Lamp' })
 const itemLink = () => screen.getByRole('link', { name: 'Brass Lamp' })
 
 describe('catalog card click targets', () => {
-  // The photo opens the viewer; every other part of the card is inside the link.
-  // The two are siblings — an interactive element inside an anchor is invalid
-  // HTML and ambiguous to assistive tech.
-  it('puts every part of the card except the photo inside the item link', () => {
+  // The card is ONE target again. It was two while the photo opened a lightbox
+  // and the name opened the item page — two destinations because there were two
+  // places to see an item. There is one now (ADR-0005), so the photo, the fields
+  // and the snippet all ride inside the link, and no interactive element sits
+  // inside an anchor.
+  it('puts the whole card, the photo included, inside the one link', () => {
     renderCatalog()
 
     expect(itemLink()).toHaveAttribute('href', '/items/7')
-    expect(itemLink()).not.toContainElement(photoButton())
+    // By selector, not by role: the photo is decorative (`alt=""`) because the
+    // name sits directly beneath it, so it has no `img` role to query.
+    expect(itemLink().querySelector('img')).toHaveAttribute('src', expect.stringContaining('/file/'))
 
     // Location, type, tags and the search snippet are card content, so they ride
     // inside the link rather than sitting next to it as dead space.
@@ -92,20 +95,11 @@ describe('catalog card click targets', () => {
     expect(within(itemLink()).getByTestId('item-snippet')).toBeInTheDocument()
   })
 
-  it('navigates on a click on the card content that is not the photo', () => {
+  it('navigates on a click on the card content', () => {
     renderCatalog()
 
     fireEvent.click(within(itemLink()).getByText('Living Room'))
 
     expect(screen.getByText('DETAIL')).toBeInTheDocument()
-  })
-
-  it('still opens the photo viewer from the photo, without navigating', () => {
-    renderCatalog()
-
-    fireEvent.click(photoButton())
-
-    expect(screen.getByRole('dialog', { name: 'Brass Lamp' })).toBeInTheDocument()
-    expect(screen.queryByText('DETAIL')).not.toBeInTheDocument()
   })
 })

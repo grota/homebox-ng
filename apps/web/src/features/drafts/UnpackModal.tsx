@@ -73,7 +73,11 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
           {(types.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </Select>
         <div className="flex gap-2">
-          <Button variant="primary" disabled={busy || !file} onClick={() => void submitAuto()}>{t('drafts.unpackAuto')}</Button>
+          {/* Detection takes seconds and nothing else on the page moves while it
+              runs, so the button says what is happening rather than going quiet. */}
+          <Button variant="primary" disabled={busy || !file} onClick={() => void submitAuto()}>
+            {busy ? t('drafts.unpacking') : t('drafts.unpackAuto')}
+          </Button>
           <Button disabled={busy || !file} onClick={openManual}>{t('drafts.unpackManual')}</Button>
         </div>
         {err && <p role="alert" className="text-danger">{err}</p>}

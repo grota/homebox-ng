@@ -1,197 +1,283 @@
-import { useState } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
-import { Badge, Button, Card, PageHeader, PhotoViewer } from '../../ui'
-import { PhotoUpload } from '../upload/PhotoUpload'
+import { Badge, Button, buttonClasses, cn, PhotoViewer } from '../../ui'
+import { usePhotoIndex } from '../../lib/photoIndex'
 import { PhotoEditor } from '../upload/PhotoEditor'
 import { ManualUnpackModal } from '../drafts/ManualUnpackModal'
 import { ItemForm } from './ItemForm'
+import { ItemPanel } from './ItemPanel'
 
-// Shows a single item with its photos and an upload control. Thumbnails are
-// served from the public `/file/<thumbPath>` route.
+// A stable empty array, so `usePhotoIndex`'s memo does not see a new one every
+// render while the query is still loading.
+const NO_PHOTOS: never[] = []
+
+// The item surface: where an item is met in full, and the only place its photos
+// are both browsed and acted on (ADR-0005). It is a page rather than an overlay
+// so the editor and the manual-unpack modal open over it exactly as they always
+// have, with no stacked dialogs and no index to carry across a close and reopen.
 //
 // All mutations invalidate `items.get`/`items.list` rather than patching local
-// state, so the gallery reflects `isPrimary` and deletions from one source.
+// state, so the carousel reflects `isPrimary` and deletions from one source — and
+// `usePhotoIndex` deliberately does not try to compensate for the list shrinking,
+// because that shrinking *is* the desired "land on the next photo".
 export function ItemDetail() {
   const { id } = useParams()
   const itemId = Number(id)
   const navigate = useNavigate()
+  const location = useLocation()
   const utils = trpc.useUtils()
   const { data: item, isLoading } = trpc.items.get.useQuery({ id: itemId })
-  // The drafts page reports how many items an unpack detected, and this is the
-  // other entry point into the same flow: navigating on the *result* rather than
-  // on the click is what carries the count across, so a photo that yields
-  // nothing is not silent here either. Same convention as the drafts page's
-  // `UnpackModal.onUnpacked` — `?detected=<n>`, read by the page it lands on.
+
+  // Every mutation below re-reads the item, which is what the carousel renders.
+  const refresh = useCallback(() => {
+    utils.items.list.invalidate()
+    void utils.items.get.invalidate({ id: itemId })
+  }, [utils, itemId])
+
   const unpack = trpc.unpack.run.useMutation({
     onSuccess: (result) => {
       void utils.drafts.list.invalidate()
       navigate(`/drafts?detected=${result.detected}`)
     },
   })
-  // Manual unpack of a stored photo: no upload, so the modal draws on the same
-  // file the *server* will crop — `originalPath`, not `editedPath`. Drawing on
-  // the edited rendition would put the boxes in a different coordinate space
-  // from the pixels being cut, and every crop would be off by whatever the edit
-  // changed.
   const manualUnpack = trpc.unpack.manual.useMutation()
-  const [manualImage, setManualImage] = useState<{ imageId: number; originalPath: string } | null>(null)
-  // `path` is the rendition the editor opens, so the two Edit buttons differ only
-  // in what they hand it (see the photo card below).
-  const [editingImage, setEditingImage] = useState<{ id: number; path: string } | null>(null)
-  const [viewing, setViewing] = useState<{ src: string; originalSrc: string; alt: string } | null>(null)
-  const [editingItem, setEditingItem] = useState(false)
-
-  // Every mutation below re-reads the item, which is what the gallery renders.
-  const refresh = () => {
-    utils.items.list.invalidate()
-    void utils.items.get.invalidate({ id: itemId })
-  }
+  const setPrimary = trpc.images.setPrimary.useMutation({ onSuccess: refresh })
+  const deleteImage = trpc.images.delete.useMutation({ onSuccess: refresh })
   const trashItem = trpc.items.trash.useMutation({
     onSuccess: () => {
       utils.items.list.invalidate()
       navigate('/items')
     },
   })
-  const setPrimary = trpc.images.setPrimary.useMutation({ onSuccess: refresh })
-  const deleteImage = trpc.images.delete.useMutation({ onSuccess: refresh })
 
-  if (isLoading) return <p>Loading…</p>
-  if (!item) return <p>Item not found</p>
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState(false)
+  // `path` is the rendition the editor opens, so the two Edit actions differ only
+  // in what they hand it.
+  const [editingImage, setEditingImage] = useState<{ id: number; path: string } | null>(null)
+  // Manual unpack draws on the file the *server* will crop — `originalPath`, not
+  // the edited rendition. Drawing on the edited rendition would put the boxes in
+  // a different coordinate space from the pixels being cut, and every crop would
+  // be off by whatever the edit changed.
+  const [manualImage, setManualImage] = useState<{ imageId: number; originalPath: string } | null>(null)
+  // The photo an upload just created, so the carousel can move to it once the
+  // refetch has actually delivered it.
+  const [pendingPhoto, setPendingPhoto] = useState<number | null>(null)
 
+  const { photos, index, current, setIndex, next, previous, canPrevious, canNext } = usePhotoIndex(
+    item?.images ?? NO_PHOTOS,
+    itemId,
+  )
+
+  const close = useCallback(() => {
+    // Back when there is somewhere to go back to: the catalog keeps its search
+    // and facets in the URL, and a bare `/items` would silently reset a filtered
+    // view. `location.key === 'default'` is a cold deep link, where Back would
+    // leave the app instead.
+    if (location.key !== 'default') navigate(-1)
+    else navigate('/items')
+  }, [location.key, navigate])
+
+  const overlayOpen = editingImage != null || manualImage != null
+
+  // The surface's own keys. The arrows belong to the stage (they pan), so the
+  // split is by key and there is no ordering rule between two handlers.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      // A Modal over the surface owns the keyboard while it is up. This listener
+      // is on `window`, and a portalled dialog's keydown still reaches it, so
+      // without the guard one Escape would close the dialog *and* the surface.
+      if (overlayOpen) return
+      if (event.key === 'Escape') close()
+      else if (event.key === 'PageDown' && canNext) setIndex(index + 1)
+      else if (event.key === 'PageUp' && canPrevious) setIndex(index - 1)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [overlayOpen, close, index, canNext, canPrevious, setIndex])
+
+  // Moving to a photo that does not exist yet would set the index past the end,
+  // and the clamp would land on nothing. Wait for the refetch that follows the
+  // upload to actually contain it.
+  useEffect(() => {
+    if (pendingPhoto == null) return
+    const at = photos.findIndex((photo) => photo.id === pendingPhoto)
+    if (at < 0) return
+    setIndex(at)
+    setPendingPhoto(null)
+  }, [pendingPhoto, photos, setIndex])
+
+  if (isLoading || !item) {
+    return (
+      <div className="flex h-dvh flex-col bg-bg text-text">
+        <div className="flex justify-end border-b border-border bg-surface px-3 py-2">
+          <Button onClick={close}>Close</Button>
+        </div>
+        <p className="grid flex-1 place-items-center text-text-muted">
+          {isLoading ? 'Loading…' : 'Item not found'}
+        </p>
+      </div>
+    )
+  }
+
+  // Editing replaces the surface rather than covering it, as it did on the page
+  // this replaces. The surface has no Shell above it any more, so the frame and
+  // its way out come with it.
   if (editingItem) {
     return (
-      <section>
-        <ItemForm
-          item={item}
-          onSaved={() => {
-            setEditingItem(false)
-            refresh()
-          }}
-          onCancel={() => setEditingItem(false)}
-        />
-      </section>
+      <div className="flex h-dvh flex-col overflow-y-auto bg-bg text-text">
+        <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
+          <span className="truncate font-semibold lg:hidden">{item.name}</span>
+          <Button className="ml-auto" onClick={() => setEditingItem(false)}>
+            Close
+          </Button>
+        </div>
+        <div className="mx-auto w-full max-w-3xl p-4">
+          <ItemForm
+            item={item}
+            onSaved={() => {
+              setEditingItem(false)
+              refresh()
+            }}
+            onCancel={() => setEditingItem(false)}
+          />
+        </div>
+      </div>
     )
   }
 
   return (
-    <section>
-      <Link to="/items" className="no-underline text-text">
-        ← Items
-      </Link>
-      <PageHeader
-        title={item.name}
-        actions={
-          <div className="flex gap-2">
-            <Button onClick={() => setEditingItem(true)}>Edit item</Button>
-            <Button
-              variant="danger"
-              disabled={trashItem.isPending}
-              onClick={() => {
-                // ponytail: native confirm — enough for a single-item trash; swap for a
-                // styled dialog if this ever grows bulk.
-                if (confirm(`Move "${item.name}" to the trash?`)) trashItem.mutate({ id: itemId })
-              }}
-            >
-              Move to trash
-            </Button>
+    <div className="flex h-dvh flex-col bg-bg text-text">
+      <header className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
+        {/* The panel carries the name from `lg` up; below that it is behind a
+            toggle, so the top bar has to say what is on screen. */}
+        <span className="truncate font-semibold lg:hidden">{item.name}</span>
+        <div className="flex flex-1 flex-wrap items-center justify-center gap-1">
+          {current && (
+            <>
+              <Button size="sm" variant="ghost" aria-label="Previous photo" disabled={!canPrevious} onClick={previous}>
+                ‹
+              </Button>
+              <span className="text-sm tabular-nums">
+                {index + 1} of {photos.length}
+              </span>
+              {/* `Set primary` is absent on the primary photo, so this is what
+                  keeps "which one is the cover" answerable. */}
+              {current.isPrimary && <Badge>Primary</Badge>}
+              <Button size="sm" variant="ghost" aria-label="Next photo" disabled={!canNext} onClick={next}>
+                ›
+              </Button>
+            </>
+          )}
+        </div>
+        <Button size="sm" className="lg:hidden" aria-expanded={panelOpen} onClick={() => setPanelOpen((open) => !open)}>
+          {panelOpen ? 'Hide details' : 'Details'}
+        </Button>
+        <Button onClick={close}>Close</Button>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="relative min-h-0 flex-1">
+            {current ? (
+              // Keyed by photo id so the zoom, the pan and the load state are the
+              // new photo's rather than the previous one's.
+              <PhotoViewer
+                key={current.id}
+                src={'/file/' + (current.editedPath ?? current.originalPath)}
+                alt={item.name}
+              />
+            ) : (
+              <p className="grid h-full place-items-center text-text-muted">No photos yet.</p>
+            )}
+            {/* Detection through any provider takes seconds, and the navigation to
+                the drafts page only happens on success — so without this there is
+                no sign anything is running at all. */}
+            {unpack.isPending && (
+              <p role="status" className="pointer-events-none absolute inset-0 grid place-items-center bg-black/60 text-sm text-white">
+                Unpacking…
+              </p>
+            )}
           </div>
-        }
-      />
-      <p className="text-text">{item.description}</p>
-      <p className="text-text-muted">
-        Qty: {item.quantity} {item.unit}
-      </p>
-      <p className="text-text-muted">Type: {item.type?.name}</p>
-      <p className="text-text-muted">Location: {item.location?.name}</p>
 
-      <PhotoUpload itemId={item.id} />
+          {/* A failed run stays on the surface — the navigation happens on
+              success — so without this the failure would be silent. */}
+          {unpack.error && (
+            <p role="alert" className="bg-surface px-3 py-2 text-danger">
+              {unpack.error.message}
+            </p>
+          )}
 
-      {/* One `unpack` mutation is shared by every card's "Unpack this photo", so
-          its error is shown here once rather than repeated inside the grid. A
-          failed unpack stays on this page — the navigation to the drafts page
-          happens on success — so without this the failure would be silent. */}
-      {unpack.error && (
-        <p role="alert" className="text-danger">
-          {unpack.error.message}
-        </p>
-      )}
-
-      <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
-        {item.images.map((img) => (
-          <Card key={img.id} padding="sm" className="flex flex-col gap-1">
-            {/* The thumbnail is the control: a real <button> carries the accessible
-                name, so the <img> inside it is `alt=""` — with alt text a screen
-                reader would read the item name twice. */}
-            <button
-              type="button"
-              aria-label={`View photo of ${item.name}`}
-              onClick={() =>
-                setViewing({
-                  src: '/file/' + (img.editedPath ?? img.originalPath),
-                  originalSrc: '/file/' + img.originalPath,
-                  alt: item.name,
-                })
-              }
-              className="block w-full cursor-zoom-in p-0"
-            >
-              <img src={'/file/' + img.thumbPath} alt="" className="w-full h-32 object-cover rounded-md" />
-            </button>
-            {img.isPrimary && <Badge>Primary</Badge>}
-            {/* Edits stack on the last edit, not on the raw file: once an image
-                has an `editedPath`, that is the rendition "Edit photo" opens. */}
-            <Button onClick={() => setEditingImage({ id: img.id, path: img.editedPath ?? img.originalPath })}>
-              Edit photo
-            </Button>
-            {/* Only offered when there is something to go back to — without an
-                edit this is the button above, under a second name. */}
-            {img.editedPath && (
-              <Button onClick={() => setEditingImage({ id: img.id, path: img.originalPath })}>
-                Edit original photo
+          {current && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-border bg-surface px-3 py-2">
+              <Button onClick={() => setEditingImage({ id: current.id, path: current.editedPath ?? current.originalPath })}>
+                Edit photo
               </Button>
-            )}
-            {!img.isPrimary && (
+              {/* Edits stack on the last edit, so "Edit original photo" only
+                  exists once there is an original to go back from — otherwise it
+                  is the button beside it under a second name. */}
+              {current.editedPath && (
+                <>
+                  <Button onClick={() => setEditingImage({ id: current.id, path: current.originalPath })}>
+                    Edit original photo
+                  </Button>
+                  {/* An <a>, not a Button — it opens the file in a new tab, which
+                      a <button> cannot. This is the UI's only route to the
+                      unedited file, and the only reason the rendition above is
+                      separate from the path it displays. */}
+                  <a
+                    href={'/file/' + current.originalPath}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(buttonClasses(), 'no-underline')}
+                  >
+                    Open original
+                  </a>
+                </>
+              )}
+              {!current.isPrimary && (
+                <Button
+                  disabled={setPrimary.isPending}
+                  onClick={() => setPrimary.mutate({ itemId: item.id, imageId: current.id })}
+                >
+                  Set primary
+                </Button>
+              )}
+              <Button disabled={unpack.isPending} onClick={() => unpack.mutate({ kind: 'item', imageId: current.id })}>
+                Auto unpack this photo
+              </Button>
+              <Button onClick={() => setManualImage({ imageId: current.id, originalPath: current.originalPath })}>
+                Manual unpack this photo
+              </Button>
+              {/* A photo is not trashable, so this is permanent (ADR-0004). */}
               <Button
-                disabled={setPrimary.isPending}
-                onClick={() => setPrimary.mutate({ itemId: item.id, imageId: img.id })}
+                variant="danger"
+                disabled={deleteImage.isPending}
+                onClick={() => {
+                  if (confirm('Delete this photo?')) deleteImage.mutate({ id: current.id })
+                }}
               >
-                Set primary
+                Delete photo
               </Button>
-            )}
-            <Button onClick={() => unpack.mutate({ kind: 'item', imageId: img.id })}>
-              Auto unpack this photo
-            </Button>
-            <Button onClick={() => setManualImage({ imageId: img.id, originalPath: img.originalPath })}>
-              Manual unpack this photo
-            </Button>
-            {/* The "View" anchor lived here. Its job — seeing the full photo — is now
-                the thumbnail's, and its one unique capability (opening the file in a
-                new tab) moved into the viewer as "Open original". */}
-            <Button
-              variant="danger"
-              disabled={deleteImage.isPending}
-              onClick={() => {
-                if (confirm('Delete this photo?')) deleteImage.mutate({ id: img.id })
-              }}
-            >
-              Delete photo
-            </Button>
-          </Card>
-        ))}
-        {item.images.length === 0 && <p>No photos yet.</p>}
+            </div>
+          )}
+        </main>
+
+        <ItemPanel
+          item={item}
+          open={panelOpen}
+          onClose={() => setPanelOpen(false)}
+          onEdit={() => setEditingItem(true)}
+          onTrash={() => {
+            if (confirm(`Move "${item.name}" to the trash?`)) trashItem.mutate({ id: itemId })
+          }}
+          onPhotoAdded={setPendingPhoto}
+        />
       </div>
 
       {editingImage && (
         <PhotoEditor image={editingImage} itemId={item.id} open onClose={() => setEditingImage(null)} />
-      )}
-
-      {viewing && (
-        <PhotoViewer
-          src={viewing.src}
-          originalSrc={viewing.originalSrc}
-          alt={viewing.alt}
-          onClose={() => setViewing(null)}
-        />
       )}
 
       {manualImage && (
@@ -209,6 +295,6 @@ export function ItemDetail() {
           }}
         />
       )}
-    </section>
+    </div>
   )
 }
