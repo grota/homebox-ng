@@ -1,10 +1,9 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { RequireAdmin, RequireAuth, SetupGate } from '../lib/auth'
 import { AdminPage } from '../features/admin'
 import { LoginPage } from '../features/auth/LoginPage'
 import { ChangePasswordPage } from '../features/auth/ChangePasswordPage'
 import { SetupPage } from '../features/auth/SetupPage'
-import { HomePage } from '../features/home/HomePage'
 import { LocationsPage } from '../features/locations/LocationsPage'
 import { ItemTypesPage } from '../features/itemTypes/ItemTypesPage'
 import { TagsPage } from '../features/tags/TagsPage'
@@ -30,7 +29,10 @@ export function AppRoutes() {
           </SetupGate>
         }
       >
-        <Route path="/" element={<HomePage />} />
+        {/* `/` is the way in from the brand link and from every post-login
+            redirect, so it lands on the catalog rather than a placeholder.
+            `replace` keeps the detour out of the history stack. */}
+        <Route path="/" element={<Navigate to="/items" replace />} />
         <Route path="/locations" element={<LocationsPage />} />
         <Route path="/types" element={<ItemTypesPage />} />
         <Route path="/tags" element={<TagsPage />} />

@@ -49,6 +49,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         users: { list: { invalidate } },
         instanceSettings: { get: { invalidate } },
         system: { rebuildFts: { invalidate } },
+        items: { list: { invalidate } },
       }),
       auth: {
         me: { useQuery: () => ({ data: { id: 1, email: 'a@b.co', name: 'A', role: mockRole }, isLoading: false }) },
@@ -74,6 +75,16 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
           }),
         },
       },
+      // The non-admin guard lands on `/`, which redirects to the items page, so
+      // the catalog's two queries must resolve here too. A stub that omits these
+      // does not fail an assertion — it throws inside `ItemsPage` and reports as
+      // `Cannot read properties of undefined`.
+      items: {
+        list: { useQuery: () => ({ data: { items: [], total: 0 }, isLoading: false }) },
+      },
+      locations: {
+        list: { useQuery: () => ({ data: [], isLoading: false }) },
+      },
     },
   }
 })
@@ -95,7 +106,7 @@ describe('admin route', () => {
     expect(screen.getByText('Admin')).toBeInTheDocument()
   })
 
-  it('redirects a non-admin away from /admin to /', () => {
+  it('redirects a non-admin away from /admin to the items page', () => {
     mockRole = 'user'
     render(
       <MemoryRouter initialEntries={['/admin']}>
@@ -104,8 +115,10 @@ describe('admin route', () => {
     )
     // The admin page must not render…
     expect(screen.queryByText('Admin')).not.toBeInTheDocument()
-    // …and the user is dropped on the home page instead.
-    expect(screen.getByRole('heading', { name: 'Homebox' })).toBeInTheDocument()
+    // …and the user is dropped on the catalog instead: the guard sends them to
+    // `/`, which redirects to `/items`. "New item" is a plain literal in
+    // `ItemsPage`, so this holds whatever the i18n mock returns for a key.
+    expect(screen.getByRole('button', { name: 'New item' })).toBeInTheDocument()
   })
 
   it('renders the reindexed item count as a number, not a placeholder', () => {
