@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { createDb, runMigrations } from '@homebox/db'
-import { listDrafts, renameDraft, publishDraft, publishAll, discardDraft, discardAll } from '../src/modules/drafts/service'
+import { listDrafts, renameDraft, publishDraft, publishAll, trashDraft, trashAll } from '../src/modules/drafts/service'
+import { purgeItem, listTrash } from '../src/modules/trash/service'
 import { createItemsFromImage } from '../src/modules/unpack/service'
 import { mkdtempSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -32,7 +33,7 @@ const makeDraft = async (ctx: ReturnType<typeof setup>, fileName: string): Promi
 }
 
 describe('drafts lifecycle', () => {
-  it('list returns only unpublished; publish hides it; rename; discard', async () => {
+  it('list returns only unpublished; publish hides it; rename; trash', async () => {
     const { db, dataDir } = setup()
     const path = join(dataDir, 's.png'); writeFileSync(path, png)
     const { drafts } = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path, itemTypeId: 1 })
@@ -45,7 +46,7 @@ describe('drafts lifecycle', () => {
     // second draft for discard
     const path2 = join(dataDir, 's2.png'); writeFileSync(path2, png)
     const r2 = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path: path2, itemTypeId: 1 })
-    expect(discardDraft(db, r2.drafts[0].id, dataDir)).toBe(true)
+    trashDraft(db, r2.drafts[0].id)
     expect(listDrafts(db)).toHaveLength(0)
   })
   it('publishAll publishes all or selected', async () => {
@@ -59,7 +60,10 @@ describe('drafts lifecycle', () => {
     expect(listDrafts(db)).toHaveLength(0)
   })
 
-  it('discardAll discards exactly the named drafts and their files', async () => {
+  // The behaviour this replaced deleted the rows AND unlinked the files. It is
+  // recoverable now, so the assertion is inverted: the files must still be there,
+  // or "restore" would be a lie (ADR-0004).
+  it('trashAll trashes exactly the named drafts and keeps their files', async () => {
     const ctx = setup()
     const { db, dataDir } = ctx
     const a = await makeDraft(ctx, 'a.png')
@@ -67,34 +71,36 @@ describe('drafts lifecycle', () => {
     const c = await makeDraft(ctx, 'c.png')
     const gone = getImagesForItem(db, a)[0]
 
-    discardAll(db, [a, b], dataDir)
+    trashAll(db, [a, b])
 
     expect(listDrafts(db).map((d) => d.id)).toEqual([c])
-    // `discardDraft` fires its `unlink`s without awaiting them, so a file leaves
-    // the disk a tick after its row leaves the table — poll rather than race it.
-    await vi.waitFor(() => expect(existsSync(join(dataDir, gone.originalPath))).toBe(false))
+    expect(existsSync(join(dataDir, gone.originalPath))).toBe(true)
     expect(existsSync(join(dataDir, getImagesForItem(db, c)[0].originalPath))).toBe(true)
+    // Still rows, so they can come back.
+    expect(listTrash(db).map((d) => d.id).sort()).toEqual([a, b].sort())
   })
 
-  it('discardAll with no ids discards every draft', async () => {
+  it('trashAll with no ids trashes every draft', async () => {
     const ctx = setup()
     const { db, dataDir } = ctx
     await makeDraft(ctx, 'a.png')
     await makeDraft(ctx, 'b.png')
 
-    discardAll(db, undefined, dataDir)
+    trashAll(db, undefined)
 
     expect(listDrafts(db)).toHaveLength(0)
   })
 
-  it('discardAll skips an id that no longer exists instead of aborting the batch', async () => {
+  it('trashAll skips an id that no longer exists instead of aborting the batch', async () => {
     const ctx = setup()
     const { db, dataDir } = ctx
     const a = await makeDraft(ctx, 'a.png')
     const b = await makeDraft(ctx, 'b.png')
-    discardDraft(db, a, dataDir) // `a` is already gone when the batch runs
+    // `a` has to be genuinely gone for this to exercise the skip: trashing it
+    // would leave the row in place, and the batch would never see a missing id.
+    purgeItem(db, a, dataDir)
 
-    discardAll(db, [a, b], dataDir)
+    trashAll(db, [a, b])
 
     expect(listDrafts(db)).toHaveLength(0)
   })

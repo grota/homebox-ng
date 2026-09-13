@@ -13,7 +13,7 @@ vi.mock('react-filerobot-image-editor', () => ({
 // Mutation spies live outside the factories so tests can assert on the calls.
 // `vi.hoisted` is required: `vi.mock` factories are hoisted above plain consts.
 const mocks = vi.hoisted(() => ({
-  deleteItem: vi.fn(),
+  trashItem: vi.fn(),
   setPrimary: vi.fn(),
   deleteImage: vi.fn(),
   updateItem: vi.fn(async (x: unknown) => x),
@@ -59,7 +59,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         // and loads the type/location selects.
         update: { useMutation: () => ({ mutate: mocks.updateItem, mutateAsync: mocks.updateItem, isPending: false, error: null }) },
         create: { useMutation: mutation(vi.fn()) },
-        delete: { useMutation: mutation(mocks.deleteItem) },
+        trash: { useMutation: mutation(mocks.trashItem) },
       },
       images: {
         setPrimary: { useMutation: mutation(mocks.setPrimary) },
@@ -143,10 +143,10 @@ describe('item detail photos', () => {
     expect(mocks.deleteImage).toHaveBeenCalledWith({ id: 10 })
   })
 
-  it('deletes the item and navigates back to the list', () => {
+  it('moves the item to the trash and navigates back to the list', () => {
     renderDetail()
-    fireEvent.click(screen.getByRole('button', { name: 'Delete item' }))
-    expect(mocks.deleteItem).toHaveBeenCalledWith({ id: 3 })
+    fireEvent.click(screen.getByRole('button', { name: 'Move to trash' }))
+    expect(mocks.trashItem).toHaveBeenCalledWith({ id: 3 })
   })
 
   // The thumbnail used to be inert; the View anchor's job (seeing the full photo)

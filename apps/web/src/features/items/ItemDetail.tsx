@@ -39,7 +39,7 @@ export function ItemDetail() {
     utils.items.list.invalidate()
     void utils.items.get.invalidate({ id: itemId })
   }
-  const deleteItem = trpc.items.delete.useMutation({
+  const trashItem = trpc.items.trash.useMutation({
     onSuccess: () => {
       utils.items.list.invalidate()
       navigate('/items')
@@ -78,14 +78,14 @@ export function ItemDetail() {
             <Button onClick={() => setEditingItem(true)}>Edit item</Button>
             <Button
               variant="danger"
-              disabled={deleteItem.isPending}
+              disabled={trashItem.isPending}
               onClick={() => {
-                // ponytail: native confirm — enough for a single-item delete; swap for a
-                // styled dialog if this ever grows bulk/undo.
-                if (confirm(`Delete "${item.name}" and its photos?`)) deleteItem.mutate({ id: itemId })
+                // ponytail: native confirm — enough for a single-item trash; swap for a
+                // styled dialog if this ever grows bulk.
+                if (confirm(`Move "${item.name}" to the trash?`)) trashItem.mutate({ id: itemId })
               }}
             >
-              Delete item
+              Move to trash
             </Button>
           </div>
         }

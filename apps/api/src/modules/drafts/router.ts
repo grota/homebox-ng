@@ -11,6 +11,8 @@ export const draftsRouter = t.router({
   update: protectedProcedure.input(updateInput).mutation(({ ctx, input }) => service.renameDraft(ctx.db, input.id, input.name)),
   publish: protectedProcedure.input(idInput).mutation(({ ctx, input }) => service.publishDraft(ctx.db, input.id)),
   publishAll: protectedProcedure.input(idsInput).mutation(({ ctx, input }) => service.publishAll(ctx.db, input.ids)),
-  discard: protectedProcedure.input(idInput).mutation(({ ctx, input }) => service.discardDraft(ctx.db, input.id, ctx.dataDir)),
-  discardAll: protectedProcedure.input(idsInput).mutation(({ ctx, input }) => service.discardAll(ctx.db, input.ids, ctx.dataDir)),
+  // "Discard" used to mean "delete, irreversibly". It is recoverable now, so the
+  // procedures take the recoverable word (ADR-0004, CONTEXT.md).
+  trash: protectedProcedure.input(idInput).mutation(({ ctx, input }) => service.trashDraft(ctx.db, input.id)),
+  trashAll: protectedProcedure.input(idsInput).mutation(({ ctx, input }) => service.trashAll(ctx.db, input.ids)),
 })

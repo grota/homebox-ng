@@ -203,7 +203,9 @@ describe('backup & restore', () => {
     const all = (await listItems(adminCookie)).json()?.result?.data?.items
     const orig = all.find((i: { name: string }) => i.name === 'Original')
     expect(orig.name).toBe('Original')
-    const del = await app.inject({ method: 'POST', url: '/trpc/items.delete', headers: { cookie: adminCookie }, payload: { id: orig.id } })
+    // `items.trash`, not `items.delete`: the item leaves the catalog either way
+    // (which is what this divergence needs), but it is recoverable now.
+    const del = await app.inject({ method: 'POST', url: '/trpc/items.trash', headers: { cookie: adminCookie }, payload: { id: orig.id } })
     expect(del.statusCode).toBe(200)
     const changed = (await app.inject({ method: 'POST', url: '/trpc/items.create', headers: { cookie: adminCookie }, payload: { name: 'Changed', itemTypeId, locationId: null, quantity: 1 } })).json()?.result?.data
     expect(changed.name).toBe('Changed')

@@ -26,10 +26,10 @@ vi.mock('react-i18next', () => ({
 // results and empty states can both be exercised without a backend.
 let draftData: any[] = []
 
-// The bulk-discard action's `mutateAsync`, exposed so a case can assert what the
+// The bulk-trash action's `mutateAsync`, exposed so a case can assert what the
 // button sends. Reaching it from a test is the same deferred-reference pattern as
 // `draftData` below: the factory closes over it and only reads it at render.
-const discardAllMutate = vi.fn()
+const trashAllMutate = vi.fn()
 
 // The bulk-publish action's, for the same reason: it also clears the selection
 // on success now, and that is only assertable if the callback is wired through.
@@ -81,15 +81,15 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
             },
           }),
         },
-        discard: { useMutation: () => idleMutation },
-        discardAll: {
+        trash: { useMutation: () => idleMutation },
+        trashAll: {
           // `onSuccess` is wired through to the test rather than dropped: the page
           // clears its selection there, and a stub that swallowed the callback
           // would make that behaviour unassertable.
           useMutation: (options?: { onSuccess?: () => void }) => ({
             ...idleMutation,
             mutateAsync: (input: unknown) => {
-              discardAllMutate(input)
+              trashAllMutate(input)
               options?.onSuccess?.()
             },
           }),
@@ -159,7 +159,7 @@ describe('drafts page', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'drafts.selectAll' }))
     fireEvent.click(screen.getByRole('button', { name: 'drafts.discardSelected' }))
     expect(confirmSpy).toHaveBeenCalledWith('Discard 2 draft(s) and their photos?')
-    expect(discardAllMutate).toHaveBeenCalledWith({ ids: [1, 2] })
+    expect(trashAllMutate).toHaveBeenCalledWith({ ids: [1, 2] })
   })
 
   it('discards nothing when the confirmation is declined', () => {
@@ -173,7 +173,7 @@ describe('drafts page', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'drafts.selectAll' }))
     const btn = screen.getByRole('button', { name: 'drafts.discardSelected' })
     fireEvent.click(btn)
-    expect(discardAllMutate).not.toHaveBeenCalled()
+    expect(trashAllMutate).not.toHaveBeenCalled()
     expect(btn).toBeEnabled()
   })
 
@@ -188,7 +188,7 @@ describe('drafts page', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'drafts.selectAll' }))
     const btn = screen.getByRole('button', { name: 'drafts.discardSelected' })
     fireEvent.click(btn)
-    expect(discardAllMutate).toHaveBeenCalledWith({ ids: [1] })
+    expect(trashAllMutate).toHaveBeenCalledWith({ ids: [1] })
     expect(btn).toBeDisabled()
   })
 
@@ -224,7 +224,7 @@ describe('drafts page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'drafts.discardSelected' }))
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
     expect(confirmSpy).toHaveBeenCalledWith('Discard 1 draft(s) and their photos?')
-    expect(discardAllMutate).toHaveBeenCalledWith({ ids: [1] })
+    expect(trashAllMutate).toHaveBeenCalledWith({ ids: [1] })
   })
 
   it('reports how many items the unpack detected, in the empty state', () => {

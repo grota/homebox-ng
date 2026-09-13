@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm'
 import { items, itemCustomFieldValues, itemTypeFields, itemTypes, locations, itemTags, tags, images } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import { reindexItem } from './fts.js'
@@ -339,6 +339,17 @@ export const listDraftItems = (db: DrizzleDb): ItemRow[] =>
 // Flip the published flag. Returns whether the item existed.
 export const setItemPublished = (db: DrizzleDb, id: number, published: boolean): boolean =>
   db.update(items).set({ published, updatedAt: new Date() }).where(eq(items.id, id)).run().changes > 0
+
+// Move an item to the trash (`at` a timestamp) or back out of it (`null`) — the
+// one write behind trash, restore, and every bulk variant. `published` is
+// deliberately untouched: it is what tells a draft from a catalog item, and
+// restoring must return the thing to where it came from (ADR-0004).
+export const setItemTrashedAt = (db: DrizzleDb, id: number, at: Date | null): boolean =>
+  db.update(items).set({ trashedAt: at, updatedAt: new Date() }).where(eq(items.id, id)).run().changes > 0
+
+// Everything in the trash, newest first — the whole point of storing a timestamp.
+export const listTrashedItems = (db: DrizzleDb): ItemRow[] =>
+  db.select(ITEM_FIELDS).from(items).where(isNotNull(items.trashedAt)).orderBy(desc(items.trashedAt)).all()
 
 // Replace an item's whole custom-field value set: delete the existing rows,
 // then insert the new ones. Does NOT open its own transaction — it is always

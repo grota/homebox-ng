@@ -107,12 +107,12 @@
 
 **Files:** `apps/api/src/modules/trash/router.ts` (new), `apps/api/src/modules/trash/service.ts` (new), `apps/api/src/modules/items/repo.ts`, `apps/api/src/modules/items/service.ts`, `apps/api/src/modules/drafts/service.ts`, `apps/api/src/router.ts`, tests.
 
-- [ ] `setItemTrashed(db, id, at: Date | null)` in the items repo; `ItemDto` gains `trashedAt`.
-- [ ] `trashItem` / `restoreItem` / `purgeItem` in the trash service. Purge deletes the row (cascade takes children) and then best-effort unlinks `originalPath`, `editedPath` and `thumbPath` — move `discardDraft`'s unlink loop (`drafts/service.ts:49-54`) here, since this is now the only place files are destroyed.
+- [x] `setItemTrashed(db, id, at: Date | null)` in the items repo; `ItemDto` gains `trashedAt`. (Named `setItemTrashedAt`.)
+- [x] `trashItem` / `restoreItem` / `purgeItem` in the trash service. Purge deletes the row (cascade takes children) and then best-effort unlinks `originalPath`, `editedPath` and `thumbPath` — move `discardDraft`'s unlink loop (`drafts/service.ts:49-54`) here, since this is now the only place files are destroyed.
 - [ ] `trash.list` paginated like `drafts.list` (Task 6's shape), returning trashed drafts and catalog items together with their `published` value so the page can label them.
-- [ ] `trash.restore` / `trash.purge` / `trash.purgeAll`. **Restore preserves `published`** — it is the only thing that distinguishes a draft from an item, so restoring must not touch it.
-- [ ] Point `drafts.discard` → `trashItem` and `drafts.discardAll` → trash each. `items.delete` → `trashItem`. Rename the procedures to say `trash` where the surface allows, keeping `items.delete`'s wire name only if something else depends on it.
-- [ ] Tests: trashing hides from catalog *and* drafts and keeps the files; restore returns a draft to drafts and an item to the catalog; purge removes the row and the files; `purgeAll` empties; a stale id in a bulk call is skipped, not fatal.
+- [x] `trash.restore` / `trash.purge` / `trash.purgeAll`. **Restore preserves `published`** — it is the only thing that distinguishes a draft from an item, so restoring must not touch it.
+- [x] Point `drafts.discard` → `trashItem` and `drafts.discardAll` → trash each. `items.delete` → `trashItem`. Rename the procedures to say `trash` where the surface allows, keeping `items.delete`'s wire name only if something else depends on it.
+- [x] Tests: trashing hides from catalog *and* drafts and keeps the files; restore returns a draft to drafts and an item to the catalog; purge removes the row and the files; `purgeAll` empties; a stale id in a bulk call is skipped, not fatal.
 
 **Verify:** `pnpm --filter @homebox/api test`.
 

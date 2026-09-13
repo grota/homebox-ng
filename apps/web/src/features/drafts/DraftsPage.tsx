@@ -29,21 +29,21 @@ export function DraftsPage() {
   const { data, isLoading } = trpc.drafts.list.useQuery()
   const update = trpc.drafts.update.useMutation()
   const publish = trpc.drafts.publish.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
-  const discard = trpc.drafts.discard.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
+  const trashOne = trpc.drafts.trash.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [viewing, setViewing] = useState<{ src: string; originalSrc: string; alt: string } | null>(null)
   // Both bulk actions clear the selection on success, as the spec requires — and
   // for the same reason: `selected` is never pruned when the list refetches, so
   // an id that survived a successful bulk action would be sent again by the next
   // one. Clearing here is also the first of the two layers that keep a bulk
-  // discard from being half-applied; `discardAll`'s tolerance is the second.
+  // trash from being half-applied; `trashAll`'s tolerance is the second.
   const publishAll = trpc.drafts.publishAll.useMutation({
     onSuccess: () => {
       setSelected(new Set())
       void utils.drafts.list.invalidate()
     },
   })
-  const discardAll = trpc.drafts.discardAll.useMutation({
+  const trashAll = trpc.drafts.trashAll.useMutation({
     onSuccess: () => {
       setSelected(new Set())
       void utils.drafts.list.invalidate()
@@ -109,7 +109,7 @@ export function DraftsPage() {
           variant="danger"
           disabled={selected.size === 0}
           onClick={() => {
-            if (window.confirm(t('drafts.discardSelectedConfirm', { count: selected.size }))) void discardAll.mutateAsync({ ids: [...selected] })
+            if (window.confirm(t('drafts.discardSelectedConfirm', { count: selected.size }))) void trashAll.mutateAsync({ ids: [...selected] })
           }}
         >
           {t('drafts.discardSelected')}
@@ -149,7 +149,7 @@ export function DraftsPage() {
                   onBlur={(e) => { if (e.target.value.trim() && e.target.value !== d.name) void update.mutateAsync({ id: d.id, name: e.target.value.trim() }) }}
                 />
                 <Button onClick={() => void publish.mutateAsync({ id: d.id })}>{t('drafts.publish')}</Button>
-                <Button variant="danger" onClick={() => void discard.mutateAsync({ id: d.id })}>{t('drafts.discard')}</Button>
+                <Button variant="danger" onClick={() => void trashOne.mutateAsync({ id: d.id })}>{t('drafts.discard')}</Button>
               </Card>
             </li>
           )

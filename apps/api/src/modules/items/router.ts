@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { itemInput } from '@homebox/shared'
 import { t, protectedProcedure } from '../../trpc.js'
 import * as service from './service.js'
+import * as trashService from '../trash/service.js'
 
 // One custom-field value, provided inline on create. `value` is stored as-is in
 // the `itemCustomFieldValues.value` text column.
@@ -37,7 +38,9 @@ export const itemsRouter = t.router({
   // stamped with its creator), so every procedure uses `protectedProcedure`.
   create: protectedProcedure.input(createItemInput).mutation(({ ctx, input }) => service.createItem(ctx.db, input, ctx.user!.id)),
   update: protectedProcedure.input(updateItemInput).mutation(({ ctx, input }) => service.updateItem(ctx.db, input)),
-  delete: protectedProcedure.input(idInput).mutation(({ ctx, input }) => service.deleteItem(ctx.db, input.id)),
+  // Recoverable since ADR-0004: this moves the item to the trash. Destroying it
+  // is `trash.purge`, which is a different procedure with a different name.
+  trash: protectedProcedure.input(idInput).mutation(({ ctx, input }) => trashService.trashItem(ctx.db, input.id)),
   get: protectedProcedure.input(idInput).query(({ ctx, input }) => service.getItem(ctx.db, input.id)),
   list: protectedProcedure.input(listInput).query(({ ctx, input }) => service.listItems(ctx.db, input)),
 })

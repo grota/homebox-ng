@@ -11,6 +11,7 @@ import { instanceSettingsRouter } from './modules/instanceSettings/router.js'
 import { systemRouter } from './modules/system/router.js'
 import { unpackRouter } from './modules/unpack/router.js'
 import { draftsRouter } from './modules/drafts/router.js'
+import { trashRouter } from './modules/trash/router.js'
 
 export const appRouter = t.router({
   ping: publicProcedure.query(() => 'pong'),
@@ -26,5 +27,6 @@ export const appRouter = t.router({
   system: systemRouter,
   unpack: unpackRouter,
   drafts: draftsRouter,
+  trash: trashRouter,
 })
 export type AppRouter = typeof appRouter
