@@ -19,6 +19,8 @@ data/
 test-results/
 playwright-report/
 blob-report/
+# The Playwright MCP server's own session logs, which it writes into the cwd.
+.playwright-mcp/
 
 /docs/architecture/homebox-ng-*
 
