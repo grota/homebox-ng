@@ -60,7 +60,7 @@ test('admin catalogs an item end to end', async ({ page }) => {
 // default). We therefore log in directly rather than replaying first-run setup,
 // which would fail because `/` no longer
 // routes to `/setup` once the admin exists.
-test('uploads a photo and shows its thumbnail', async ({ page }) => {
+test('uploads a photo and shows it on the item surface', async ({ page }) => {
   // The main test's admin already exists (DB persists within a run). Log in directly.
   const login = await page.request.post('/trpc/auth.login', {
     data: { email: 'admin@b.co', password: 'password123' },
@@ -71,14 +71,22 @@ test('uploads a photo and shows its thumbnail', async ({ page }) => {
   await page.goto('/items')
   await page.click('a:has-text("Lamp")')
 
-  // Upload a small PNG via the photo input on the item detail page.
+  // Upload a small PNG. The control lives in the item panel now — one place for
+  // it, in the empty case as in the full one.
   await page.setInputFiles('[aria-label="Upload photo"]', {
     name: 'lamp.png',
     mimeType: 'image/png',
     buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'),
   })
-  // After upload the item's get query refetches; the new thumb appears.
-  await expect(page.locator('img[src*="/file/uploads/thumbs/"]').first()).toBeVisible()
+  // The assertion moved with the design: there is no thumbnail grid to look at
+  // any more. The stage shows the photo itself (the full rendition, not a thumb),
+  // and the carousel's position indicator reports it.
+  await expect(
+    page.getByTestId('photo-viewer').locator('img[src*="/file/uploads/originals/"]'),
+  ).toBeVisible()
+  // The count itself is left free — this leg uploads Lamp's *first* photo, and
+  // pinning it here would break the moment another test adds one before this runs.
+  await expect(page.getByText(/^\d+ of \d+$/)).toBeVisible()
 })
 
 // Search + facet-narrowing leg. The first test's "Lamp" item has NO tag, so a
@@ -208,28 +216,84 @@ test('settings persist across reload and drive locale formatting', async ({ page
   await expect(page.locator('#settings-locale')).toHaveValue('de-DE')
 })
 
-// The viewer in a real browser. jsdom never loads an image and measures nothing,
-// so the intrinsic-size read, the fit decision and the backdrop hit test are all
-// stubbed in the unit tests; this is the leg that fails if the real DOM
-// disagrees with those stubs.
-test('opens the photo viewer from a catalog card and closes on the backdrop', async ({ page }) => {
+// The item surface in a real browser. jsdom never loads an image and measures
+// nothing, so the intrinsic-size read and the fit decision are stubbed in the
+// unit tests; this is the leg that fails if the real DOM disagrees with those
+// stubs. It also pins the two things only a real router can show: that the route
+// leaves the Shell behind, and where a bare card click lands.
+test('a catalog card opens the item surface, full-screen and nav-less', async ({ page }) => {
   const login = await page.request.post('/trpc/auth.login', {
     data: { email: 'admin@b.co', password: 'password123' },
   })
   expect(login.ok()).toBeTruthy()
 
   await page.goto('/items')
-  await page.getByRole('button', { name: 'View photo of Lamp', exact: true }).click()
+  // The card is ONE target: the photo and the name used to be two, because the
+  // image opened a lightbox and the name opened the item. There is one place to
+  // go now, so the whole card is the link (ADR-0005).
+  await page.getByRole('link', { name: 'Lamp', exact: true }).click()
 
-  const dialog = page.getByRole('dialog', { name: 'Lamp', exact: true })
-  await expect(dialog).toBeVisible()
-  // The thumbnail is a 400px upscale of a 1×1 source, so the rendition the card
-  // hands the viewer has to be the original: it must paint at all.
-  await expect(dialog.getByRole('img', { name: 'Lamp', exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/\/items\/\d+$/)
+  // The surface drops the Shell's header — that is what makes it full-screen
+  // without being a dialog.
+  await expect(page.locator('nav')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeVisible()
+  // The photo of the *item*, and the actions that belong to it.
+  await expect(page.getByTestId('photo-viewer').getByRole('img', { name: 'Lamp', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit photo', exact: true })).toBeVisible()
+})
 
-  // A 1×1 PNG at 1:1 is one pixel at the centre, so there is backdrop everywhere
-  // else — including the very corner, which the Open original link (top-left) and
-  // the navigator (bottom-right) do not occupy.
-  await page.mouse.click(4, 4)
-  await expect(dialog).not.toBeVisible()
+// Escape belongs to the topmost layer, and only to it. This is the leg that pins
+// it, and it cannot be a unit test: the bug is a *timing* one. Radix handles
+// Escape on the document, so by the time the event has bubbled back out to
+// `window` the dialog is already unmounted and the surface has re-rendered —
+// a guard that asked React state "is an overlay open?" therefore read "no" and
+// closed the surface underneath the dialog it had just dismissed. In jsdom
+// testing-library flushes inside `act`, so the dialog is still mounted when the
+// event reaches `window` and the bug cannot appear at all.
+test('Escape dismisses the editor without closing the item surface under it', async ({ page }) => {
+  const login = await page.request.post('/trpc/auth.login', {
+    data: { email: 'admin@b.co', password: 'password123' },
+  })
+  expect(login.ok()).toBeTruthy()
+
+  await page.goto('/items')
+  await page.getByRole('link', { name: 'Lamp', exact: true }).click()
+  const surface = page.url()
+
+  await page.getByRole('button', { name: 'Edit photo', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: 'Edit photo', exact: true })
+  await expect(editor).toBeVisible()
+
+  await page.keyboard.press('Escape')
+
+  await expect(editor).not.toBeVisible()
+  // The whole point: one Escape, one layer. The surface is still where it was.
+  await expect(page).toHaveURL(surface)
+  await expect(page.getByTestId('photo-viewer')).toBeVisible()
+})
+
+// The same rule for the other overlay the surface opens, which is a different
+// modal (full-viewport) and was reported separately.
+test('Escape dismisses manual unpack without closing the item surface under it', async ({ page }) => {
+  const login = await page.request.post('/trpc/auth.login', {
+    data: { email: 'admin@b.co', password: 'password123' },
+  })
+  expect(login.ok()).toBeTruthy()
+
+  await page.goto('/items')
+  await page.getByRole('link', { name: 'Lamp', exact: true }).click()
+  const surface = page.url()
+
+  await page.getByRole('button', { name: 'Manual unpack this photo', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: 'Manual unpack', exact: true })
+  // It only renders its canvas once the photo has decoded, which is also what
+  // makes Escape's target unambiguous.
+  await expect(page.getByTestId('manual-unpack-canvas')).toBeVisible()
+
+  await page.keyboard.press('Escape')
+
+  await expect(modal).not.toBeVisible()
+  await expect(page).toHaveURL(surface)
+  await expect(page.getByTestId('photo-viewer')).toBeVisible()
 })

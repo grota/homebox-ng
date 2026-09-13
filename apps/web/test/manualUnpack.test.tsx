@@ -6,6 +6,7 @@ import {
   moveBox,
   resizeBox,
   toImagePoint,
+  toPixelBox,
   MIN_SIZE,
 } from '../src/features/drafts/geometry'
 import { ManualUnpackModal, type Region } from '../src/features/drafts/ManualUnpackModal'
@@ -111,6 +112,36 @@ describe('resizeBox', () => {
   })
 })
 
+// Every box the drawing produces is fractional — `toImagePoint` is a division —
+// but the contract it is sent under is whole pixels, because the server turns it
+// into a `sharp.extract` argument. So this conversion is what stands between a
+// real photo and a 400.
+describe('toPixelBox', () => {
+  it('rounds a fractional box onto the pixel grid', () => {
+    expect(toPixelBox({ x: 200.5, y: 201.4, width: 200.5, height: 99.2 }, NATURAL)).toEqual({
+      x: 201,
+      y: 201,
+      width: 201,
+      height: 99,
+    })
+  })
+
+  // Rounding alone is not enough to make a box legal, and each of these is a
+  // separate rejection reason on the server: `x + width` pushed past the image,
+  // and a width rounded down to zero.
+  it('keeps the rounded box inside the image', () => {
+    const edge = toPixelBox({ x: 999.6, y: 499.7, width: 999.9, height: 999.9 }, NATURAL)
+    expect(edge.x + edge.width).toBeLessThanOrEqual(NATURAL.width)
+    expect(edge.y + edge.height).toBeLessThanOrEqual(NATURAL.height)
+  })
+
+  it('never rounds a box away to nothing', () => {
+    const sliver = toPixelBox({ x: 10.4, y: 10.4, width: 0.2, height: 0.2 }, NATURAL)
+    expect(sliver.width).toBe(1)
+    expect(sliver.height).toBe(1)
+  })
+})
+
 // ── The component ─────────────────────────────────────────────────────────────
 
 // jsdom lays nothing out and never loads an image, so the two facts the modal
@@ -164,6 +195,30 @@ describe('ManualUnpackModal', () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     expect(onSubmit).toHaveBeenCalledWith([{ name: 'Mug', box: { x: 200, y: 200, width: 200, height: 200 } }])
+  })
+
+  // The case the test above cannot see, and the one a real user always hits: a
+  // drag that lands *between* pixels. Half-pixel screen coordinates map to
+  // fractional image pixels at any display scale, and the drawn box is then sent
+  // to a schema that is `.int()` on all four numbers — so the raw box is a 400,
+  // not a bad crop. The 1:1 drag above happens to produce whole numbers, which is
+  // why this went unnoticed: the bug is invisible whenever the ratio is clean.
+  it('submits whole pixels when the drag lands between them', async () => {
+    const onSubmit = vi.fn<(regions: Region[]) => Promise<void>>(async () => {})
+    const { canvas } = open(onSubmit)
+    // (130.25 - 30) / 0.5 = 200.5 in image space, and the far corner likewise.
+    drag(canvas, { x: 130.25, y: 112.5 }, { x: 230.75, y: 212.5 })
+
+    const field = await screen.findByPlaceholderText('Item name')
+    fireEvent.change(field, { target: { value: 'Mug' } })
+    fireEvent.click(screen.getByRole('button', { name: /Create 1 draft/ }))
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    const [regions] = onSubmit.mock.calls[0]
+    expect(regions).toHaveLength(1)
+    for (const value of Object.values(regions[0].box)) {
+      expect(Number.isInteger(value)).toBe(true)
+    }
   })
 
   it('ignores a click that drew nothing', () => {

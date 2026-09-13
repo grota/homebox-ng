@@ -53,6 +53,36 @@ export const boxFromCorners = (a: { x: number; y: number }, b: { x: number; y: n
  *  committed, so a stray click never becomes a row the user then has to delete. */
 export const isDrawable = (box: Box, min = MIN_SIZE) => box.width >= min && box.height >= min
 
+/**
+ * The drawn box reduced to the integer pixel grid — the only shape the wire
+ * contract accepts (`RegionInputSchema` is `.int()` on all four numbers, because
+ * the box becomes a `sharp.extract` argument and sharp demands integers).
+ *
+ * Everything upstream of this is deliberately fractional: `toImagePoint` is a
+ * division, so a drag lands on a fractional coordinate whenever the photo is
+ * shown at anything other than 1:1, and `resizeBox` accumulates float deltas.
+ * That is correct for *drawing*. It is wrong for *sending*: an unrounded box is a
+ * 400, not a bad crop.
+ *
+ * So the conversion lives here, at the boundary, and not inside the geometry
+ * functions above — those are called on every pointer move, where rounding would
+ * divide each sub-pixel delta away and the box would refuse to move at all.
+ *
+ * The clamps make the result legal rather than merely whole: rounding `x`/`y` can
+ * push the far edge a pixel past the image, and rounding a width down can reach
+ * zero.
+ */
+export const toPixelBox = (box: Box, natural: Size): Box => {
+  const x = clamp(Math.round(box.x), 0, Math.max(0, natural.width - 1))
+  const y = clamp(Math.round(box.y), 0, Math.max(0, natural.height - 1))
+  return {
+    x,
+    y,
+    width: clamp(Math.round(box.width), 1, natural.width - x),
+    height: clamp(Math.round(box.height), 1, natural.height - y),
+  }
+}
+
 /** Move a whole rectangle, keeping it inside the image. */
 export const moveBox = (box: Box, dx: number, dy: number, natural: Size): Box => ({
   x: clamp(box.x + dx, 0, natural.width - box.width),

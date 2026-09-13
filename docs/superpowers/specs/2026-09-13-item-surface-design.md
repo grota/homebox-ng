@@ -79,6 +79,17 @@ Established by reading the code, not assumed. Each one changed a decision.
    discarding the item you are reading because you missed the photo is hostile. This **removes**
    the 2026-09-11 rule "click the background → close" and its test; that rule was written for an
    overlay and does not survive the move.
+
+   **Escape belongs to the topmost layer, and only to it** — while a modal is open, Escape
+   dismisses that and leaves the surface underneath it alone. Getting this right is subtler than
+   it looks and the naive version is wrong: Radix handles Escape on the *document*, so the dialog
+   is already unmounted by the time the event bubbles back out to `window`, and by then the
+   surface has re-rendered with no overlay in its state. A guard that asked React "is an overlay
+   open?" therefore read *no* and closed the surface underneath the dialog it had just dismissed.
+   So the check is made in the capture phase, of the DOM (`[role="dialog"]`), which is the
+   earliest point in the event's life and the only one where the answer is still true. Pinned by
+   an e2e rather than a unit test, because in jsdom testing-library flushes inside `act` and the
+   race cannot occur at all.
 5. **A trashed or absent id renders "Item not found" inside the surface's layout**, with the same
    `Close`, rather than a bare paragraph with no way out (`ItemDetail.tsx:60`).
 

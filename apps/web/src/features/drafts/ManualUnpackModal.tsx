@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, SyntheticEvent } from 'react'
 import { Button, Input, Modal } from '../../ui'
 import { initialView, overflows, panBy, zoomAt, type Transform } from '../../ui/zoom'
-import { boxFromCorners, isDrawable, moveBox, resizeBox, toImagePoint, type Box, type Handle, type Size } from './geometry'
+import { boxFromCorners, isDrawable, moveBox, resizeBox, toImagePoint, toPixelBox, type Box, type Handle, type Size } from './geometry'
 
 /** What the caller sends: a rectangle in the source image's own pixels, and the
  *  name typed for it. */
@@ -266,12 +266,20 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
   }
 
   const submit = async () => {
+    // No natural size means no decoded image, which means no boxes to send — the
+    // guard is what narrows the type, and it is the honest one.
+    if (!natural) return
     setBusy(true)
     setError(null)
     try {
       // Blank names are sent as-is: the pipeline's `Draft N` fallback is the one
       // naming rule, and the modal does not get a second one.
-      await onSubmit(regions.map((r) => ({ name: r.name.trim(), box: r.box })))
+      //
+      // `toPixelBox` is the whole point of this line: the drawn boxes are
+      // fractional, and the contract they are sent under is whole pixels. Sending
+      // them raw is a 400 against `RegionInputSchema`, and only when the photo is
+      // displayed at something other than 1:1 — i.e. always, for a real photo.
+      await onSubmit(regions.map((r) => ({ name: r.name.trim(), box: toPixelBox(r.box, natural) })))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unpack failed')
       setBusy(false)

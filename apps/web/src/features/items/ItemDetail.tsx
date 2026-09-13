@@ -79,23 +79,28 @@ export function ItemDetail() {
     else navigate('/items')
   }, [location.key, navigate])
 
-  const overlayOpen = editingImage != null || manualImage != null
-
   // The surface's own keys. The arrows belong to the stage (they pan), so the
   // split is by key and there is no ordering rule between two handlers.
+  //
+  // Capture phase, and "is an overlay up?" asked of the DOM rather than of this
+  // component's state. Both parts are load-bearing and neither is a style choice:
+  // Radix handles Escape on the *document*, so by the time an Escape has bubbled
+  // back out to `window` the dialog is already unmounted and this component has
+  // re-rendered with `editingImage === null`. A guard reading that state sees
+  // "no overlay is open" and closes the surface underneath the dialog it just
+  // dismissed — which is exactly what it did. `window`'s capture phase runs
+  // before `document`'s, so the dialog is still there to be found; `role="dialog"`
+  // is what every `Modal` renders (Radix's `Dialog.Content`).
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      // A Modal over the surface owns the keyboard while it is up. This listener
-      // is on `window`, and a portalled dialog's keydown still reaches it, so
-      // without the guard one Escape would close the dialog *and* the surface.
-      if (overlayOpen) return
+      if (document.querySelector('[role="dialog"]')) return
       if (event.key === 'Escape') close()
       else if (event.key === 'PageDown' && canNext) setIndex(index + 1)
       else if (event.key === 'PageUp' && canPrevious) setIndex(index - 1)
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [overlayOpen, close, index, canNext, canPrevious, setIndex])
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [close, index, canNext, canPrevious, setIndex])
 
   // Moving to a photo that does not exist yet would set the index past the end,
   // and the clamp would land on nothing. Wait for the refetch that follows the
