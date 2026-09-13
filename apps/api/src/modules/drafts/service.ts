@@ -5,7 +5,12 @@ import * as itemsRepo from '../items/repo.js'
 import * as trashService from '../trash/service.js'
 import type { ItemDto } from '../items/service.js'
 
-export const listDrafts = (db: DrizzleDb): ItemDto[] => itemsService.hydrateRows(db, itemsRepo.listDraftItems(db))
+// One page of drafts plus the unpaginated total, mirroring `items.list`'s
+// `{ items, total }` so the two pages share one pagination convention.
+export const listDrafts = (db: DrizzleDb, page = 1, pageSize = 20): { items: ItemDto[]; total: number } => ({
+  items: itemsService.hydrateRows(db, itemsRepo.listDraftItems(db, itemsRepo.pageWindow(page, pageSize))),
+  total: itemsRepo.countDraftItems(db),
+})
 
 export const renameDraft = (db: DrizzleDb, id: number, name: string): ItemDto =>
   itemsService.updateItem(db, { id, name })
@@ -15,7 +20,7 @@ export const publishDraft = (db: DrizzleDb, id: number): void => {
 }
 
 export const publishAll = (db: DrizzleDb, ids?: number[]): void => {
-  const targets = ids && ids.length > 0 ? ids : itemsRepo.listDraftItems(db).map((r) => r.id)
+  const targets = ids && ids.length > 0 ? ids : itemsRepo.listAllDraftIds(db)
   for (const id of targets) itemsRepo.setItemPublished(db, id, true)
 }
 
@@ -35,7 +40,7 @@ export const trashDraft = (db: DrizzleDb, id: number): void => trashService.tras
 // `better-sqlite3` is synchronous, so nothing can remove the row between this
 // check and the update.
 export const trashAll = (db: DrizzleDb, ids: number[] | undefined): void => {
-  const targets = ids && ids.length > 0 ? ids : itemsRepo.listDraftItems(db).map((r) => r.id)
+  const targets = ids && ids.length > 0 ? ids : itemsRepo.listAllDraftIds(db)
   for (const id of targets) {
     if (!itemsRepo.getItem(db, id)) continue
     trashDraft(db, id)

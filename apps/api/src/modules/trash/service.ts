@@ -13,7 +13,12 @@ import type { ItemDto } from '../items/service.js'
 // touched here, because that is what makes restore return a thing to where it
 // came from.
 
-export const listTrash = (db: DrizzleDb): ItemDto[] => itemsService.hydrateRows(db, itemsRepo.listTrashedItems(db))
+// One page plus the total, the same shape `drafts.list` and `items.list` return,
+// so the trash page reuses their control rather than inventing one.
+export const listTrash = (db: DrizzleDb, page = 1, pageSize = 20): { items: ItemDto[]; total: number } => ({
+  items: itemsService.hydrateRows(db, itemsRepo.listTrashedItems(db, itemsRepo.pageWindow(page, pageSize))),
+  total: itemsRepo.countTrashedItems(db),
+})
 
 // Both directions reindex. `computeBlob` returns null for a trashed item, so
 // `reindexItem` clears its search row on the way in and repopulates it on the
@@ -61,7 +66,7 @@ export const purgeItem = (db: DrizzleDb, id: number, dataDir: string): boolean =
 // the outcome this loop wanted for it, so skip it. `better-sqlite3` is
 // synchronous, so nothing can purge the row between the check and the delete.
 export const purgeAll = (db: DrizzleDb, ids: number[] | undefined, dataDir: string): void => {
-  const targets = ids && ids.length > 0 ? ids : itemsRepo.listTrashedItems(db).map((r) => r.id)
+  const targets = ids && ids.length > 0 ? ids : itemsRepo.listAllTrashedIds(db)
   for (const id of targets) {
     if (!itemsRepo.getItem(db, id)) continue
     purgeItem(db, id, dataDir)

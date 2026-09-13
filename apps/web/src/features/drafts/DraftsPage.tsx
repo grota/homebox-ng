@@ -51,7 +51,7 @@ export function DraftsPage() {
   })
 
   const toggle = (id: number) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const allSelected = (data?.length ?? 0) > 0 && selected.size === data?.length
+  const allSelected = (data?.total ?? 0) > 0 && selected.size === data?.items.length
 
   // Dropping the parameter is what makes the notice describe an event rather than
   // the address bar: a reload starts clean. `replace` keeps the pre-rewrite URL
@@ -83,7 +83,7 @@ export function DraftsPage() {
     : <p role="status" className="text-danger">{t('drafts.unpackedNone')}</p>
 
   if (isLoading) return <p>Loading…</p>
-  if (!data || data.length === 0) return (
+  if (!data || data.total === 0) return (
     <div className="space-y-4">
       <h1>{t('drafts.title')}</h1>
       {detectedNotice}
@@ -99,7 +99,7 @@ export function DraftsPage() {
       <UnpackModal onUnpacked={(n) => { void utils.drafts.list.invalidate(); navigate(`/drafts?detected=${n}`) }} />
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-1">
-          <input type="checkbox" checked={allSelected} onChange={() => { const ids = data.map((d) => d.id); setSelected(allSelected ? new Set() : new Set(ids)) }} />
+          <input type="checkbox" checked={allSelected} onChange={() => { const ids = data.items.map((d) => d.id); setSelected(allSelected ? new Set() : new Set(ids)) }} />
           {t('drafts.selectAll')}
         </label>
         <Button disabled={selected.size === 0} onClick={() => void publishAll.mutateAsync({ ids: [...selected] })}>
@@ -116,7 +116,7 @@ export function DraftsPage() {
         </Button>
       </div>
       <ul className="space-y-3">
-        {data.map((d) => {
+        {data.items.map((d) => {
           // The `<li>` stays the list item — `Card` renders a `<div>`, and a
           // `<div>` child of `<ul>` would drop the rows' list semantics.
           //

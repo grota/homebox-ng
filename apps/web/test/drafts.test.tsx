@@ -69,7 +69,9 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
       useUtils: () => ({ drafts: { list: { invalidate } } }),
       drafts: {
-        list: { useQuery: () => ({ data: draftData, isLoading: false }) },
+        // The paginated envelope `drafts.list` returns: one page plus the
+        // unpaginated total. `total` is derived so a case only sets the rows.
+        list: { useQuery: () => ({ data: { items: draftData, total: draftData.length }, isLoading: false }) },
         update: { useMutation: () => idleMutation },
         publish: { useMutation: () => idleMutation },
         publishAll: {

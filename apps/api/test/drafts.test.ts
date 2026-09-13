@@ -38,16 +38,16 @@ describe('drafts lifecycle', () => {
     const path = join(dataDir, 's.png'); writeFileSync(path, png)
     const { drafts } = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path, itemTypeId: 1 })
     const id = drafts[0].id
-    expect(listDrafts(db)).toHaveLength(1)
+    expect(listDrafts(db).items).toHaveLength(1)
     renameDraft(db, id, 'Renamed Cup')
-    expect(listDrafts(db)[0].name).toBe('Renamed Cup')
+    expect(listDrafts(db).items[0].name).toBe('Renamed Cup')
     publishDraft(db, id)
-    expect(listDrafts(db)).toHaveLength(0)
+    expect(listDrafts(db).items).toHaveLength(0)
     // second draft for discard
     const path2 = join(dataDir, 's2.png'); writeFileSync(path2, png)
     const r2 = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path: path2, itemTypeId: 1 })
     trashDraft(db, r2.drafts[0].id)
-    expect(listDrafts(db)).toHaveLength(0)
+    expect(listDrafts(db).items).toHaveLength(0)
   })
   it('publishAll publishes all or selected', async () => {
     const { db, dataDir } = setup()
@@ -55,9 +55,9 @@ describe('drafts lifecycle', () => {
     const a = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path, itemTypeId: 1 })
     const b = await (async () => { const p = join(dataDir, 's2.png'); writeFileSync(p, png); return await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path: p, itemTypeId: 1 }) })()
     publishAll(db, [a.drafts[0].id])
-    expect(listDrafts(db)).toHaveLength(1)
+    expect(listDrafts(db).items).toHaveLength(1)
     publishAll(db, [b.drafts[0].id])
-    expect(listDrafts(db)).toHaveLength(0)
+    expect(listDrafts(db).items).toHaveLength(0)
   })
 
   // The behaviour this replaced deleted the rows AND unlinked the files. It is
@@ -73,11 +73,11 @@ describe('drafts lifecycle', () => {
 
     trashAll(db, [a, b])
 
-    expect(listDrafts(db).map((d) => d.id)).toEqual([c])
+    expect(listDrafts(db).items.map((d) => d.id)).toEqual([c])
     expect(existsSync(join(dataDir, gone.originalPath))).toBe(true)
     expect(existsSync(join(dataDir, getImagesForItem(db, c)[0].originalPath))).toBe(true)
     // Still rows, so they can come back.
-    expect(listTrash(db).map((d) => d.id).sort()).toEqual([a, b].sort())
+    expect(listTrash(db).items.map((d) => d.id).sort()).toEqual([a, b].sort())
   })
 
   it('trashAll with no ids trashes every draft', async () => {
@@ -88,7 +88,38 @@ describe('drafts lifecycle', () => {
 
     trashAll(db, undefined)
 
-    expect(listDrafts(db)).toHaveLength(0)
+    expect(listDrafts(db).items).toHaveLength(0)
+  })
+
+  it('returns one page plus the unpaginated total', async () => {
+    const ctx = setup()
+    for (let i = 0; i < 25; i++) await makeDraft(ctx, `d${i}.png`)
+
+    const first = listDrafts(ctx.db)
+    expect(first.items).toHaveLength(20)
+    expect(first.total).toBe(25)
+
+    const second = listDrafts(ctx.db, 2)
+    expect(second.items).toHaveLength(5)
+    expect(second.total).toBe(25)
+    // No row appears on both pages: the `id` tiebreak is what makes that true,
+    // since every draft here shares a `createdAt` second.
+    const overlap = second.items.filter((d) => first.items.some((f) => f.id === d.id))
+    expect(overlap).toEqual([])
+  })
+
+  // The trap pagination sets, and the reason `listAllDraftIds` exists as a
+  // separate function: "publish all" with no ids must mean every draft, and if it
+  // read the *paginated* list it would silently mean "the first 20" — with no
+  // error, no failing test, and 5 drafts left behind.
+  it('publishAll with no ids publishes every draft, not just the first page', async () => {
+    const ctx = setup()
+    for (let i = 0; i < 25; i++) await makeDraft(ctx, `d${i}.png`)
+    expect(listDrafts(ctx.db).total).toBe(25)
+
+    publishAll(ctx.db, undefined)
+
+    expect(listDrafts(ctx.db).total).toBe(0)
   })
 
   it('trashAll skips an id that no longer exists instead of aborting the batch', async () => {
@@ -102,6 +133,6 @@ describe('drafts lifecycle', () => {
 
     trashAll(db, [a, b])
 
-    expect(listDrafts(db)).toHaveLength(0)
+    expect(listDrafts(db).items).toHaveLength(0)
   })
 })

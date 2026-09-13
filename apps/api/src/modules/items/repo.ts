@@ -324,17 +324,50 @@ export const updateItem = (db: DrizzleDb, id: number, data: UpdateItemData): Ite
 
 export const deleteItem = (db: DrizzleDb, id: number): boolean => db.delete(items).where(eq(items.id, id)).run().changes > 0
 
-// Unpublished, untrashed items only — the drafts page. No FTS join: a draft may not
-// be in items_fts (it always is, but keep this independent of the search path).
-// The trash guard is here rather than inherited from `buildWhere`: this query does
-// not compose through it, which is exactly the kind of site that gets missed.
-export const listDraftItems = (db: DrizzleDb): ItemRow[] =>
+// A page window. Built here so the drafts list and the trash list cannot disagree
+// about what page 2 means.
+export type PageWindow = { limit: number; offset: number }
+export const pageWindow = (page = 1, pageSize = 20): PageWindow => ({ limit: pageSize, offset: (page - 1) * pageSize })
+
+// Every draft id, unpaginated — the bulk operations' "all drafts" branch.
+//
+// Deliberately a different function from `listDraftItems` rather than a
+// `listDraftItems(db)` default: if pagination lived behind a defaulted
+// parameter, "publish all" would quietly become "publish the first page", and
+// nothing would fail. A name that says "all" is the guard.
+export const listAllDraftIds = (db: DrizzleDb): number[] =>
+  db
+    .select({ id: items.id })
+    .from(items)
+    .where(and(eq(items.published, false), isNull(items.trashedAt)))
+    .all()
+    .map((r) => r.id)
+
+// Unpublished, untrashed items only — one page of the drafts list. No FTS join: a
+// draft may not be in items_fts (it always is, but keep this independent of the
+// search path). The trash guard is here rather than inherited from `buildWhere`:
+// this query does not compose through it, which is exactly the kind of site that
+// gets missed.
+//
+// `id` is a second sort key because `createdAt` has second-resolution ties — the
+// unpack tests already comment on two drafts sharing a timestamp — and a
+// non-total order lets rows repeat or vanish between pages.
+export const listDraftItems = (db: DrizzleDb, window: PageWindow): ItemRow[] =>
   db
     .select(ITEM_FIELDS)
     .from(items)
     .where(and(eq(items.published, false), isNull(items.trashedAt)))
-    .orderBy(desc(items.createdAt))
+    .orderBy(desc(items.createdAt), desc(items.id))
+    .limit(window.limit)
+    .offset(window.offset)
     .all()
+
+export const countDraftItems = (db: DrizzleDb): number =>
+  db
+    .select({ c: count() })
+    .from(items)
+    .where(and(eq(items.published, false), isNull(items.trashedAt)))
+    .get()?.c ?? 0
 
 // Flip the published flag. Returns whether the item existed.
 export const setItemPublished = (db: DrizzleDb, id: number, published: boolean): boolean =>
@@ -357,8 +390,25 @@ export const clearItemLocations = (db: DrizzleDb, ids: number[]): void => {
 }
 
 // Everything in the trash, newest first — the whole point of storing a timestamp.
-export const listTrashedItems = (db: DrizzleDb): ItemRow[] =>
-  db.select(ITEM_FIELDS).from(items).where(isNotNull(items.trashedAt)).orderBy(desc(items.trashedAt)).all()
+// Unpaginated, for the bulk purge's "the whole trash" branch; see
+// `listAllDraftIds` for why this is not a defaulted parameter.
+export const listAllTrashedIds = (db: DrizzleDb): number[] =>
+  db.select({ id: items.id }).from(items).where(isNotNull(items.trashedAt)).all().map((r) => r.id)
+
+// One page of the trash. `id` breaks `trashedAt` ties for the same reason
+// `createdAt` needs one above.
+export const listTrashedItems = (db: DrizzleDb, window: PageWindow): ItemRow[] =>
+  db
+    .select(ITEM_FIELDS)
+    .from(items)
+    .where(isNotNull(items.trashedAt))
+    .orderBy(desc(items.trashedAt), desc(items.id))
+    .limit(window.limit)
+    .offset(window.offset)
+    .all()
+
+export const countTrashedItems = (db: DrizzleDb): number =>
+  db.select({ c: count() }).from(items).where(isNotNull(items.trashedAt)).get()?.c ?? 0
 
 // Replace an item's whole custom-field value set: delete the existing rows,
 // then insert the new ones. Does NOT open its own transaction — it is always

@@ -124,9 +124,9 @@ describe('trash guard', () => {
       published: false,
       fieldValues: [],
     })
-    expect(repo.listDraftItems(db).map((r) => r.id)).toContain(draft.id)
+    expect(repo.listDraftItems(db, repo.pageWindow()).map((r) => r.id)).toContain(draft.id)
     trash(draft.id)
-    expect(repo.listDraftItems(db).map((r) => r.id)).not.toContain(draft.id)
+    expect(repo.listDraftItems(db, repo.pageWindow()).map((r) => r.id)).not.toContain(draft.id)
   })
 
   it('does not count it towards the type population or its field-value usage', async () => {

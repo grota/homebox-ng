@@ -109,7 +109,7 @@
 
 - [x] `setItemTrashed(db, id, at: Date | null)` in the items repo; `ItemDto` gains `trashedAt`. (Named `setItemTrashedAt`.)
 - [x] `trashItem` / `restoreItem` / `purgeItem` in the trash service. Purge deletes the row (cascade takes children) and then best-effort unlinks `originalPath`, `editedPath` and `thumbPath` — move `discardDraft`'s unlink loop (`drafts/service.ts:49-54`) here, since this is now the only place files are destroyed.
-- [ ] `trash.list` paginated like `drafts.list` (Task 6's shape), returning trashed drafts and catalog items together with their `published` value so the page can label them.
+- [x] `trash.list` paginated like `drafts.list` (Task 6's shape), returning trashed drafts and catalog items together with their `published` value so the page can label them.
 - [x] `trash.restore` / `trash.purge` / `trash.purgeAll`. **Restore preserves `published`** — it is the only thing that distinguishes a draft from an item, so restoring must not touch it.
 - [x] Point `drafts.discard` → `trashItem` and `drafts.discardAll` → trash each. `items.delete` → `trashItem`. Rename the procedures to say `trash` where the surface allows, keeping `items.delete`'s wire name only if something else depends on it.
 - [x] Tests: trashing hides from catalog *and* drafts and keeps the files; restore returns a draft to drafts and an item to the catalog; purge removes the row and the files; `purgeAll` empties; a stale id in a bulk call is skipped, not fatal.
@@ -150,10 +150,10 @@
 
 **Files:** `apps/api/src/modules/drafts/router.ts`, `apps/api/src/modules/drafts/service.ts`, `apps/api/src/modules/items/repo.ts`, tests.
 
-- [ ] `listDraftItems(db, { page, pageSize })` gains `.limit(pageSize).offset(offset)` and a matching `COUNT(*)` over the same predicate — the same two-query shape as `runPlainSearch` (`items/repo.ts:240-243`).
-- [ ] Defaults `page ?? 1`, `pageSize ?? 20`, mirroring `items/repo.ts:249-252`.
-- [ ] `listDrafts` returns `{ items, total }` instead of a bare array.
-- [ ] Update `apps/api/test/drafts.test.ts` — nine assertions call `listDrafts(db)` and expect an array.
+- [x] `listDraftItems(db, { page, pageSize })` gains `.limit(pageSize).offset(offset)` and a matching `COUNT(*)` over the same predicate — the same two-query shape as `runPlainSearch` (`items/repo.ts:240-243`).
+- [x] Defaults `page ?? 1`, `pageSize ?? 20`, mirroring `items/repo.ts:249-252`.
+- [x] `listDrafts` returns `{ items, total }` instead of a bare array.
+- [x] Update `apps/api/test/drafts.test.ts` — nine assertions call `listDrafts(db)` and expect an array.
 
 **Verify:** `pnpm --filter @homebox/api test`.
 
