@@ -325,6 +325,14 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           onWheel={onWheel}
+          // Nothing inside a drawing surface should ever start a native drag.
+          // The overlay is an inline <svg>, and Chromium drags those as images by
+          // default — `<img draggable={false}>` protects the image but not this.
+          // When the browser wins that race it takes the pointer: `pointermove`
+          // stops arriving, panning dies mid-gesture, and the drag ghost of the
+          // overlay follows the cursor, which reads as the photo being dragged.
+          // Cancelling here covers the svg, the image and anything added later.
+          onDragStart={(event) => event.preventDefault()}
         >
           <div
             ref={wrapperRef}

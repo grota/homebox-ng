@@ -271,6 +271,21 @@ describe('ManualUnpackModal', () => {
     expect(button).toHaveAttribute('aria-pressed', 'false')
   })
 
+  // The overlay is an inline <svg>, and Chromium drags those as images by
+  // default, whatever the <img> next to it says. When the browser wins that race
+  // it takes the pointer, panning dies mid-gesture, and a ghost of the overlay
+  // trails the cursor — reported from a real session as the photo being dragged.
+  it('cancels a native drag, so the browser never takes the pointer', () => {
+    const { canvas } = open()
+    const overlay = canvas.querySelector('svg')
+    expect(overlay).not.toBeNull()
+
+    // Dispatched on the overlay, because that is where the browser starts it.
+    const event = new Event('dragstart', { bubbles: true, cancelable: true })
+    overlay!.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
   it('does not draw a rectangle while the Move toggle is on', () => {
     const { canvas } = open()
     fireEvent.click(screen.getByRole('button', { name: 'Move photo' }))

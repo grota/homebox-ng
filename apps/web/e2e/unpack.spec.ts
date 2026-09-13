@@ -175,13 +175,39 @@ test('manual unpack turns drawn rectangles into named drafts', async ({ page }) 
   await page.keyboard.press('Space')
   await expect(page.getByRole('button', { name: 'Moving', exact: true })).toBeVisible()
 
+  // The overlay is an inline <svg>, which Chromium drags as an image by default
+  // however the <img> is configured. When the browser wins that race it takes the
+  // pointer, panning dies mid-gesture, and a ghost of the overlay trails the
+  // cursor — reported from a real session as the photo being dragged. Recorded on
+  // `document` in the bubble phase, i.e. after React's root handler has had its
+  // say, so `defaultPrevented` is the real answer.
+  await page.evaluate(() => {
+    window.__uncancelledDrags = 0
+    document.addEventListener('dragstart', (e) => { if (!e.defaultPrevented) window.__uncancelledDrags++ })
+  })
+
+  // Four gestures rather than one: the failure being guarded against is "it works
+  // and then it stops", which a single drag cannot show.
+  //
+  // Movement is only asserted as "it moved at all". How far a pan *can* move
+  // depends on how much the photo overflows the canvas, which is layout-dependent —
+  // at fit it correctly cannot move at all — and a per-pan assertion here failed
+  // for exactly that reason rather than for a real defect.
   const readTransform = () => image.evaluate((el) => (el as HTMLElement).style.transform)
   const beforePan = await readTransform()
-  await page.mouse.move(tx, ty)
-  await page.mouse.down()
-  for (let i = 1; i <= 4; i++) await page.mouse.move(tx + i * 25, ty + i * 15)
-  await page.mouse.up()
+  for (let i = 0; i < 4; i++) {
+    await page.mouse.move(tx, ty)
+    await page.mouse.down()
+    await page.mouse.move(tx, ty + 15, { steps: 3 })
+    await page.mouse.up()
+  }
   expect(await readTransform()).not.toBe(beforePan)
+
+  // The two assertions that actually pin the reported bug. A hijacked drag takes
+  // the pointer and the gesture silently dies, so: no drag escaped, and the mode
+  // is still the one the gesture started in.
+  expect(await page.evaluate(() => window.__uncancelledDrags)).toBe(0)
+  await expect(page.getByRole('button', { name: 'Moving', exact: true })).toBeVisible()
 
   // Back to drawing, and the stray click above must not have drawn anything: the
   // submit below still says two.
