@@ -125,6 +125,32 @@ It refuses to start when `:3000` or `:5173` is already held — a half-started s
 because the API dies on `EADDRINUSE` while Vite quietly moves to `:5174`, leaving the printed URLs
 pointing at whatever held the port first. Move the ports with `PORT=… WEB_PORT=… pnpm dev`.
 
+### 7. Or: a branch that lives in a git worktree
+
+A branch checked out in a `git worktree` is **not** in your main checkout — that one still shows
+`main` until you merge. Run the stack from the worktree's own directory:
+
+```bash
+cd .claude/worktrees/<name>
+PORT=3200 WEB_PORT=5273 pnpm dev     # then browse :5273
+```
+
+Pick any two free ports; `pnpm dev` takes `PORT`/`WEB_PORT` and Vite's proxy follows `PORT`, so the
+API and the SPA stay pointed at each other. **Avoid `3100`** — that is the Playwright suite's default
+`E2E_PORT`, so putting the dev API there blocks `pnpm test:e2e`. `3200` + `5273` collide with no
+default here, and both stacks can run at once (the e2e alongside them with `E2E_PORT=3300`). Check a
+port with `ss -ltnpH 'sport = :3200'` — no output means free.
+
+`pnpm build` is **not** needed for this: `pnpm dev` builds the API and its workspace dependencies
+itself. Root `pnpm build` is only for the built stack of step 4.
+
+A worktree has its own `data/` (gitignored), so its stack seeds its own database and uploads —
+trashing items, unpacking photos and the rest cannot touch your real inventory.
+
+The first `pnpm install` in a fresh worktree needs `--ignore-scripts` (see step 1), and the workspace
+packages must be built before anything typechecks — `pnpm dev` does that, but a bare `pnpm test` or
+`tsc` will not.
+
 ### First run
 
 A fresh install has no users, so the app routes to `/setup` — create the first admin there. The
