@@ -175,15 +175,15 @@
 
 **Files:** `apps/web/src/features/drafts/ManualUnpackModal.tsx` (new), `apps/web/test/manualUnpack.test.tsx` (new).
 
-- [ ] Compose `Modal size="full"`. Inside: the image area (an `<img>` and an `<svg>` in one transformed wrapper), the row list, and the footer (Cancel / X / Submit).
-- [ ] Measure the natural size on the image's `load` and call `initialView` from `ui/zoom.ts`; wheel → `zoomAt`, Space+drag → `panBy`. The `space` keydown/keyup listeners go on the container, and Space must not scroll the page or re-trigger a focused button.
-- [ ] The `<svg>` carries `viewBox="0 0 <naturalWidth> <naturalHeight>"` and the wrapper carries `translate(x,y) scale(s)` with `transform-origin: 0 0` — the same transform string `PhotoViewer.tsx:261-271` uses — so a rectangle's coordinates are image pixels and need no conversion.
-- [ ] Convert a drag to image pixels by inverting that transform (or by measuring the overlay's own client rect and dividing by scale). **Test this**: a drag from screen point A to B produces the box you would compute by hand, at a non-1 scale and at a non-zero pan offset.
-- [ ] Rectangles: drag-empty draws, body-drag moves, 8 handles resize, all clamped to the image with a minimum size. Click selects; Delete removes the selection. **Escape is not bound** — it belongs to `Modal`.
-- [ ] Rows: crop preview, index + hue-cycle colour, name `<Input>`, delete button. Drawing focuses the new row's name field.
-- [ ] Submit is disabled with zero rectangles. Cancel/X/Escape confirm when rectangles exist (`window.confirm`).
-- [ ] Help text, visible in the modal: *"Drag on the photo to draw a box. Hold Space and drag to move the photo. Scroll to zoom. Click a box to select it; press Delete to remove it."*
-- [ ] Tests: draw → a row appears and is focused; delete removes both; clamping holds at the edges; the minimum size rejects a click without a drag; submit is disabled with nothing drawn; submit sends pixel coordinates in natural size.
+- [x] Compose `Modal size="full"`. Inside: the image area (an `<img>` and an `<svg>` in one transformed wrapper), the row list, and the footer (Cancel / X / Submit).
+- [x] Measure the natural size on the image's `load` and call `initialView` from `ui/zoom.ts`; wheel → `zoomAt`, Space+drag → `panBy`. The `space` keydown/keyup listeners go on the container, and Space must not scroll the page or re-trigger a focused button.
+- [x] The `<svg>` carries `viewBox="0 0 <naturalWidth> <naturalHeight>"` and the wrapper carries `translate(x,y) scale(s)` with `transform-origin: 0 0` — the same transform string `PhotoViewer.tsx:261-271` uses — so a rectangle's coordinates are image pixels and need no conversion.
+- [x] Convert a drag to image pixels by inverting that transform (or by measuring the overlay's own client rect and dividing by scale). **Test this**: a drag from screen point A to B produces the box you would compute by hand, at a non-1 scale and at a non-zero pan offset.
+- [x] Rectangles: drag-empty draws, body-drag moves, 8 handles resize, all clamped to the image with a minimum size. Click selects; Delete removes the selection. **Escape is not bound** — it belongs to `Modal`.
+- [x] Rows: crop preview, index + hue-cycle colour, name `<Input>`, delete button. Drawing focuses the new row's name field.
+- [x] Submit is disabled with zero rectangles. Cancel/X/Escape confirm when rectangles exist (`window.confirm`).
+- [x] Help text, visible in the modal: *"Drag on the photo to draw a box. Hold Space and drag to move the photo. Scroll to zoom. Click a box to select it; press Delete to remove it."*
+- [x] Tests: draw → a row appears and is focused; delete removes both; clamping holds at the edges; the minimum size rejects a click without a drag; submit is disabled with nothing drawn; submit sends pixel coordinates in natural size.
 
 **Verify:** `pnpm --filter @homebox/web test`.
 
