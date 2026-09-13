@@ -164,6 +164,8 @@ homebox-ng/
    adds text and draws. On export, the resulting blob is posted to `POST /upload/image/edit`,
    which saves it as the item photo's `edited_path`. The `original_path` is always preserved
    (non-destructive). Re-editing later reloads the `original_path` and replaces `edited_path`.
+   *Superseded (2026-09-13): re-editing now reloads the current `edited_path` when one exists;
+   "Edit original photo" is the control that goes back to `original_path`. See `CONTEXT.md`.*
 3. **Thumbnails**: `sharp` derives a ~400px thumbnail (`thumb_path`) for listing cards and
    search results. Full image loads only in the photo detail view. Thumbnails are regenerable.
 

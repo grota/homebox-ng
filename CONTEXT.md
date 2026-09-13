@@ -32,7 +32,11 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   non-destructive edit; `thumbPath` is always present; `isPrimary` marks the cover.
   `(packages/db/src/schema.ts:116)`
 - **non-destructive editor** — crop/rotate/resize writes a new `editedPath` and leaves the
-  original buffer intact; the original is never overwritten.
+  original buffer intact; the original is never overwritten. **Edit photo** opens the *current*
+  rendition — `editedPath` when one exists, else the original — so a re-edit builds on the last
+  one rather than starting over; **Edit original photo**, offered only once an edit exists,
+  restarts from the original. The viewer's **Open original** is the UI's only route to the
+  unedited file, which is why it is handed that path separately from the one it displays.
 - **photo viewer** — opens any thumbnail's photo in a full-viewport overlay, showing the same
   rendition as the grid (`editedPath` when one exists, else `originalPath`). Starts fit to the
   viewport when the photo is larger than it and at natural size when it is not; clicking the

@@ -42,7 +42,7 @@ const flattenLocations = (nodes: any[]): FlatLocation[] =>
 export function ItemsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [showForm, setShowForm] = useState(false)
-  const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null)
+  const [viewing, setViewing] = useState<{ src: string; originalSrc: string; alt: string } | null>(null)
   const [facetsOpen, setFacetsOpen] = useState(false)
   const utils = trpc.useUtils()
 
@@ -283,6 +283,7 @@ export function ItemsPage() {
                     onClick={() =>
                       setViewing({
                         src: '/file/' + (item.images[0].editedPath ?? item.images[0].originalPath),
+                        originalSrc: '/file/' + item.images[0].originalPath,
                         alt: item.name,
                       })
                     }

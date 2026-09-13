@@ -47,6 +47,12 @@ const spread = (pointers: Map<number, Point>): number => {
 type PhotoViewerProps = {
   /** The full-size rendition — `editedPath ?? originalPath`. */
   src: string
+  /**
+   * The unedited file, and what "Open original" points at. Optional only so a
+   * caller with nothing to distinguish the two (a draft's photo before any edit)
+   * can omit it; when absent the original IS `src`.
+   */
+  originalSrc?: string
   /** The item or draft name: the image's alt text and the dialog's name. */
   alt: string
   onClose: () => void
@@ -56,7 +62,7 @@ type PhotoViewerProps = {
 // Escape handling and focus restore (ADR-0002), and owns everything else: the
 // fit/zoom maths, the gestures, and the dismissal rule — Radix has no overlay to
 // fire an outside-click on when the dialog fills the viewport.
-export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
+export function PhotoViewer({ src, originalSrc, alt, onClose }: PhotoViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   const [scene, setScene] = useState<Scene | null>(null)
@@ -268,7 +274,9 @@ export function PhotoViewer({ src, alt, onClose }: PhotoViewerProps) {
             <button> cannot. This is the capability the photo card's "View" anchor
             had, moved inside the viewer. */}
         <a
-          href={src}
+          // `originalSrc`, not `src`: an edited photo is what the viewer opens,
+          // and the whole point of this link is the file underneath it.
+          href={originalSrc ?? src}
           target="_blank"
           rel="noreferrer"
           className={cn(buttonClasses(), 'absolute left-3 top-3 no-underline')}

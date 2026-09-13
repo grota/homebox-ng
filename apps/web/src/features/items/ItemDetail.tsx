@@ -28,8 +28,10 @@ export function ItemDetail() {
       navigate(`/drafts?detected=${result.detected}`)
     },
   })
-  const [editingImage, setEditingImage] = useState<{ id: number; originalPath: string } | null>(null)
-  const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null)
+  // `path` is the rendition the editor opens, so the two Edit buttons differ only
+  // in what they hand it (see the photo card below).
+  const [editingImage, setEditingImage] = useState<{ id: number; path: string } | null>(null)
+  const [viewing, setViewing] = useState<{ src: string; originalSrc: string; alt: string } | null>(null)
   const [editingItem, setEditingItem] = useState(false)
 
   // Every mutation below re-reads the item, which is what the gallery renders.
@@ -117,16 +119,29 @@ export function ItemDetail() {
               type="button"
               aria-label={`View photo of ${item.name}`}
               onClick={() =>
-                setViewing({ src: '/file/' + (img.editedPath ?? img.originalPath), alt: item.name })
+                setViewing({
+                  src: '/file/' + (img.editedPath ?? img.originalPath),
+                  originalSrc: '/file/' + img.originalPath,
+                  alt: item.name,
+                })
               }
               className="block w-full cursor-zoom-in p-0"
             >
               <img src={'/file/' + img.thumbPath} alt="" className="w-full h-32 object-cover rounded-md" />
             </button>
             {img.isPrimary && <Badge>Primary</Badge>}
-            <Button onClick={() => setEditingImage({ id: img.id, originalPath: img.originalPath })}>
-              Edit
+            {/* Edits stack on the last edit, not on the raw file: once an image
+                has an `editedPath`, that is the rendition "Edit photo" opens. */}
+            <Button onClick={() => setEditingImage({ id: img.id, path: img.editedPath ?? img.originalPath })}>
+              Edit photo
             </Button>
+            {/* Only offered when there is something to go back to — without an
+                edit this is the button above, under a second name. */}
+            {img.editedPath && (
+              <Button onClick={() => setEditingImage({ id: img.id, path: img.originalPath })}>
+                Edit original photo
+              </Button>
+            )}
             {!img.isPrimary && (
               <Button
                 disabled={setPrimary.isPending}
@@ -160,7 +175,12 @@ export function ItemDetail() {
       )}
 
       {viewing && (
-        <PhotoViewer src={viewing.src} alt={viewing.alt} onClose={() => setViewing(null)} />
+        <PhotoViewer
+          src={viewing.src}
+          originalSrc={viewing.originalSrc}
+          alt={viewing.alt}
+          onClose={() => setViewing(null)}
+        />
       )}
     </section>
   )

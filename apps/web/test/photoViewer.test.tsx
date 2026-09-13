@@ -6,6 +6,7 @@ const VIEWPORT = { width: 800, height: 600 }
 const LARGE = { width: 4000, height: 3000 }
 const SMALL = { width: 400, height: 300 }
 const SRC = '/file/uploads/edited/e.png'
+const ORIGINAL_SRC = '/file/uploads/originals/a.png'
 
 const box = (width: number, height: number) => () => ({
   x: 0, y: 0, left: 0, top: 0, right: width, bottom: height, width, height, toJSON: () => ({}),
@@ -116,6 +117,15 @@ describe('PhotoViewer chrome', () => {
     expect(link).toHaveAttribute('href', SRC)
     expect(link).toHaveAttribute('target', '_blank')
     expect(link).toHaveAttribute('rel', 'noreferrer')
+  })
+
+  // `src` is the edited rendition, and the button is the only way to the file
+  // underneath it. Pointing it at `src` — as it did — made it a no-op.
+  it('points Open original at the separate original when one is given', () => {
+    render(
+      <PhotoViewer src={SRC} originalSrc={ORIGINAL_SRC} alt="Lamp" onClose={vi.fn()} />,
+    )
+    expect(screen.getByRole('link', { name: 'Open original' })).toHaveAttribute('href', ORIGINAL_SRC)
   })
 
   // Escape comes from Modal, but the wiring from its `onOpenChange` to this

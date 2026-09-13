@@ -31,7 +31,7 @@ export function DraftsPage() {
   const publish = trpc.drafts.publish.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const discard = trpc.drafts.discard.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null)
+  const [viewing, setViewing] = useState<{ src: string; originalSrc: string; alt: string } | null>(null)
   // Both bulk actions clear the selection on success, as the spec requires — and
   // for the same reason: `selected` is never pruned when the list refetches, so
   // an id that survived a successful bulk action would be sent again by the next
@@ -131,7 +131,13 @@ export function DraftsPage() {
                   <button
                     type="button"
                     aria-label={`View photo of ${d.name}`}
-                    onClick={() => setViewing({ src: '/file/' + (photo.editedPath ?? photo.originalPath), alt: d.name })}
+                    onClick={() =>
+                      setViewing({
+                        src: '/file/' + (photo.editedPath ?? photo.originalPath),
+                        originalSrc: '/file/' + photo.originalPath,
+                        alt: d.name,
+                      })
+                    }
                     className="shrink-0 cursor-zoom-in p-0"
                   >
                     <img src={`/file/${photo.thumbPath}`} className="w-16 h-16 object-cover rounded" alt="" />

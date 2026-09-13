@@ -1,10 +1,19 @@
 import { useState } from 'react'
-import FilerobotImageEditor from 'react-filerobot-image-editor'
+import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor'
 import { trpc } from '../../api/trpc'
 import { Modal } from '../../ui'
 
-type PhotoEditorProps = { image: { id: number; originalPath: string }; itemId: number; open: boolean; onClose: () => void }
+// `path` is whichever rendition this session edits: the item page's "Edit photo"
+// passes the edited file when there is one, "Edit original photo" passes the
+// original. Saving always writes a NEW `editedPath`, so either way the original
+// on disk is never overwritten.
+type PhotoEditorProps = { image: { id: number; path: string }; itemId: number; open: boolean; onClose: () => void }
 type SaveImageData = { imageCanvas?: HTMLCanvasElement; imageBase64?: string; mimeType?: string }
+
+// The tabs this app wants. Filerobot shows only what is listed here, in this
+// order — `[]` is not "none", it is "everything", so the set has to be spelled
+// out. Filters and Watermark are deliberately absent.
+const TABS_IDS = [TABS.FINETUNE, TABS.ADJUST, TABS.ANNOTATE, TABS.RESIZE]
 
 // Derive a Blob from filerobot's `imageData`. Prefer the canvas (accurate size),
 // fall back to decoding the base64 data URL.
@@ -54,13 +63,20 @@ export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) 
     <Modal open={open} onOpenChange={(next) => { if (!next) onClose() }} title="Edit photo">
       {error && <p role="alert" className="text-danger">{error}</p>}
       {saving && <p>Saving…</p>}
-      <FilerobotImageEditor
-        source={'/file/' + image.originalPath}
-        onSave={handleSave}
-        onClose={onClose}
-        savingPixelRatio={4}
-        previewPixelRatio={window.devicePixelRatio || 1}
-      />
+      {/* The editor sizes itself to 100% of its parent and gives up entirely when
+          that parent has no height — inside a `height: auto` dialog it collapsed
+          to its own 250px `min-height`, leaving the photo a postage stamp. A
+          definite height here is the whole fix. */}
+      <div className="h-[70vh]">
+        <FilerobotImageEditor
+          source={'/file/' + image.path}
+          onSave={handleSave}
+          onClose={onClose}
+          tabsIds={TABS_IDS}
+          savingPixelRatio={4}
+          previewPixelRatio={window.devicePixelRatio || 1}
+        />
+      </div>
     </Modal>
   )
 }

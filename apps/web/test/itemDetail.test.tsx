@@ -3,10 +3,11 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 vi.mock('react-filerobot-image-editor', () => ({
-  // The package exports the editor as its default export only (no named export),
-  // and PhotoEditor imports it via `import FilerobotImageEditor from '...'`, so
-  // the mock must provide a `default` export or the component renders undefined.
-  default: () => <div data-testid="fil-editor" />,
+  // PhotoEditor imports the editor as its default export and `TABS` by name, so
+  // the mock needs both. `source` is surfaced as an attribute because which
+  // rendition the editor opens is exactly what the two Edit buttons differ on.
+  default: ({ source }: { source: string }) => <div data-testid="fil-editor" data-source={source} />,
+  TABS: { FINETUNE: 'Finetune', FILTERS: 'Filters', ADJUST: 'Adjust', WATERMARK: 'Watermark', ANNOTATE: 'Annotate', RESIZE: 'Resize' },
 }))
 
 // Mutation spies live outside the factories so tests can assert on the calls.
@@ -116,10 +117,13 @@ describe('item detail photos', () => {
     mocks.unpackError = null
   })
 
-  it('renders an Edit button per image and opens the editor', async () => {
+  it('renders an Edit button per image, plus "Edit original photo" only where an edit exists', async () => {
     renderDetail()
-    const editButtons = screen.getAllByRole('button', { name: 'Edit' })
+    const editButtons = screen.getAllByRole('button', { name: 'Edit photo' })
     expect(editButtons).toHaveLength(2)
+    // Two images, one edit — only the edited image has an original to go back
+    // to, so the second button is absent rather than a duplicate of the first.
+    expect(screen.getAllByRole('button', { name: 'Edit original photo' })).toHaveLength(1)
     fireEvent.click(editButtons[0])
     await waitFor(() => expect(screen.getByTestId('fil-editor')).toBeInTheDocument())
   })
@@ -167,6 +171,33 @@ describe('item detail photos', () => {
       'src',
       '/file/uploads/originals/b.png',
     )
+  })
+
+  // The viewer shows the edited rendition, so "Open original" is the only route
+  // back to the file underneath — it has to be given the original separately
+  // rather than reusing `src`, which is what made it a duplicate of the photo.
+  it('points the viewer\'s "Open original" at the unedited file', () => {
+    renderDetail()
+    fireEvent.click(screen.getAllByRole('button', { name: 'View photo of Lamp' })[0])
+    const dialog = screen.getByRole('dialog', { name: 'Lamp' })
+    expect(within(dialog).getByRole('link', { name: 'Open original' })).toHaveAttribute(
+      'href',
+      '/file/uploads/originals/a.png',
+    )
+  })
+
+  // Edits stack: "Edit photo" reopens the last edit, not the raw file, so a
+  // second pass does not silently start over from the original.
+  it('opens the editor on the edited rendition from "Edit photo"', () => {
+    renderDetail()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit photo' })[0])
+    expect(screen.getByTestId('fil-editor')).toHaveAttribute('data-source', '/file/uploads/edited/e.png')
+  })
+
+  it('opens the editor on the original from "Edit original photo"', () => {
+    renderDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit original photo' }))
+    expect(screen.getByTestId('fil-editor')).toHaveAttribute('data-source', '/file/uploads/originals/a.png')
   })
 
   // The drafts page reports what an unpack detected, and this entry point into
