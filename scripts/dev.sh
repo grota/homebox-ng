@@ -18,8 +18,21 @@ RUN_DIR="$ROOT/.dev"
 STATE_FILE="$RUN_DIR/state"
 API_LOG="$RUN_DIR/api.log"
 WEB_LOG="$RUN_DIR/web.log"
-API_PORT="${PORT:-3000}"
 WEB_PORT="${WEB_PORT:-5173}"
+
+# The API's port, resolved the way the server resolves it (`apps/api/src/env.ts`):
+# the shell wins, then the repo-root `.env`, then the default. dev.sh exports the
+# result, so dev.sh's own port checks, the API and Vite's proxy
+# (`apps/web/vite.config.ts`) cannot disagree about where the API lives — a
+# disagreement that shows up as probing the wrong port and tearing down a stack
+# that came up perfectly.
+env_port() {
+  [[ -f "$ROOT/.env" ]] || return 0
+  sed -n 's/^PORT=\([^#]*\).*/\1/p' "$ROOT/.env" | head -1 | tr -d '[:space:]'
+}
+API_PORT="${PORT:-$(env_port)}"
+API_PORT="${API_PORT:-3000}"
+export PORT="$API_PORT"
 
 listener_pid() { # <port> — pid listening on it, if any
   ss -ltnpH "sport = :$1" 2>/dev/null | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | head -1
@@ -113,8 +126,25 @@ cat <<EOF
   Web    http://localhost:$WEB_PORT   (proxies /trpc /upload /file to :$API_PORT)
   Login  a@a.com / aaaaaaaa
 
-  logs   $API_LOG
-         $WEB_LOG
   stop   pnpm stop
 
 EOF
+
+# Follow both servers here, each line tagged with where it came from. Two
+# followers rather than `tail -f "$API_LOG" "$WEB_LOG"`, because tail reprints a
+# full-path banner every time it switches file, which is constant here.
+follow() { # <label> <log>
+  tail -n +1 -f "$2" | sed -u "s/^/[$1] /"
+}
+
+# Ctrl-C must not read as "everything is down": the servers are in their own
+# sessions and outlive this shell, so say which one it is and how to end it.
+stop_following() {
+  jobs -p | xargs -r kill 2>/dev/null || true
+}
+trap 'stop_following; printf "\nDetached. The stack is still running — %s to stop it.\n" "pnpm stop"; exit 0' INT TERM
+
+follow api "$API_LOG" &
+follow web "$WEB_LOG" &
+wait
+stop_following
