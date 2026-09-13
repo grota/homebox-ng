@@ -61,20 +61,3 @@ export const listSubtreeItemIds = (db: DrizzleDb, rootId: number): number[] =>
     SELECT i.id FROM items i JOIN sub ON i.location_id = sub.id
   `).map((r) => r.id)
 
-// Disk paths (`originalPath`, `editedPath`, `thumbPath`) of the images owned by
-// the subtree's items. The delete cascades the `images` rows away with their
-// items, so these must be read BEFORE the delete — afterwards nothing on the DB
-// side names the files any more.
-export const listSubtreeImagePaths = (db: DrizzleDb, rootId: number): string[] =>
-  db.all<{ path: string }>(sql`
-    WITH RECURSIVE sub(id) AS (
-      SELECT ${rootId}
-      UNION
-      SELECT l.id FROM locations l JOIN sub ON l.parent_id = sub.id
-    )
-    SELECT im.original_path AS path FROM images im JOIN items i ON i.id = im.item_id JOIN sub ON i.location_id = sub.id
-    UNION ALL
-    SELECT im.edited_path FROM images im JOIN items i ON i.id = im.item_id JOIN sub ON i.location_id = sub.id WHERE im.edited_path IS NOT NULL
-    UNION ALL
-    SELECT im.thumb_path FROM images im JOIN items i ON i.id = im.item_id JOIN sub ON i.location_id = sub.id
-  `).map((r) => r.path)

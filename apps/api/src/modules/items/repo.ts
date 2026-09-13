@@ -347,6 +347,15 @@ export const setItemPublished = (db: DrizzleDb, id: number, published: boolean):
 export const setItemTrashedAt = (db: DrizzleDb, id: number, at: Date | null): boolean =>
   db.update(items).set({ trashedAt: at, updatedAt: new Date() }).where(eq(items.id, id)).run().changes > 0
 
+// Release items from a location that is about to be deleted (ADR-0004). Bulk,
+// because the alternative is one UPDATE per item, and it runs inside the
+// caller's transaction so a failure leaves no item detached from a location
+// that still exists.
+export const clearItemLocations = (db: DrizzleDb, ids: number[]): void => {
+  if (ids.length === 0) return
+  db.update(items).set({ locationId: null, updatedAt: new Date() }).where(inArray(items.id, ids)).run()
+}
+
 // Everything in the trash, newest first — the whole point of storing a timestamp.
 export const listTrashedItems = (db: DrizzleDb): ItemRow[] =>
   db.select(ITEM_FIELDS).from(items).where(isNotNull(items.trashedAt)).orderBy(desc(items.trashedAt)).all()

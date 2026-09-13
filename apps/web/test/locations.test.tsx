@@ -29,7 +29,13 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
     ...actual,
     trpc: {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-      useUtils: () => ({ locations: { list: { invalidate: mocks.invalidate } } }),
+      // `client` is what the page reaches for the pre-delete counts — the prompt
+      // names how many items it is about to strand, and the location DTO carries
+      // no item count to read it from.
+      useUtils: () => ({
+        locations: { list: { invalidate: mocks.invalidate } },
+        client: { locations: { deletePreview: { query: async () => ({ locations: 3, items: 4 }) } } },
+      }),
       locations: {
         list: { useQuery: () => ({ data: tree, isLoading: false }) },
         create: { useMutation: mutation(mocks.create) },
@@ -100,20 +106,24 @@ describe('locations page', () => {
     expect(labels.some((label) => label?.includes('Garage'))).toBe(false)
   })
 
-  it('deep-deletes only after the confirmation is accepted, and reports the counts', async () => {
+  it('names how many items it will strand, deletes only after the confirmation, and reports the counts', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     renderPage()
     fireEvent.click((await screen.findAllByRole('button', { name: 'Delete' }))[0])
 
-    // Declining leaves the tree alone.
-    expect(confirm).toHaveBeenCalled()
+    // Declining leaves the tree alone. The prompt has to say what actually
+    // happens — the sub-locations go, the items stay. Awaited, because the
+    // counts come from a query the handler runs before it asks.
+    await waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith(expect.stringContaining('4 items will stay in your catalog with no location')),
+    )
     expect(mocks.remove).not.toHaveBeenCalled()
 
     confirm.mockReturnValue(true)
     fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0])
     await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith({ id: 1 }))
     // The API returns what it took, and the page reports it back.
-    expect(await screen.findByRole('status')).toHaveTextContent('Deleted 3 locations and 4 items.')
+    expect(await screen.findByRole('status')).toHaveTextContent('Deleted 3 locations. 4 items now have no location.')
     confirm.mockRestore()
   })
 })

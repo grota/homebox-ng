@@ -122,11 +122,11 @@
 
 **Files:** `apps/api/src/modules/locations/service.ts`, `apps/api/src/modules/locations/router.ts`, `apps/api/src/modules/images/service.ts`, `apps/web/src/features/locations/LocationsPage.tsx`, `apps/web/src/locales/en/translation.json`, tests.
 
-- [ ] `deleteLocation` (`locations/service.ts:157-193`): collect the subtree's item ids **first** (the existing `listSubtreeItemIds`), set their `locationId` to `null`, re-index each one (the search blob carries the location path — reuse `reindexItem`; `reindexLocationSubtree` re-reads the subtree and would find nothing once they are detached), then delete the locations deepest-first. **Do not delete items and do not unlink files.**
-- [ ] The route keeps returning counts; the item count now means *detached*.
-- [ ] `deleteImage` unlinks `originalPath`, `editedPath`, `thumbPath`. It stays a hard delete — a photo is not an item.
-- [ ] Web copy: the confirm becomes *"Delete "X" and its 2 sub-locations? 7 items will stay in your catalog with no location."*; the status becomes *"Deleted 3 locations. 7 items now have no location."*
-- [ ] Tests: `locations.test.ts` — the item survives, is `NOT_FOUND`-free, has a null location, is still searchable by name with no stale location path in the index; **the image-file-removal test is deleted**, because that behaviour is what this task removes.
+- [x] `deleteLocation` (`locations/service.ts:157-193`): collect the subtree's item ids **first** (the existing `listSubtreeItemIds`), set their `locationId` to `null`, re-index each one (the search blob carries the location path — reuse `reindexItem`; `reindexLocationSubtree` re-reads the subtree and would find nothing once they are detached), then delete the locations deepest-first. **Do not delete items and do not unlink files.**
+- [x] The route keeps returning counts; the item count now means *detached*. (A `deletePreview` query was added too — see the commit.)
+- [x] `deleteImage` unlinks `originalPath`, `editedPath`, `thumbPath`. It stays a hard delete — a photo is not an item.
+- [x] Web copy: the confirm becomes *"Delete "X" and its 2 sub-locations? 7 items will stay in your catalog with no location."*; the status becomes *"Deleted 3 locations. 7 items now have no location."*
+- [x] Tests: `locations.test.ts` — the item survives, is `NOT_FOUND`-free, has a null location, is still searchable by name with no stale location path in the index; **the image-file-removal test is deleted**, because that behaviour is what this task removes.
 
 **Verify:** `pnpm --filter @homebox/api test` and `pnpm --filter @homebox/web test`.
 

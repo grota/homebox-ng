@@ -1,5 +1,3 @@
-import { unlink } from 'node:fs/promises'
-import { join } from 'node:path'
 import { TRPCError } from '@trpc/server'
 import type { DrizzleDb } from '@homebox/db'
 import type { LocationInput } from '@homebox/shared'
@@ -154,13 +152,33 @@ export const updateLocation = (db: DrizzleDb, input: UpdateLocationInput): Locat
   return toDto(row, depth)
 }
 
-export const deleteLocation = (db: DrizzleDb, id: number, dataDir: string): DeleteLocationResult => {
+// Delete a location and its sub-locations. The items that lived in them are
+// **kept and detached**, not deleted (ADR-0004): destroying a place is not a
+// reason to destroy the things in it, and it used to be the app's quietest way
+// to lose a photo. Detaching is also what makes the delete possible at all —
+// `items.location_id` has no ON DELETE action and FK enforcement is ON
+// (`packages/db/src/client.ts`), so a row still pointing at the location would
+// block its removal.
+//
+// Everything happens in one transaction: the detach, the reindex, and the
+// delete. The reindex is not optional — the searchable blob encodes the full
+// ancestor path, so an item released from a deleted location would otherwise
+// still be findable by the name of a place that no longer exists.
+//
+// `listSubtreeItemIds` deliberately includes trashed items. They hold a
+// `location_id` like any other row, and leaving it set would block the delete
+// with an FK error naming a row the user cannot even see.
+// Counts only — the prompt names what will happen, it does not enumerate it.
+// Counts *include* trashed items, because they are detached too.
+export const describeDelete = (db: DrizzleDb, id: number): { locations: number; items: number } => {
+  if (!repo.getLocation(db, id)) throw new TRPCError({ code: 'NOT_FOUND' })
+  return { locations: repo.listSubtreeIds(db, id).length, items: repo.listSubtreeItemIds(db, id).length }
+}
+
+export const deleteLocation = (db: DrizzleDb, id: number): DeleteLocationResult => {
   if (!repo.getLocation(db, id)) throw new TRPCError({ code: 'NOT_FOUND' })
 
-  // Deep delete: the location, every sub-location beneath it, and every item
-  // that lives in any of them (its images, custom-field values and tag links go
-  // too, by FK cascade). `locations.parent_id` carries no ON DELETE action and
-  // FK enforcement is ON (`packages/db/src/client.ts`), so the rows have to be
+  // `locations.parent_id` carries no ON DELETE action, so rows have to be
   // removed deepest-first — a parent must not be deleted while a child still
   // points at it. Depth is the walk-up chain, so sorting by it is a valid
   // children-before-parents order.
@@ -172,22 +190,13 @@ export const deleteLocation = (db: DrizzleDb, id: number, dataDir: string): Dele
     .map((node) => node.locId)
 
   const itemIds = repo.listSubtreeItemIds(db, id)
-  // Read the image paths BEFORE the delete: the cascade takes the `images` rows
-  // with their items, and nothing on the DB side names the files afterwards.
-  const imagePaths = repo.listSubtreeImagePaths(db, id)
 
   db.transaction((tx) => {
     const t = tx as unknown as DrizzleDb
-    for (const itemId of itemIds) {
-      itemsRepo.deleteItem(t, itemId)
-      reindexItem(t, itemId) // computeBlob returns null for the gone item → clears the items_fts row
-    }
+    itemsRepo.clearItemLocations(t, itemIds)
+    for (const itemId of itemIds) reindexItem(t, itemId)
     for (const locId of deepestFirst) repo.deleteLocation(t, locId)
   })
-
-  // Best-effort, AFTER the commit: the DB is already consistent, so a failed
-  // unlink only orphans bytes on disk rather than leaving a dangling row.
-  for (const rel of imagePaths) unlink(join(dataDir, rel)).catch(() => {})
 
   return { ok: true, locations: deepestFirst.length, items: itemIds.length }
 }

@@ -81,22 +81,32 @@ export function LocationsPage() {
   }
 
   const handleDelete = async (location: LocationTreeItem) => {
-    // The delete is deep and irreversible, so the prompt says what goes with the
-    // location. ponytail: native confirm — enough while there is no undo; swap
-    // for a styled dialog if this ever grows one.
-    const ok = window.confirm(
-      `Delete "${location.name}" and everything inside it?\n\nAny sub-locations and any items that live there are deleted too.`
-    )
-    if (!ok) return
+    // The prompt has to be specific, because what happens is surprising: the
+    // sub-locations go, and the items stay — with no location. The count comes
+    // from a query rather than the location DTO, which carries none.
+    // ponytail: native confirm — enough for a single delete; swap for a styled
+    // dialog if this ever grows bulk.
     setError(null)
     setStatus(null)
+    let preview: { locations: number; items: number }
+    try {
+      preview = await utils.client.locations.deletePreview.query({ id: location.id })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed')
+      return
+    }
+    const stranded = `${preview.items} item${preview.items === 1 ? '' : 's'}`
+    const ok = window.confirm(
+      `Delete "${location.name}" and everything under it?\n\nAny sub-locations are deleted. ${stranded} will stay in your catalog with no location.`
+    )
+    if (!ok) return
     try {
       const result = await remove.mutateAsync({ id: location.id })
       await utils.locations.list.invalidate()
       if (editingId === location.id) reset()
       const locs = `${result.locations} location${result.locations === 1 ? '' : 's'}`
-      const items = `${result.items} item${result.items === 1 ? '' : 's'}`
-      setStatus(`Deleted ${locs} and ${items}.`)
+      // "0 items now have no location" reads like a bug; only say it when true.
+      setStatus(result.items === 0 ? `Deleted ${locs}.` : `Deleted ${locs}. ${result.items} item${result.items === 1 ? '' : 's'} now ${result.items === 1 ? 'has' : 'have'} no location.`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
     }

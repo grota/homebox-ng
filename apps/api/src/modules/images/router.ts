@@ -15,5 +15,5 @@ export const imagesRouter = t.router({
     .input(z.object({ itemId: z.number().int().positive() }))
     .query(({ ctx, input }) => service.listForItem(ctx.db, input.itemId)),
   setPrimary: protectedProcedure.input(setPrimaryInput).mutation(({ ctx, input }) => service.setPrimary(ctx.db, input.itemId, input.imageId)),
-  delete: protectedProcedure.input(idInput).mutation(({ ctx, input }) => service.deleteImage(ctx.db, input.id)),
+  delete: protectedProcedure.input(idInput).mutation(({ ctx, input }) => service.deleteImage(ctx.db, input.id, ctx.dataDir)),
 })

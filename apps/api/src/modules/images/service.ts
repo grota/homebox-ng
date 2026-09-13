@@ -1,3 +1,5 @@
+import { unlink } from 'node:fs/promises'
+import { join } from 'node:path'
 import { TRPCError } from '@trpc/server'
 import type { DrizzleDb } from '@homebox/db'
 import * as repo from './repo.js'
@@ -15,7 +17,17 @@ export const setPrimary = (db: DrizzleDb, itemId: number, imageId: number): Imag
   return repo.getImage(db, imageId)!
 }
 
-export const deleteImage = (db: DrizzleDb, id: number): { ok: true } => {
-  if (!repo.deleteImage(db, id)) throw new TRPCError({ code: 'NOT_FOUND' })
+// A photo is not an item, so it is not trashable — deleting one is permanent.
+// It does have to take its files with it, though: this used to drop the row and
+// leave the original, the edited copy and the thumbnail orphaned on disk, which
+// made the item page's "Delete photo" a lie about half its job.
+export const deleteImage = (db: DrizzleDb, id: number, dataDir: string): { ok: true } => {
+  // Read before the delete: afterwards nothing on the DB side names the files.
+  const image = repo.getImage(db, id)
+  if (!image || !repo.deleteImage(db, id)) throw new TRPCError({ code: 'NOT_FOUND' })
+  for (const rel of [image.originalPath, image.editedPath, image.thumbPath]) {
+    if (!rel) continue
+    unlink(join(dataDir, rel)).catch(() => {}) // best-effort; the row is already gone
+  }
   return { ok: true }
 }

@@ -20,7 +20,12 @@ export const locationsRouter = t.router({
   list: protectedProcedure.query(({ ctx }) => service.listLocations(ctx.db)),
   create: protectedProcedure.input(locationInput).mutation(({ ctx, input }) => service.createLocation(ctx.db, input)),
   update: protectedProcedure.input(updateInput).mutation(({ ctx, input }) => service.updateLocation(ctx.db, input)),
-  // Deep delete: the location, its sub-locations and the items in them. Takes
-  // `dataDir` to best-effort remove the deleted items' image files.
-  delete: protectedProcedure.input(idInput).mutation(({ ctx, input }) => service.deleteLocation(ctx.db, input.id, ctx.dataDir)),
+  // Deep delete of the location and its sub-locations. No `dataDir`: the items it
+  // used to delete — and whose files it used to unlink — are now kept and
+  // detached (ADR-0004).
+  delete: protectedProcedure.input(idInput).mutation(({ ctx, input }) => service.deleteLocation(ctx.db, input.id)),
+  // What that delete would do, so the confirmation can name it before it
+  // happens. The prompt says "7 items will have no location", and the location
+  // DTO carries no item count to read it from.
+  deletePreview: protectedProcedure.input(idInput).query(({ ctx, input }) => service.describeDelete(ctx.db, input.id)),
 })
