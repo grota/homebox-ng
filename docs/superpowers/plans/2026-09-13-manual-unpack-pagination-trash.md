@@ -195,14 +195,14 @@
 
 The page is edited once, here, so pagination, the second unpack button and the trash rename land together.
 
-- [ ] `UnpackModal`: keep the file input and type `Select` shared; two submit buttons — **Auto unpack** (the existing call) and **Manual unpack** (opens `ManualUnpackModal` on the chosen file). Both disabled until a file is chosen.
-- [ ] `DraftsPage`: paginate via `drafts.list`'s new shape and the shared control; page in the URL as `?page=`, preserved when the `?detected=` cleanup rewrites the URL (`DraftsPage.tsx:64-69`).
-- [ ] Selection is cleared when the page changes; "Select all" covers the page.
-- [ ] The all-actions become **Publish all N** / **Move all N to trash**, calling the bulk procedures with **no** ids (the server's existing "every draft" branch). No cross-page checkbox.
-- [ ] "Discard selected" → **Move to trash**; the confirm and status copy follow `CONTEXT.md`.
-- [ ] Empty state keyed on `total === 0`; an out-of-range `?page=` clamps to the last page.
-- [ ] The name `Input`'s `onBlur` flush is **left alone** (spec §20).
-- [ ] Tests: pagination renders and moves the page; a page change clears the selection; the all-actions send no ids; the empty state appears only at `total === 0`; both unpack buttons are disabled without a file.
+- [x] `UnpackModal`: keep the file input and type `Select` shared; two submit buttons — **Auto unpack** (the existing call) and **Manual unpack** (opens `ManualUnpackModal` on the chosen file). Both disabled until a file is chosen.
+- [x] `DraftsPage`: paginate via `drafts.list`'s new shape and the shared control; page in the URL as `?page=`, preserved when the `?detected=` cleanup rewrites the URL (`DraftsPage.tsx:64-69`).
+- [x] Selection is cleared when the page changes; "Select all" covers the page.
+- [x] The all-actions become **Publish all N** / **Move all N to trash**, calling the bulk procedures with **no** ids (the server's existing "every draft" branch). No cross-page checkbox.
+- [x] "Discard selected" → **Move to trash**; the confirm and status copy follow `CONTEXT.md`.
+- [x] Empty state keyed on `total === 0`; an out-of-range `?page=` clamps to the last page.
+- [x] The name `Input`'s `onBlur` flush is **left alone** (spec §20).
+- [x] Tests: pagination renders and moves the page; a page change clears the selection; the all-actions send no ids; the empty state appears only at `total === 0`; both unpack buttons are disabled without a file.
 
 **Verify:** `pnpm --filter @homebox/web test`.
 

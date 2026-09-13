@@ -128,6 +128,74 @@ describe('drafts page', () => {
     expect(screen.getByRole('checkbox', { name: 'drafts.selectAll' })).toBeInTheDocument()
   })
 
+  it('disables both unpack actions until a photo is chosen', () => {
+    draftData = [draft(1, 'Draft Lamp')]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    // One photo and one type are shared: the two differ only in where the boxes
+    // come from, so they enable and disable together.
+    expect(screen.getByRole('button', { name: 'drafts.unpackAuto' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'drafts.unpackManual' })).toBeDisabled()
+  })
+
+  it('offers no pagination when everything fits on one page', () => {
+    draftData = [draft(1, 'Draft Lamp')]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument()
+  })
+
+  it('pages a list longer than one page', () => {
+    draftData = Array.from({ length: 25 }, (_, i) => draft(i + 1, `Draft ${i + 1}`))
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
+  })
+
+  // Page-scoped selection: the set must not survive a page change, or a bulk
+  // action could act on rows the user cannot see.
+  it('clears the selection when the page changes', () => {
+    draftData = Array.from({ length: 25 }, (_, i) => draft(i + 1, `Draft ${i + 1}`))
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('checkbox', { name: 'drafts.selectAll' }))
+    expect(screen.getByRole('button', { name: 'drafts.publishSelected' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('button', { name: 'drafts.publishSelected' })).toBeDisabled()
+  })
+
+  // The "all" actions call the server's existing "no ids means every draft"
+  // branch. Sending the page's ids instead would quietly make them mean "this
+  // page" — the same trap the unpaginated repo queries exist to avoid.
+  it('sends no ids for the all-actions', () => {
+    draftData = [draft(1, 'Draft Lamp'), draft(2, 'Draft Cup')]
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'drafts.publishAll' }))
+    expect(publishAllMutate).toHaveBeenCalledWith({})
+
+    fireEvent.click(screen.getByRole('button', { name: 'drafts.trashAll' }))
+    expect(trashAllMutate).toHaveBeenCalledWith({})
+  })
+
   it('renders the empty state when there are no drafts', () => {
     draftData = []
     render(
@@ -160,7 +228,7 @@ describe('drafts page', () => {
     )
     fireEvent.click(screen.getByRole('checkbox', { name: 'drafts.selectAll' }))
     fireEvent.click(screen.getByRole('button', { name: 'drafts.discardSelected' }))
-    expect(confirmSpy).toHaveBeenCalledWith('Discard 2 draft(s) and their photos?')
+    expect(confirmSpy).toHaveBeenCalledWith('Move 2 draft(s) to the trash?')
     expect(trashAllMutate).toHaveBeenCalledWith({ ids: [1, 2] })
   })
 
@@ -225,7 +293,7 @@ describe('drafts page', () => {
     fireEvent.click(within(screen.getAllByRole('listitem')[0]).getByRole('checkbox'))
     fireEvent.click(screen.getByRole('button', { name: 'drafts.discardSelected' }))
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
-    expect(confirmSpy).toHaveBeenCalledWith('Discard 1 draft(s) and their photos?')
+    expect(confirmSpy).toHaveBeenCalledWith('Move 1 draft(s) to the trash?')
     expect(trashAllMutate).toHaveBeenCalledWith({ ids: [1] })
   })
 

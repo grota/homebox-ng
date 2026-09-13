@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
-import { Button, Card, Input, PhotoViewer } from '../../ui'
+import { Button, Card, Input, Pagination, PhotoViewer } from '../../ui'
 import { UnpackModal } from './UnpackModal'
+
+// Sent explicitly so the request that produced `total` and the control that reads
+// it cannot disagree about the window — the same agreement the items page makes.
+const PAGE_SIZE = 20
 
 export function DraftsPage() {
   const { t } = useTranslation()
@@ -26,7 +30,10 @@ export function DraftsPage() {
   const [params] = useSearchParams()
   const [detected, setDetected] = useState(() => params.get('detected'))
   const count = detected === null || detected.trim() === '' ? null : Number(detected)
-  const { data, isLoading } = trpc.drafts.list.useQuery()
+  // The page lives in the URL, like the items page, so a refresh or a Back keeps
+  // it and the two pages behave the same way.
+  const page = Math.max(1, Number(params.get('page')) || 1)
+  const { data, isLoading } = trpc.drafts.list.useQuery({ page, pageSize: PAGE_SIZE })
   const update = trpc.drafts.update.useMutation()
   const publish = trpc.drafts.publish.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const trashOne = trpc.drafts.trash.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
@@ -51,7 +58,30 @@ export function DraftsPage() {
   })
 
   const toggle = (id: number) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const allSelected = (data?.total ?? 0) > 0 && selected.size === data?.items.length
+  const rows = data?.items ?? []
+  const total = data?.total ?? 0
+  const allSelected = rows.length > 0 && selected.size === rows.length
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  const setPage = (next: number) => {
+    const q = new URLSearchParams(params)
+    if (next <= 1) q.delete('page')
+    else q.set('page', String(next))
+    navigate(`/drafts${q.toString() ? `?${q}` : ''}`)
+  }
+
+  // Selection is page-scoped: it is cleared when the page changes rather than
+  // carried across, so "Move selected to trash" can never act on rows the user
+  // cannot see. The set is already never pruned on refetch, and a cross-page
+  // version of it would be the same hazard with more reach.
+  useEffect(() => { setSelected(new Set()) }, [page])
+
+  // Landing on a page that no longer exists — after trashing everything on the
+  // last one, say — would otherwise render "No drafts" under a non-empty list.
+  useEffect(() => {
+    if (data && page > pageCount) setPage(pageCount)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, page, pageCount])
 
   // Dropping the parameter is what makes the notice describe an event rather than
   // the address bar: a reload starts clean. `replace` keeps the pre-rewrite URL
@@ -61,11 +91,15 @@ export function DraftsPage() {
   // mounted `DraftsPage`, not a fresh mount — the initial state above cannot see
   // that one, and capturing here too is what covers it. Both paths then rewrite
   // the URL, and the captured value is what keeps the notice on screen after it.
+  // `page` is preserved: dropping it would silently bounce a paginated user back
+  // to page 1 every time an unpack landed.
   useEffect(() => {
     const value = params.get('detected')
     if (value === null) return
     setDetected(value)
-    navigate('/drafts', { replace: true })
+    const q = new URLSearchParams(params)
+    q.delete('detected')
+    navigate(`/drafts${q.toString() ? `?${q}` : ''}`, { replace: true })
   }, [params, navigate])
 
   // `false` renders nothing, so one definition serves both branches: the notice
@@ -83,7 +117,9 @@ export function DraftsPage() {
     : <p role="status" className="text-danger">{t('drafts.unpackedNone')}</p>
 
   if (isLoading) return <p>Loading…</p>
-  if (!data || data.total === 0) return (
+  // `total`, not the page's row count: a page past the end has no rows either,
+  // and "No drafts" under a list of forty is a lie.
+  if (total === 0) return (
     <div className="space-y-4">
       <h1>{t('drafts.title')}</h1>
       {detectedNotice}
@@ -97,9 +133,9 @@ export function DraftsPage() {
       <h1>{t('drafts.title')}</h1>
       {detectedNotice}
       <UnpackModal onUnpacked={(n) => { void utils.drafts.list.invalidate(); navigate(`/drafts?detected=${n}`) }} />
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-1">
-          <input type="checkbox" checked={allSelected} onChange={() => { const ids = data.items.map((d) => d.id); setSelected(allSelected ? new Set() : new Set(ids)) }} />
+          <input type="checkbox" checked={allSelected} onChange={() => { setSelected(allSelected ? new Set() : new Set(rows.map((d) => d.id))) }} />
           {t('drafts.selectAll')}
         </label>
         <Button disabled={selected.size === 0} onClick={() => void publishAll.mutateAsync({ ids: [...selected] })}>
@@ -115,8 +151,26 @@ export function DraftsPage() {
           {t('drafts.discardSelected')}
         </Button>
       </div>
+
+      {/* The whole set, not the page. A checkbox that silently spans pages would
+          act on rows the user cannot review, so the capability is spelled out as
+          two verbs that name what they do — and the server's existing "no ids
+          means every draft" branch is what they call. */}
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="text-text-muted">{t('drafts.everything')}</span>
+        <Button onClick={() => void publishAll.mutateAsync({})}>{t('drafts.publishAll', { count: total })}</Button>
+        <Button
+          variant="danger"
+          onClick={() => {
+            if (window.confirm(t('drafts.trashAllConfirm', { count: total }))) void trashAll.mutateAsync({})
+          }}
+        >
+          {t('drafts.trashAll', { count: total })}
+        </Button>
+      </div>
+
       <ul className="space-y-3">
-        {data.items.map((d) => {
+        {rows.map((d) => {
           // The `<li>` stays the list item — `Card` renders a `<div>`, and a
           // `<div>` child of `<ul>` would drop the rows' list semantics.
           //
@@ -155,8 +209,16 @@ export function DraftsPage() {
           )
         })}
       </ul>
+
+      <Pagination page={page} total={total} pageSize={PAGE_SIZE} onPage={setPage} />
+
       {viewing && (
-        <PhotoViewer src={viewing.src} alt={viewing.alt} onClose={() => setViewing(null)} />
+        <PhotoViewer
+          src={viewing.src}
+          originalSrc={viewing.originalSrc}
+          alt={viewing.alt}
+          onClose={() => setViewing(null)}
+        />
       )}
     </div>
   )
