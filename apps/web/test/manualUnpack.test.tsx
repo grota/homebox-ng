@@ -227,6 +227,44 @@ describe('ManualUnpackModal', () => {
     expect(screen.queryByText(/zoom in first/)).not.toBeInTheDocument()
   })
 
+  // The pan that depends on nothing: no held key, no focus, no modifier. The
+  // space-drag below works, but it is also the gesture two rounds of a real
+  // session could not make fire, and a toggle is what makes the feature
+  // reachable regardless of what the browser does with the keyboard.
+  it('pans with the Move photo toggle, using no keyboard at all', async () => {
+    const { canvas } = open()
+    // Zoom past fit first: at fit the image is letterboxed on both axes and
+    // `panBy` clamps every offset back to the centre, so there is nothing to see.
+    fireEvent.wheel(canvas, { deltaY: -200, clientX: 250, clientY: 125 })
+    await waitFor(() => expect(canvas.className).toContain('cursor-crosshair'))
+
+    const wrapper = screen.getByTestId('manual-unpack-image')
+    const before = wrapper.style.transform
+    fireEvent.click(screen.getByRole('button', { name: 'Move photo' }))
+    expect(screen.getByRole('button', { name: 'Moving' })).toHaveAttribute('aria-pressed', 'true')
+
+    drag(canvas, { x: 250, y: 125 }, { x: 300, y: 160 })
+    await waitFor(() => expect(wrapper.style.transform).not.toBe(before))
+  })
+
+  it('does not draw a rectangle while the Move toggle is on', () => {
+    const { canvas } = open()
+    fireEvent.click(screen.getByRole('button', { name: 'Move photo' }))
+    drag(canvas, { x: 130, y: 112 }, { x: 230, y: 212 })
+    // A pan is not a draw, however far it drags.
+    expect(screen.queryByPlaceholderText('Item name')).not.toBeInTheDocument()
+  })
+
+  // Clicking a `tabIndex={-1}` surface focuses it, and the browser then paints a
+  // `:focus-visible` ring once the keyboard has been used — the blue border
+  // reported from a real session. Starting on the drawing surface rather than on
+  // "Cancel" makes that ring land somewhere sensible.
+  it('starts focus on the drawing surface, not on a button', async () => {
+    const { canvas } = open()
+    await waitFor(() => expect(canvas).toHaveFocus())
+    expect(screen.getByRole('button', { name: 'Cancel' })).not.toHaveFocus()
+  })
+
   it('keeps the modal open and shows why when the request fails', async () => {
     const onSubmit = vi.fn(async () => { throw new Error('not a decodable image') })
     const { canvas } = open(onSubmit)

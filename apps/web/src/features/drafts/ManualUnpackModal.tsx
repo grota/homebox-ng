@@ -51,10 +51,33 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
   const [selected, setSelected] = useState<number | null>(null)
   const [mode, setMode] = useState<Mode | null>(null)
   const [spaceDown, setSpaceDown] = useState(false)
+  // The keyboard-free way to pan. Space worked, but only for people whose
+  // browser and focus happened to cooperate, and a held modifier that silently
+  // does nothing is indistinguishable from a broken drag — reported twice from a
+  // real session. A plain toggle is discoverable and depends on nothing.
+  const [panMode, setPanMode] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const nextId = useRef(1)
   const focusNameFor = useRef<number | null>(null)
+
+  // Start on the drawing surface, not on the first button in the DOM. Radix
+  // focuses the first focusable element, which is "Cancel" — a poor default for
+  // a modal whose whole purpose is drawing, and, with Space held to pan, a
+  // control one keystroke from being activated. It is also what put a focus ring
+  // around the canvas the moment the user touched the keyboard.
+  useEffect(() => {
+    // The frame is not decoration: Radix focuses on mount, after this effect, so
+    // a synchronous focus here would simply be overwritten.
+    const frame = requestAnimationFrame(() => {
+      // Correct Radix's default and nothing else. If focus has already moved on —
+      // to a rectangle's name field, say — leave it where the user put it.
+      const active = document.activeElement
+      if (active && active !== document.body && active.tagName !== 'BUTTON') return
+      containerRef.current?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [])
 
   // Space pans, so it must not also scroll the page or re-fire a focused button.
   useEffect(() => {
@@ -144,7 +167,7 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
 
     // Space pans, and panning beats everything: with the key held, a drag that
     // starts inside a rectangle must not move it.
-    if (spaceDown) { setMode({ kind: 'pan', from: { x: event.clientX, y: event.clientY } }); return }
+    if (spaceDown || panMode) { setMode({ kind: 'pan', from: { x: event.clientX, y: event.clientY } }); return }
 
     const target = event.target as HTMLElement
     const handle = target.dataset.handle as Handle | undefined
@@ -253,11 +276,20 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
               nothing, which reads as a broken drag rather than as "there is
               nothing off-screen". */}
           <p className="text-sm text-text-muted">
-            {spaceDown && !canPan
-              ? 'The whole photo is already visible — zoom in first, then drag to move it.'
-              : 'Drag on the photo to draw a box. Scroll to zoom, then hold Space and drag to move the photo. Click a box to select it; press Delete to remove it.'}
+            {panMode
+              ? 'Dragging moves the photo. Click “Moving” to go back to drawing boxes.'
+              : spaceDown && !canPan
+                ? 'The whole photo is already visible — zoom in first, then drag to move it.'
+                : 'Drag on the photo to draw a box. Click a box to select it; press Delete to remove it. To move the photo: zoom in, then hold Space and drag — or turn on Move photo.'}
           </p>
           <div className="flex shrink-0 gap-2">
+            <Button
+              aria-pressed={panMode}
+              onClick={() => setPanMode((on) => !on)}
+              title={canPan ? 'Drag to move the photo' : 'Zoom in first — the whole photo is already visible'}
+            >
+              {panMode ? 'Moving' : 'Move photo'}
+            </Button>
             <Button onClick={requestClose}>Cancel</Button>
             <Button variant="primary" disabled={busy || regions.length === 0} onClick={() => void submit()}>
               {busy ? 'Creating…' : `Create ${regions.length} draft${regions.length === 1 ? '' : 's'}`}
@@ -272,7 +304,7 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
           data-testid="manual-unpack-canvas"
           tabIndex={-1}
           className={`relative min-h-0 flex-1 touch-none overflow-hidden bg-black/90 focus:outline-none ${
-            spaceDown ? (canPan ? 'cursor-grab' : 'cursor-not-allowed') : 'cursor-crosshair'
+            spaceDown || panMode ? (canPan ? 'cursor-grab' : 'cursor-not-allowed') : 'cursor-crosshair'
           }`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
