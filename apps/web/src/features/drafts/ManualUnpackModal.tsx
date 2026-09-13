@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, SyntheticEvent } from 'react'
 import { Button, Input, Modal } from '../../ui'
-import { initialView, panBy, zoomAt, type Transform } from '../../ui/zoom'
+import { initialView, overflows, panBy, zoomAt, type Transform } from '../../ui/zoom'
 import { boxFromCorners, isDrawable, moveBox, resizeBox, toImagePoint, type Box, type Handle, type Size } from './geometry'
 
 /** What the caller sends: a rectangle in the source image's own pixels, and the
@@ -44,6 +44,8 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
 
   const [natural, setNatural] = useState<Size | null>(null)
   const [transform, setTransform] = useState<Transform | null>(null)
+  // The measured container, kept so `canPan` can be computed while rendering.
+  const [viewport, setViewport] = useState<Size | null>(null)
   const [regions, setRegions] = useState<DrawnRegion[]>([])
   const [pending, setPending] = useState<{ id: number; box: Box } | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
@@ -103,7 +105,11 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
     const size = { width: img.naturalWidth, height: img.naturalHeight }
     setNatural(size)
     const box = containerRef.current?.getBoundingClientRect()
-    if (box && box.width > 0 && box.height > 0) setTransform(initialView(size, { width: box.width, height: box.height }))
+    if (box && box.width > 0 && box.height > 0) {
+      const measured = { width: box.width, height: box.height }
+      setViewport(measured)
+      setTransform(initialView(size, measured))
+    }
   }
 
   // Everything hangs off the wrapper's measured rectangle: it is the image at
@@ -113,6 +119,13 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
     const box = containerRef.current?.getBoundingClientRect()
     return { width: box?.width ?? 0, height: box?.height ?? 0 }
   }
+
+  // Whether a drag could actually move the photo. At fit the image is letterboxed
+  // on both axes, and `panBy` clamps every offset back to the centre — so a
+  // space-drag is a no-op that looks broken. `overflows` is the same predicate the
+  // photo viewer uses, and it is already unit-tested; the bug this guards against
+  // was promising a grab cursor in a state where nothing can be grabbed.
+  const canPan = !!(natural && viewport && transform && overflows(natural, viewport, transform.scale))
 
   const pointAt = useCallback((clientX: number, clientY: number) => {
     const rect = wrapperRef.current?.getBoundingClientRect()
@@ -124,6 +137,9 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
     if (event.button !== 0 || !natural) return
     const point = pointAt(event.clientX, event.clientY)
     if (!point) return
+    // Keep the measurement fresh: `canPan` decides the cursor from it, and a
+    // modal that was resized while open would otherwise keep the stale answer.
+    setViewport(viewportSize())
     event.currentTarget.setPointerCapture?.(event.pointerId)
 
     // Space pans, and panning beats everything: with the key held, a drag that
@@ -232,8 +248,14 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
     <Modal open onOpenChange={(next) => { if (!next) requestClose() }} title="Manual unpack" size="full">
       <div className="flex h-full flex-col bg-surface">
         <div className="flex items-center justify-between gap-4 border-b border-border p-3">
+          {/* The hint answers the question the cursor raises. Holding Space on a
+              photo that already fits used to show a grab cursor and then do
+              nothing, which reads as a broken drag rather than as "there is
+              nothing off-screen". */}
           <p className="text-sm text-text-muted">
-            Drag on the photo to draw a box. Hold Space and drag to move the photo. Scroll to zoom. Click a box to select it; press Delete to remove it.
+            {spaceDown && !canPan
+              ? 'The whole photo is already visible — zoom in first, then drag to move it.'
+              : 'Drag on the photo to draw a box. Scroll to zoom, then hold Space and drag to move the photo. Click a box to select it; press Delete to remove it.'}
           </p>
           <div className="flex shrink-0 gap-2">
             <Button onClick={requestClose}>Cancel</Button>
@@ -249,7 +271,9 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
           ref={containerRef}
           data-testid="manual-unpack-canvas"
           tabIndex={-1}
-          className={`relative min-h-0 flex-1 touch-none overflow-hidden bg-black/90 focus:outline-none ${spaceDown ? 'cursor-grab' : 'cursor-crosshair'}`}
+          className={`relative min-h-0 flex-1 touch-none overflow-hidden bg-black/90 focus:outline-none ${
+            spaceDown ? (canPan ? 'cursor-grab' : 'cursor-not-allowed') : 'cursor-crosshair'
+          }`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}

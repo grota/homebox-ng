@@ -206,6 +206,27 @@ describe('ManualUnpackModal', () => {
     expect(spy.mock.calls[0]![0][0]!.name).toBe('')
   })
 
+  // The bug this pins, reported from a real session: at fit the image is
+  // letterboxed on both axes, so `panBy` clamps every offset back to the centre
+  // and a space-drag cannot move anything. The cursor promised a grab anyway,
+  // which reads as a broken drag rather than as "nothing is off-screen".
+  it('does not offer a grab cursor when there is nothing to pan', () => {
+    const { canvas } = open()
+    fireEvent.keyDown(window, { code: 'Space' })
+    expect(canvas.className).toContain('cursor-not-allowed')
+    expect(screen.getByText(/zoom in first/)).toBeInTheDocument()
+  })
+
+  it('offers the grab cursor once the photo is zoomed past fit', async () => {
+    const { canvas } = open()
+    // A wheel-up at the canvas centre: the same gesture the user zooms with.
+    fireEvent.wheel(canvas, { deltaY: -200, clientX: 250, clientY: 125 })
+    fireEvent.keyDown(window, { code: 'Space' })
+
+    await waitFor(() => expect(canvas.className).toContain('cursor-grab'))
+    expect(screen.queryByText(/zoom in first/)).not.toBeInTheDocument()
+  })
+
   it('keeps the modal open and shows why when the request fails', async () => {
     const onSubmit = vi.fn(async () => { throw new Error('not a decodable image') })
     const { canvas } = open(onSubmit)
