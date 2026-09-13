@@ -5,6 +5,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildApp } from '../src/server'
+import { getImagesForItem } from '../src/modules/images/repo'
 import FormData from 'form-data'
 import sharp from 'sharp'
 
@@ -69,6 +70,10 @@ describe('unpack routes', () => {
   let rootDir: string
   let itemTypeId: number
   let imageId: number
+  // Held at describe scope so a case can read a row back: `ImageDto` carries no
+  // width/height, and the crop's dimensions are the assertion that catches a
+  // wrong coordinate.
+  let routeDb: ReturnType<typeof createDb>
 
   // A real ≥300×300 PNG so both mock boxes survive clamping to the stored
   // width/height (a 1×1 PNG collapses every box → detected: 0).
@@ -81,6 +86,7 @@ describe('unpack routes', () => {
     routeDataDir = join(rootDir, 'data')
     mkdirSync(routeDataDir, { recursive: true })
     const db = createDb(':memory:')
+    routeDb = db
     runMigrations(db)
     app = buildApp({ db, dataDir: routeDataDir })
     await app.ready()
@@ -175,5 +181,92 @@ describe('unpack routes', () => {
     const res = await app.inject({ method: 'POST', url: '/upload/unpack' })
     expect(res.statusCode).toBe(401)
     expect(res.json()).toEqual({ error: 'UNAUTHORIZED' })
+  })
+
+  // ── Manual unpack ───────────────────────────────────────────────────────────
+  // Same pipeline, different box source: the rectangles arrive as detection
+  // boxes, so naming and cropping are the ones the auto path already uses.
+
+  it('unpack.manual creates one draft per region, named from the region names', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/trpc/unpack.manual',
+      headers: { cookie: adminCookie },
+      payload: { imageId, regions: [{ name: 'Mug', box: { x: 10, y: 10, width: 40, height: 40 } }, { name: 'Saucer', box: { x: 100, y: 100, width: 60, height: 60 } }] },
+    })
+    expect(res.statusCode).toBe(200)
+    const data = res.json()?.result?.data
+    expect(data.detected).toBe(2)
+    expect(data.drafts.map((d: { name: string }) => d.name)).toEqual(['Mug', 'Saucer'])
+  })
+
+  // The pipeline's own fallback, not a second naming rule invented by the modal.
+  it('unpack.manual falls back to the pipeline\'s Draft N name for a blank name', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/trpc/unpack.manual',
+      headers: { cookie: adminCookie },
+      payload: { imageId, regions: [{ name: '', box: { x: 5, y: 5, width: 20, height: 20 } }] },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()?.result?.data?.drafts[0].name).toBe('Draft 1')
+  })
+
+  it('POST /upload/unpack/manual creates drafts from an uploaded photo and regions', async () => {
+    const form = new FormData()
+    form.append('itemTypeId', String(itemTypeId))
+    form.append('regions', JSON.stringify([{ name: 'Bolt', box: { x: 20, y: 20, width: 30, height: 30 } }]))
+    form.append('file', await bigPng(), { filename: 'seed.png', contentType: 'image/png' })
+    const res = await app.inject({ method: 'POST', url: '/upload/unpack/manual', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
+    expect(res.statusCode).toBe(200)
+    const data = res.json()
+    expect(data.detected).toBe(1)
+    expect(data.drafts[0]).toMatchObject({ name: 'Bolt', imageId: expect.any(Number) })
+  })
+
+  // The region is the crop, so a wrong coordinate would be silent: the draft
+  // would exist, named right, cropped from the wrong place.
+  it('crops each draft to the box it was given', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/trpc/unpack.manual',
+      headers: { cookie: adminCookie },
+      payload: { imageId, regions: [{ name: 'Wide', box: { x: 0, y: 0, width: 120, height: 60 } }] },
+    })
+    const draftId = res.json()?.result?.data?.drafts[0].id
+    const stored = getImagesForItem(routeDb, draftId)[0]
+    expect({ width: stored.width, height: stored.height }).toEqual({ width: 120, height: 60 })
+  })
+
+  it('rejects a region with a zero-size box, and a request with no regions', async () => {
+    const zero = await app.inject({
+      method: 'POST',
+      url: '/trpc/unpack.manual',
+      headers: { cookie: adminCookie },
+      payload: { imageId, regions: [{ name: 'Nothing', box: { x: 8, y: 8, width: 0, height: 0 } }] },
+    })
+    expect(zero.statusCode).toBe(400)
+
+    const empty = await app.inject({ method: 'POST', url: '/trpc/unpack.manual', headers: { cookie: adminCookie }, payload: { imageId, regions: [] } })
+    expect(empty.statusCode).toBe(400)
+  })
+
+  it('POST /upload/unpack/manual rejects unparseable regions rather than running on none', async () => {
+    const form = new FormData()
+    form.append('itemTypeId', String(itemTypeId))
+    form.append('regions', 'not json')
+    form.append('file', await bigPng(), { filename: 'seed.png', contentType: 'image/png' })
+    const res = await app.inject({ method: 'POST', url: '/upload/unpack/manual', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
+    expect(res.statusCode).toBe(400)
+    expect(res.json()).toEqual({ error: 'invalid regions' })
+  })
+
+  it('rejects both manual endpoints unauthenticated', async () => {
+    const proc = await app.inject({ method: 'POST', url: '/trpc/unpack.manual', payload: { imageId, regions: [{ name: 'x', box: { x: 1, y: 1, width: 5, height: 5 } }] } })
+    expect(proc.statusCode).toBe(401)
+
+    const route = await app.inject({ method: 'POST', url: '/upload/unpack/manual' })
+    expect(route.statusCode).toBe(401)
+    expect(route.json()).toEqual({ error: 'UNAUTHORIZED' })
   })
 })

@@ -136,11 +136,11 @@
 
 **Files:** `apps/api/src/modules/unpack/manual.ts` (new), `apps/api/src/modules/unpack/router.ts`, `apps/api/src/modules/unpack/route.ts`, tests.
 
-- [ ] `manualProvider(regions): DetectionProviderImpl` — `name: 'manual'`, `detectBoxes` returns `regions.map((r) => ({ box: r.box, label: r.name, confidence: 1 }))`, ignoring `bounds` and `image` (Ruling 1). It is constructed per request and never registered.
-- [ ] `RegionInputSchema` in the unpack module: `{ name: string (may be empty), box: { x, y, width, height } all non-negative ints, width/height > 0 }`, max a sane count.
-- [ ] `unpack.manual` (tRPC): `{ imageId, regions }` → load the image row, take the owning item's `itemTypeId` as the auto path does (`unpack/router.ts:20`), call `createItemsFromImage` with the manual provider.
-- [ ] `POST /upload/unpack/manual`: multipart `photo` + `itemTypeId` + `regions` (JSON string). Same auth, mimetype guard and temp-file handling as `/upload/unpack`.
-- [ ] Tests: N regions → N drafts, named from the region names; a blank name → `Draft 1`; coordinates land where expected (assert the crop's dimensions against the box); a non-decodable image → 400 as the auto route does; both endpoints 401 unauthenticated.
+- [x] `manualProvider(regions): DetectionProviderImpl` — `name: 'manual'`, `detectBoxes` returns `regions.map((r) => ({ box: r.box, label: r.name, confidence: 1 }))`, ignoring `bounds` and `image` (Ruling 1). It is constructed per request and never registered.
+- [x] `RegionInputSchema` in the unpack module: `{ name: string (may be empty), box: { x, y, width, height } all non-negative ints, width/height > 0 }`, max a sane count.
+- [x] `unpack.manual` (tRPC): `{ imageId, regions }` → load the image row, take the owning item's `itemTypeId` as the auto path does (`unpack/router.ts:20`), call `createItemsFromImage` with the manual provider.
+- [x] `POST /upload/unpack/manual`: multipart `photo` + `itemTypeId` + `regions` (JSON string). Same auth, mimetype guard and temp-file handling as `/upload/unpack`.
+- [x] Tests: N regions → N drafts, named from the region names; a blank name → `Draft 1`; coordinates land where expected (assert the crop's dimensions against the box); a non-decodable image → 400 as the auto route does; both endpoints 401 unauthenticated.
 
 **Verify:** `pnpm --filter @homebox/api test`.
 
