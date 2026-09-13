@@ -15,6 +15,13 @@ type SaveImageData = { imageCanvas?: HTMLCanvasElement; imageBase64?: string; mi
 // out. Filters and Watermark are deliberately absent.
 const TABS_IDS = [TABS.FINETUNE, TABS.ADJUST, TABS.ANNOTATE, TABS.RESIZE]
 
+// What the Annotate tab's Text tool drops on the canvas. Filerobot's default is
+// a lorem-ipsum sentence at 14px; marking where a thing is on a photo wants one
+// character big enough to read at thumbnail size. Merged over the defaults
+// (AssemblyPoint deep-merges `config` over `defaultConfig`), so `fonts`,
+// `align` and the rest survive; the options panel still clamps 1–500.
+const TEXT_DEFAULTS = { text: 'X', fontSize: 120 }
+
 // Derive a Blob from filerobot's `imageData`. Prefer the canvas (accurate size),
 // fall back to decoding the base64 data URL.
 const toBlob = (imageData: SaveImageData): Promise<Blob | null> => {
@@ -73,6 +80,7 @@ export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) 
           onSave={handleSave}
           onClose={onClose}
           tabsIds={TABS_IDS}
+          Text={TEXT_DEFAULTS}
           savingPixelRatio={4}
           previewPixelRatio={window.devicePixelRatio || 1}
         />

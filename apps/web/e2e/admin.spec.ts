@@ -67,12 +67,14 @@ test('admin invites a user who is forced to change their password on first login
     await userPage.click('button:has-text("Sign in")')
     await expect(userPage).toHaveURL(/\/change-password/)
 
-    // Change the password (the flag is cleared server-side) → back home.
+    // Change the password (the flag is cleared server-side) → the catalog. The
+    // app navigates to `/` and routes.tsx redirects that to `/items`, so `/` is
+    // a state this assertion can never observe — hence `/items`, not `/`.
     const newPw = 'new-pass-5678'
     await userPage.fill('#current-password', tempPw)
     await userPage.fill('#new-password', newPw)
     await userPage.click('button:has-text("Change password")')
-    await expect(userPage).toHaveURL(/\/$/)
+    await expect(userPage).toHaveURL(/\/items$/)
 
     // Log out and log back in with the NEW password: no forced-change screen.
     await userPage.request.post('/trpc/auth.logout')
@@ -80,7 +82,7 @@ test('admin invites a user who is forced to change their password on first login
     await userPage.fill('#email', inviting)
     await userPage.fill('#password', newPw)
     await userPage.click('button:has-text("Sign in")')
-    await expect(userPage).toHaveURL(/\/$/)
+    await expect(userPage).toHaveURL(/\/items$/)
   } finally {
     await userCtx.close()
   }

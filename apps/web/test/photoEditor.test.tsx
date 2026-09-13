@@ -72,4 +72,15 @@ describe('PhotoEditor', () => {
     expect(tabsIds).not.toContain('Watermark')
     expect(tabsIds).toContain('Finetune')
   })
+
+  // The Text tool is only reachable through the Annotate tab, so this and the
+  // assertion above are the pair that keeps it usable: `tabsIds` must still
+  // admit Annotate, and the tool must drop the mark this app wants rather than
+  // filerobot's lorem-ipsum default at 14px.
+  it('defaults the Text tool to a large "X"', () => {
+    render(<PhotoEditor image={{ id: 7, path: 'uploads/originals/x.png' }} itemId={3} open onClose={vi.fn()} />)
+    const { Text, tabsIds } = editorProps.at(-1)
+    expect(Text).toEqual({ text: 'X', fontSize: 120 })
+    expect(tabsIds).toContain('Annotate')
+  })
 })
