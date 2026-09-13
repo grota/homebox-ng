@@ -163,9 +163,9 @@
 
 **Files:** `apps/web/src/ui/Pagination.tsx` (new), `apps/web/src/ui/index.ts`, `apps/web/src/features/items/ItemsPage.tsx`, tests.
 
-- [ ] Extract the control from `ItemsPage.tsx:313-323`: Prev / "Page N" / Next, disabled at the ends, driven by `{ page, total, pageSize }` and an `onPage` callback. Keep the page size in **one** place and pass it in.
-- [ ] `ItemsPage` adopts it; its query keeps sending `page` and no `pageSize` (server default), or starts sending `pageSize` explicitly — pick one and make the control's Next guard use the same value. The `20` must exist once.
-- [ ] Test: the control renders the current page, disables Prev at 1 and Next at the end, and calls `onPage` with the next value.
+- [x] Extract the control from `ItemsPage.tsx:313-323`: Prev / "Page N" / Next, disabled at the ends, driven by `{ page, total, pageSize }` and an `onPage` callback. Keep the page size in **one** place and pass it in.
+- [x] `ItemsPage` adopts it; its query keeps sending `page` and no `pageSize` (server default), or starts sending `pageSize` explicitly — pick one and make the control's Next guard use the same value. The `20` must exist once.
+- [x] Test: the control renders the current page, disables Prev at 1 and Next at the end, and calls `onPage` with the next value.
 
 **Verify:** `pnpm --filter @homebox/web test`.
 

@@ -2,8 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { hexColor } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
-import { Badge, Button, Card, Field, hoverScrim, Input, PageHeader, PhotoViewer } from '../../ui'
+import { Badge, Button, Card, Field, hoverScrim, Input, PageHeader, Pagination, PhotoViewer } from '../../ui'
 import { ItemForm } from './ItemForm'
+
+// Sent explicitly rather than left to the server's default, so the request that
+// produced `total` and the Next guard that reads it cannot disagree about the
+// window. The server defaults to this same number; this is the client's half of
+// that agreement, in one place instead of inline in the guard as it was.
+const PAGE_SIZE = 20
 
 // URL param → tRPC input mapping lives in ONE place on this page. The URL uses
 // `q` (Phase-3 spec) but the router input field is `search`; `typeId` maps to
@@ -80,6 +86,7 @@ export function ItemsPage() {
 
   const { data, isLoading } = trpc.items.list.useQuery({
     page,
+    pageSize: PAGE_SIZE,
     search: q.trim() || undefined,
     locationId,
     itemTypeId,
@@ -310,17 +317,7 @@ export function ItemsPage() {
         )}
       </div>
 
-      {data && data.total > 1 && (
-        <div className="flex gap-2 items-center mt-4">
-          <Button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}>
-            Prev
-          </Button>
-          <span>Page {page}</span>
-          <Button onClick={() => setPage(page + 1)} disabled={page * 20 >= data.total}>
-            Next
-          </Button>
-        </div>
-      )}
+      {data && <Pagination page={page} total={data.total} pageSize={PAGE_SIZE} onPage={setPage} />}
 
       {viewing && (
         <PhotoViewer src={viewing.src} alt={viewing.alt} onClose={() => setViewing(null)} />
