@@ -64,6 +64,10 @@ export const items = sqliteTable('items', {
   locationId: integer('location_id').references(() => locations.id),
   createdBy: integer('created_by').notNull().references(() => users.id),
   published: integer('published', { mode: 'boolean' }).notNull().default(true),
+  // Trash (ADR-0004). A timestamp rather than a boolean because the trash page shows
+  // *when*, and a boolean cannot. Null means "not trashed", so every existing row is
+  // already correct and no backfill is needed.
+  trashedAt: integer('trashed_at', { mode: 'timestamp_ms' }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
 })

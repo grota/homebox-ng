@@ -43,6 +43,13 @@
       "when": 1789200368229,
       "tag": "0005_add_custom_field_value_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789316621206,
+      "tag": "0006_futuristic_wong",
+      "breakpoints": true
     }
   ]
 }

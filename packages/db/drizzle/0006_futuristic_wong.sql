@@ -1,0 +1,1 @@
+ALTER TABLE `items` ADD `trashed_at` integer;
