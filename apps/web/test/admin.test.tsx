@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import adminJson from '../public/locales/en/admin.json'
+import adminJson from '../src/locales/en/admin.json'
 
 vi.mock('react-i18next', () => ({
   // Map the admin page title to its English string so the guard test can assert
