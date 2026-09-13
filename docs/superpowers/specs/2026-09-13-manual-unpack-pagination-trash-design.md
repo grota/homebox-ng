@@ -3,6 +3,12 @@
 **Date:** 2026-09-13 · **Branch:** `manual-unpack-and-trash` · **Decisions:** ADR-0004
 (`docs/adr/0004-trash-and-recoverable-deletion.md`) · **Shared understanding confirmed 2026-09-13.**
 
+*The `file:line` references below were accurate when this was written and have since moved with
+the code, as they do in every dated spec here. **The symbol names are the durable anchor** —
+`createItemsFromImage`, `listDraftItems`, `buildWhere`, `computeBlob` — and grepping for one of
+those is how to read a citation that no longer lands. `CONTEXT.md` is the living glossary, and
+its references are kept current.*
+
 Three deliverables that touch the same two pages. They are one branch because the drafts page
 would otherwise be rewritten three times.
 

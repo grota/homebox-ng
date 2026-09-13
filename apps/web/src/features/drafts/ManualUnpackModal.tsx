@@ -208,7 +208,7 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
 
   const filled = regions.filter((r) => r.name.trim() !== '')
   const requestClose = () => {
-    if (regions.length > 0 && !window.confirm('Discard the boxes you have drawn?')) return
+    if (regions.length > 0 && !window.confirm('Throw away the boxes you have drawn?')) return
     onClose()
   }
 

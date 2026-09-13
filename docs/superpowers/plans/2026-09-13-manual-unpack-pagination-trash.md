@@ -234,11 +234,11 @@ The page is edited once, here, so pagination, the second unpack button and the t
 >
 > Every label that names deleting, discarding, or unpacking goes in this task's list.
 
-- [ ] `ItemDetail`: **"Auto unpack this photo"** (rename of the hardcoded `"Unpack this photo"`, moved into `translation.json`) and a new **"Manual unpack this photo"** opening `ManualUnpackModal` on that photo, submitting via `unpack.manual`. Keep the shared `unpack` error surface (`ItemDetail.tsx:104-108`).
-- [ ] **"Delete photo"** stays; **"Delete item"** becomes **"Move to trash"**, with the confirm no longer claiming to delete photos.
-- [ ] Update `itemDetail.test.tsx` (`getAllByRole('button', { name: 'Unpack this photo' })` at `:208`, `:219`).
-- [ ] Update `e2e/unpack.spec.ts`: the `'Unpack'` button name (`:66`), the empty-state copy assertion (`:99`), and the two-name set (`:79-84`) — which becomes deterministic once pagination gives the list a stable secondary sort or the spec counts the page instead of the set.
-- [ ] Add e2e coverage for the two paths nothing currently exercises end to end: manual unpack (draw two boxes, name them, submit, see two drafts) and trash (trash an item, find it on `/trash`, restore it, see it back in the catalog).
+- [x] `ItemDetail`: **"Auto unpack this photo"** (rename of the hardcoded `"Unpack this photo"`, moved into `translation.json`) and a new **"Manual unpack this photo"** opening `ManualUnpackModal` on that photo, submitting via `unpack.manual`. Keep the shared `unpack` error surface (`ItemDetail.tsx:104-108`).
+- [x] **"Delete photo"** stays; **"Delete item"** becomes **"Move to trash"**, with the confirm no longer claiming to delete photos.
+- [x] Update `itemDetail.test.tsx` (`getAllByRole('button', { name: 'Unpack this photo' })` at `:208`, `:219`).
+- [x] Update `e2e/unpack.spec.ts`: the `'Unpack'` button name (`:66`), the empty-state copy assertion (`:99`), and the two-name set (`:79-84`) — which becomes deterministic once pagination gives the list a stable secondary sort or the spec counts the page instead of the set.
+- [x] Add e2e coverage for the two paths nothing currently exercises end to end: manual unpack (draw two boxes, name them, submit, see two drafts) and trash (trash an item, find it on `/trash`, restore it, see it back in the catalog).
 
 **Verify:** `pnpm --filter @homebox/web test`, then `E2E_PORT=3200 npx playwright test -c e2e/playwright.config.ts`.
 
@@ -246,8 +246,8 @@ The page is edited once, here, so pagination, the second unpack button and the t
 
 ## Final verification
 
-- [ ] `pnpm --filter @homebox/api test` and `pnpm --filter @homebox/web test` green.
-- [ ] `pnpm --filter @homebox/web exec tsc --noEmit` clean (build `@homebox/api` first — its types come from `dist/`).
-- [ ] The guard sweep re-run: every query that reads `items` from Task 2's enumeration carries the trash predicate, and a trashed item is absent from catalog, drafts, facets, search and type counts.
-- [ ] `CONTEXT.md` terms match the shipped labels: no user-facing string says "discard" for the recoverable action.
-- [ ] Doc drift: the spec's line references still resolve (the codebase moves).
+- [x] `pnpm --filter @homebox/api test` and `pnpm --filter @homebox/web test` green.
+- [x] `pnpm --filter @homebox/web exec tsc --noEmit` clean (build `@homebox/api` first — its types come from `dist/`).
+- [x] The guard sweep re-run: every query that reads `items` from Task 2's enumeration carries the trash predicate, and a trashed item is absent from catalog, drafts, facets, search and type counts.
+- [x] `CONTEXT.md` terms match the shipped labels: no user-facing string says "discard" for the recoverable action.
+- [x] Doc drift: the spec's line references still resolve (the codebase moves).

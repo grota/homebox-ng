@@ -145,10 +145,10 @@ export function DraftsPage() {
           variant="danger"
           disabled={selected.size === 0}
           onClick={() => {
-            if (window.confirm(t('drafts.discardSelectedConfirm', { count: selected.size }))) void trashAll.mutateAsync({ ids: [...selected] })
+            if (window.confirm(t('drafts.trashSelectedConfirm', { count: selected.size }))) void trashAll.mutateAsync({ ids: [...selected] })
           }}
         >
-          {t('drafts.discardSelected')}
+          {t('drafts.trashSelected')}
         </Button>
       </div>
 
@@ -203,7 +203,7 @@ export function DraftsPage() {
                   onBlur={(e) => { if (e.target.value.trim() && e.target.value !== d.name) void update.mutateAsync({ id: d.id, name: e.target.value.trim() }) }}
                 />
                 <Button onClick={() => void publish.mutateAsync({ id: d.id })}>{t('drafts.publish')}</Button>
-                <Button variant="danger" onClick={() => void trashOne.mutateAsync({ id: d.id })}>{t('drafts.discard')}</Button>
+                <Button variant="danger" onClick={() => void trashOne.mutateAsync({ id: d.id })}>{t('drafts.trash')}</Button>
               </Card>
             </li>
           )

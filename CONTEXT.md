@@ -57,11 +57,11 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   from the drafts page (with an uploaded photo) and from an item's photo.
 - **draft** — an item with `published=false`. There is **no separate drafts table**; it is the
   same `items` row, filtered by the flag. Drafts sit on the drafts page, not the shared catalog.
-  `(packages/db/src/schema.ts:66)` `(apps/api/src/modules/unpack/service.ts:62)`
+  `(packages/db/src/schema.ts:66)` `(apps/api/src/modules/unpack/service.ts:61)`
 - **publish** — flip a draft's `published` to `true` so it joins the shared catalog.
-  `publishDraft` (one) / `publishAll` (all, or a subset of ids). `(apps/api/src/modules/drafts/service.ts:15)`
+  `publishDraft` (one) / `publishAll` (all, or a subset of ids). `(apps/api/src/modules/drafts/service.ts:18)`
 - **rename** a draft gives it a real name before publishing.
-  `(apps/api/src/modules/drafts/service.ts:12)`
+  `(apps/api/src/modules/drafts/service.ts:15)`
 
 ## Trash
 
@@ -71,7 +71,7 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   is reachable only from the trash page.
 - **move to trash** — the recoverable delete. This is what **discard** used to mean; the word
   went with the behaviour, so the two verbs are now unambiguous.
-  `(apps/api/src/modules/drafts/service.ts:45)`
+  `(apps/api/src/modules/trash/service.ts:27)`
 - **restore** — put a trashed thing back where it came from: a trashed draft returns to the
   drafts page, a trashed catalog item to the catalog. It keeps whatever it had, so an item
   trashed with no location comes back with no location.

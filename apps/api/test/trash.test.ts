@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createDb, runMigrations } from '@homebox/db'
+import { buildApp } from '../src/server'
 import { mkdtempSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -145,5 +146,45 @@ describe('trash lifecycle', () => {
     purgeAll(ctx.db, [a], ctx.dataDir)
 
     expect(listTrash(ctx.db).items.map((t) => t.id)).toEqual([b])
+  })
+})
+
+// The HTTP surface, which the unit tests above do not touch: the procedures are
+// wired, the write path records a timestamp the page can render, and
+// `trash.list` returns the paginated envelope the page reads.
+describe('trash over tRPC', () => {
+  it('trashes an item, lists it, and restores it', async () => {
+    process.env.SESSION_SECRET = 'test-secret'
+    const db = createDb(':memory:')
+    runMigrations(db)
+    const app = buildApp({ db })
+    await app.ready()
+    try {
+      await app.inject({ method: 'POST', url: '/trpc/auth.setup', payload: { name: 'A', email: 'a@a.co', password: 'password123' } })
+      const login = await app.inject({ method: 'POST', url: '/trpc/auth.login', payload: { email: 'a@a.co', password: 'password123' } })
+      const cookie = login.headers['set-cookie'] as string
+
+      const type = (await app.inject({ method: 'POST', url: '/trpc/itemTypes.create', headers: { cookie }, payload: { name: 'T', fields: [] } })).json().result.data
+      const item = (await app.inject({ method: 'POST', url: '/trpc/items.create', headers: { cookie }, payload: { name: 'Kettle', itemTypeId: type.id, locationId: null, quantity: 1 } })).json().result.data
+
+      const trashed = await app.inject({ method: 'POST', url: '/trpc/items.trash', headers: { cookie }, payload: { id: item.id } })
+      expect(trashed.statusCode).toBe(200)
+
+      const listUrl = `/trpc/trash.list?input=${encodeURIComponent(JSON.stringify({ page: 1, pageSize: 20 }))}`
+      const listed = await app.inject({ method: 'GET', url: listUrl, headers: { cookie } })
+      expect(listed.statusCode).toBe(200)
+      const body = listed.json().result.data
+      expect(body.total).toBe(1)
+      expect(body.items.map((i: { name: string }) => i.name)).toEqual(['Kettle'])
+      expect(body.items[0].published).toBe(true)
+      expect(body.items[0].trashedAt).toBeTruthy()
+
+      const restored = await app.inject({ method: 'POST', url: '/trpc/trash.restore', headers: { cookie }, payload: { id: item.id } })
+      expect(restored.statusCode).toBe(200)
+      const after = (await app.inject({ method: 'GET', url: listUrl, headers: { cookie } })).json().result.data
+      expect(after.total).toBe(0)
+    } finally {
+      await app.close()
+    }
   })
 })

@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   deleteImage: vi.fn(),
   updateItem: vi.fn(async (x: unknown) => x),
   unpack: vi.fn(),
+  unpackManual: vi.fn(),
   // `tags.assign` replaces an item's whole tag set, so what it is (and is not)
   // called with on save is worth asserting.
   assignTags: vi.fn(async (x: unknown) => x),
@@ -81,6 +82,19 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       // reaches the drafts page), so `onSuccess` is wired through rather than
       // dropped — a stub that swallowed it would make the count unassertable.
       unpack: {
+        // Manual unpack of a stored photo: `{ imageId, regions }` and nothing to
+        // upload, because the photo is already on disk.
+        manual: {
+          useMutation: () => ({
+            mutate: vi.fn(),
+            mutateAsync: async (input: unknown) => {
+              mocks.unpackManual(input)
+              return { detected: 2 }
+            },
+            isPending: false,
+            error: null,
+          }),
+        },
         run: {
           useMutation: (options?: { onSuccess?: (result: { detected: number }) => void }) => ({
             mutate: (input: unknown) => {
@@ -135,6 +149,19 @@ describe('item detail photos', () => {
     expect(buttons).toHaveLength(1)
     fireEvent.click(buttons[0])
     expect(mocks.setPrimary).toHaveBeenCalledWith({ itemId: 3, imageId: 11 })
+  })
+
+  // The image 10 is the *edited* one, so this is the assertion that matters: the
+  // modal must draw on `originalPath`, because that is the file the server crops.
+  // Drawing on the edited rendition would put the boxes in a different coordinate
+  // space from the pixels being cut.
+  it('opens the manual unpack modal on the original file, not the edited rendition', async () => {
+    renderDetail()
+    expect(screen.getAllByRole('button', { name: 'Manual unpack this photo' })).toHaveLength(2)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Manual unpack this photo' })[0])
+
+    const canvas = await screen.findByTestId('manual-unpack-canvas')
+    expect(canvas.querySelector('img')).toHaveAttribute('src', '/file/uploads/originals/a.png')
   })
 
   it('deletes a photo after confirmation', () => {
@@ -205,7 +232,7 @@ describe('item detail photos', () => {
   // say so here too, which it can only do if the count travels in the URL.
   it('reports the detected count to the drafts page when unpacking a photo', () => {
     renderDetail()
-    fireEvent.click(screen.getAllByRole('button', { name: 'Unpack this photo' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Auto unpack this photo' })[0])
     expect(mocks.unpack).toHaveBeenCalledWith({ kind: 'item', imageId: 10 })
     expect(mocks.navigate).toHaveBeenCalledWith('/drafts?detected=2')
   })
@@ -216,7 +243,7 @@ describe('item detail photos', () => {
   it('shows the failure when an unpack does not succeed', () => {
     mocks.unpackError = { message: 'Detection failed' }
     renderDetail()
-    fireEvent.click(screen.getAllByRole('button', { name: 'Unpack this photo' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Auto unpack this photo' })[0])
     expect(screen.getByRole('alert')).toHaveTextContent('Detection failed')
     expect(mocks.navigate).not.toHaveBeenCalled()
   })

@@ -4,6 +4,7 @@ import { trpc } from '../../api/trpc'
 import { Badge, Button, Card, PageHeader, PhotoViewer } from '../../ui'
 import { PhotoUpload } from '../upload/PhotoUpload'
 import { PhotoEditor } from '../upload/PhotoEditor'
+import { ManualUnpackModal } from '../drafts/ManualUnpackModal'
 import { ItemForm } from './ItemForm'
 
 // Shows a single item with its photos and an upload control. Thumbnails are
@@ -28,6 +29,13 @@ export function ItemDetail() {
       navigate(`/drafts?detected=${result.detected}`)
     },
   })
+  // Manual unpack of a stored photo: no upload, so the modal draws on the same
+  // file the *server* will crop — `originalPath`, not `editedPath`. Drawing on
+  // the edited rendition would put the boxes in a different coordinate space
+  // from the pixels being cut, and every crop would be off by whatever the edit
+  // changed.
+  const manualUnpack = trpc.unpack.manual.useMutation()
+  const [manualImage, setManualImage] = useState<{ imageId: number; originalPath: string } | null>(null)
   // `path` is the rendition the editor opens, so the two Edit buttons differ only
   // in what they hand it (see the photo card below).
   const [editingImage, setEditingImage] = useState<{ id: number; path: string } | null>(null)
@@ -151,7 +159,10 @@ export function ItemDetail() {
               </Button>
             )}
             <Button onClick={() => unpack.mutate({ kind: 'item', imageId: img.id })}>
-              Unpack this photo
+              Auto unpack this photo
+            </Button>
+            <Button onClick={() => setManualImage({ imageId: img.id, originalPath: img.originalPath })}>
+              Manual unpack this photo
             </Button>
             {/* The "View" anchor lived here. Its job — seeing the full photo — is now
                 the thumbnail's, and its one unique capability (opening the file in a
@@ -180,6 +191,22 @@ export function ItemDetail() {
           originalSrc={viewing.originalSrc}
           alt={viewing.alt}
           onClose={() => setViewing(null)}
+        />
+      )}
+
+      {manualImage && (
+        <ManualUnpackModal
+          src={'/file/' + manualImage.originalPath}
+          onClose={() => setManualImage(null)}
+          onSubmit={async (regions) => {
+            // Throws on failure, which the modal shows and keeps the drawing for.
+            const result = await manualUnpack.mutateAsync({ imageId: manualImage.imageId, regions })
+            setManualImage(null)
+            // Same convention as the auto path: navigate on the *result*, so a
+            // run that yields nothing is not silent here either.
+            void utils.drafts.list.invalidate()
+            navigate(`/drafts?detected=${result.detected}`)
+          }}
         />
       )}
     </section>

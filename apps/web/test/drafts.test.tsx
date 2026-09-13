@@ -13,7 +13,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (k: string, opts?: { count?: number }) => {
       const message =
-        k === 'drafts.discardSelectedConfirm' ? en.drafts.discardSelectedConfirm
+        k === 'drafts.trashSelectedConfirm' ? en.drafts.trashSelectedConfirm
         : k === 'drafts.unpacked' ? en.drafts.unpacked
         : k === 'drafts.unpackedNone' ? en.drafts.unpackedNone
         : null
@@ -109,7 +109,7 @@ import { DraftsPage } from '../src/features/drafts'
 beforeEach(() => vi.clearAllMocks())
 
 describe('drafts page', () => {
-  it('renders a draft with its name, publish/discard actions, and a select-all checkbox', () => {
+  it('renders a draft with its name, publish/trash actions, and a select-all checkbox', () => {
     draftData = [
       {
         id: 1,
@@ -124,7 +124,7 @@ describe('drafts page', () => {
     )
     expect(screen.getByRole('textbox')).toHaveValue('Draft Lamp')
     expect(screen.getByRole('button', { name: 'drafts.publish' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'drafts.discard' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'drafts.trash' })).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: 'drafts.selectAll' })).toBeInTheDocument()
   })
 
@@ -213,7 +213,7 @@ describe('drafts page', () => {
         <DraftsPage />
       </MemoryRouter>,
     )
-    const btn = screen.getByRole('button', { name: 'drafts.discardSelected' })
+    const btn = screen.getByRole('button', { name: 'drafts.trashSelected' })
     expect(btn).toBeDisabled()
     expect(btn).toHaveClass('text-danger')
   })
@@ -227,7 +227,7 @@ describe('drafts page', () => {
       </MemoryRouter>,
     )
     fireEvent.click(screen.getByRole('checkbox', { name: 'drafts.selectAll' }))
-    fireEvent.click(screen.getByRole('button', { name: 'drafts.discardSelected' }))
+    fireEvent.click(screen.getByRole('button', { name: 'drafts.trashSelected' }))
     expect(confirmSpy).toHaveBeenCalledWith('Move 2 draft(s) to the trash?')
     expect(trashAllMutate).toHaveBeenCalledWith({ ids: [1, 2] })
   })
@@ -241,7 +241,7 @@ describe('drafts page', () => {
       </MemoryRouter>,
     )
     fireEvent.click(screen.getByRole('checkbox', { name: 'drafts.selectAll' }))
-    const btn = screen.getByRole('button', { name: 'drafts.discardSelected' })
+    const btn = screen.getByRole('button', { name: 'drafts.trashSelected' })
     fireEvent.click(btn)
     expect(trashAllMutate).not.toHaveBeenCalled()
     expect(btn).toBeEnabled()
@@ -256,7 +256,7 @@ describe('drafts page', () => {
       </MemoryRouter>,
     )
     fireEvent.click(screen.getByRole('checkbox', { name: 'drafts.selectAll' }))
-    const btn = screen.getByRole('button', { name: 'drafts.discardSelected' })
+    const btn = screen.getByRole('button', { name: 'drafts.trashSelected' })
     fireEvent.click(btn)
     expect(trashAllMutate).toHaveBeenCalledWith({ ids: [1] })
     expect(btn).toBeDisabled()
@@ -291,7 +291,7 @@ describe('drafts page', () => {
       </MemoryRouter>,
     )
     fireEvent.click(within(screen.getAllByRole('listitem')[0]).getByRole('checkbox'))
-    fireEvent.click(screen.getByRole('button', { name: 'drafts.discardSelected' }))
+    fireEvent.click(screen.getByRole('button', { name: 'drafts.trashSelected' }))
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
     expect(confirmSpy).toHaveBeenCalledWith('Move 1 draft(s) to the trash?')
     expect(trashAllMutate).toHaveBeenCalledWith({ ids: [1] })

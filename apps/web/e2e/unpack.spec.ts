@@ -63,7 +63,7 @@ test('mock provider unpacks a photo into drafts and publishes them', async ({ pa
     mimeType: 'image/png',
     buffer: Buffer.from(PHOTO_B64, 'base64'),
   })
-  await page.getByRole('button', { name: 'Unpack', exact: true }).click()
+  await page.getByRole('button', { name: 'Auto unpack', exact: true }).click()
   await unpackRes
 
   // The Unpack modal navigates to /drafts?detected=<n>; that is the SAME route
@@ -79,9 +79,10 @@ test('mock provider unpacks a photo into drafts and publishes them', async ({ pa
   const nameInputs = page.getByRole('textbox')
   await expect(nameInputs).toHaveCount(2)
   const values = await nameInputs.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))
-  // Ordering of the drafts list is `createdAt` DESC and both boxes share a
-  // timestamp, so assert the SET of names rather than a fixed position.
-  expect([...values].sort()).toEqual(['chair', 'table'])
+  // Both boxes share a `createdAt` second, so this order is the `id` tiebreak
+  // doing its job — and that tiebreak is what makes paging safe, since a
+  // non-total order lets rows repeat or vanish between pages. Newest first.
+  expect(values).toEqual(['table', 'chair'])
 
   // Rename the chair draft. `defaultValue` makes the input uncontrolled, so the
   // value is only persisted on blur (DraftsPage fires drafts.update fire-and-forget).
@@ -103,4 +104,60 @@ test('mock provider unpacks a photo into drafts and publishes them', async ({ pa
   // proves the rename survived the publish.
   await page.goto('/items')
   await expect(page.getByRole('heading', { name: 'Office chair', exact: true })).toBeVisible()
+})
+
+// The path nothing else covers: the boxes come from the pointer rather than from
+// a provider. Everything downstream of the box is shared with the auto path, so
+// what this proves is the drawing, the naming, and the coordinate conversion —
+// a wrong conversion would still create two drafts, named right, cropped from
+// the wrong place.
+test('manual unpack turns drawn rectangles into named drafts', async ({ page }) => {
+  await loginAdmin(page)
+  await page.request.post('/trpc/itemTypes.create', { data: { name: 'Manual box', fields: [] } })
+
+  await page.goto('/drafts')
+  await page.getByRole('combobox').selectOption({ label: 'Manual box' })
+  await page.setInputFiles('input[type="file"]', {
+    name: 'photo.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(PHOTO_B64, 'base64'),
+  })
+
+  await page.getByRole('button', { name: 'Manual unpack', exact: true }).click()
+  const canvas = page.getByTestId('manual-unpack-canvas')
+  await expect(canvas).toBeVisible()
+  // Ready means the image has decoded: the overlay only renders once the natural
+  // size is known, and until then a drag is discarded — so waiting on the box
+  // alone would silently swallow the first drag and leave one rectangle.
+  await expect(page.locator('[data-testid="manual-unpack-image"] svg')).toBeVisible()
+
+  // Drawn against the *image*, not the canvas: the image is fitted and centred
+  // inside the canvas, so canvas-relative coordinates near an edge land outside
+  // the photo, where the clamp turns the drag into a sliver that the minimum-size
+  // check then rejects. Measured per drag, because the first rectangle adds a row
+  // underneath and shrinks the canvas.
+  const image = page.getByTestId('manual-unpack-image')
+  const drag = async (fx: number, fy: number, tx: number, ty: number) => {
+    const box = (await image.boundingBox())!
+    await page.mouse.move(box.x + box.width * fx, box.y + box.height * fy)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width * tx, box.y + box.height * ty, { steps: 5 })
+    await page.mouse.up()
+  }
+  await drag(0.08, 0.15, 0.38, 0.55)
+  await drag(0.55, 0.2, 0.9, 0.65)
+
+  const names = page.getByPlaceholder('Item name')
+  await expect(names).toHaveCount(2)
+  await names.nth(0).fill('Left thing')
+  await names.nth(1).fill('Right thing')
+
+  const done = page.waitForResponse((res) => res.url().includes('/upload/unpack/manual'))
+  await page.getByRole('button', { name: 'Create 2 drafts', exact: true }).click()
+  expect((await done).status()).toBe(200)
+
+  await page.goto('/drafts')
+  await expect(page.getByRole('textbox')).toHaveCount(2)
+  const values = await page.getByRole('textbox').evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))
+  expect([...values].sort()).toEqual(['Left thing', 'Right thing'])
 })
