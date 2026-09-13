@@ -16,6 +16,7 @@ export type ItemRow = {
   locationId: number | null
   createdBy: number
   published: boolean
+  trashedAt: Date | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -45,6 +46,7 @@ const ITEM_FIELDS = {
   locationId: items.locationId,
   createdBy: items.createdBy,
   published: items.published,
+  trashedAt: items.trashedAt,
   createdAt: items.createdAt,
   updatedAt: items.updatedAt,
 } as const
@@ -87,13 +89,14 @@ type RelationalFilters = { locationId?: number; itemTypeId?: number; tagIds?: nu
 type LevelNode = { id: number; name: string }
 
 // `buildWhere` composes the relational filters (and an optional search predicate)
-// into a single AND'd fragment. A `published = true` base predicate is always
-// present, so drafts (`published = false`) never leak into the catalog, search,
-// or any facet count. The `tagIds` predicate is OR-within-dimension: an item
-// matches if it carries AT LEAST ONE of the selected tags (membership in the
-// subselect of `item_tags` ids).
+// into a single AND'd fragment. Two base predicates are always present — the item
+// must be published and not trashed — so drafts (`published = false`) and trashed
+// items leak into neither the catalog, nor search, nor any facet count, all of
+// which compose their WHERE through here. The `tagIds` predicate is
+// OR-within-dimension: an item matches if it carries AT LEAST ONE of the selected
+// tags (membership in the subselect of `item_tags` ids).
 const buildWhere = (db: DrizzleDb, filters: RelationalFilters, searchPredicate?: SQL): SQL | undefined => {
-  const conds: SQL[] = [eq(items.published, true)] // drafts never leak into the catalog or facets
+  const conds: SQL[] = [eq(items.published, true), isNull(items.trashedAt)] // neither drafts nor trash leak into the catalog or facets
   if (searchPredicate) conds.push(searchPredicate)
   if (filters.locationId != null) conds.push(eq(items.locationId, filters.locationId))
   if (filters.itemTypeId != null) conds.push(eq(items.itemTypeId, filters.itemTypeId))
@@ -321,10 +324,17 @@ export const updateItem = (db: DrizzleDb, id: number, data: UpdateItemData): Ite
 
 export const deleteItem = (db: DrizzleDb, id: number): boolean => db.delete(items).where(eq(items.id, id)).run().changes > 0
 
-// Unpublished items only, for the drafts page. No FTS join — a draft may not be in
-// items_fts (it always is, but keep this independent of the search path).
+// Unpublished, untrashed items only — the drafts page. No FTS join: a draft may not
+// be in items_fts (it always is, but keep this independent of the search path).
+// The trash guard is here rather than inherited from `buildWhere`: this query does
+// not compose through it, which is exactly the kind of site that gets missed.
 export const listDraftItems = (db: DrizzleDb): ItemRow[] =>
-  db.select(ITEM_FIELDS).from(items).where(eq(items.published, false)).orderBy(desc(items.createdAt)).all()
+  db
+    .select(ITEM_FIELDS)
+    .from(items)
+    .where(and(eq(items.published, false), isNull(items.trashedAt)))
+    .orderBy(desc(items.createdAt))
+    .all()
 
 // Flip the published flag. Returns whether the item existed.
 export const setItemPublished = (db: DrizzleDb, id: number, published: boolean): boolean =>

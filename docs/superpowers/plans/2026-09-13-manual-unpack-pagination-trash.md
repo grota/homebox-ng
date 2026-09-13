@@ -67,15 +67,15 @@
 
 **Files:** `packages/db/src/schema.ts`, `packages/db/drizzle/0006_*.sql`, `packages/db/drizzle/meta/*`
 
-- [ ] Add `trashedAt: integer('trashed_at', { mode: 'timestamp_ms' })` (nullable) to `items` in `packages/db/src/schema.ts`.
-- [ ] Generate the migration with `pnpm --filter @homebox/db exec drizzle-kit generate`. If it refuses because of the hand-written FTS virtual table (`0001_add_items_fts.sql`), hand-write `0006_*.sql` with a single additive statement:
+- [x] Add `trashedAt: integer('trashed_at', { mode: 'timestamp_ms' })` (nullable) to `items` in `packages/db/src/schema.ts`.
+- [x] Generate the migration with `pnpm --filter @homebox/db exec drizzle-kit generate`. If it refuses because of the hand-written FTS virtual table (`0001_add_items_fts.sql`), hand-write `0006_*.sql` with a single additive statement:
 
   ```sql
   ALTER TABLE `items` ADD `trashed_at` integer;
   ```
 
   …and add both the `_journal.json` entry and the `meta/0006_snapshot.json`, following `0003_cute_tinkerer.sql`'s additive pattern. There is no `migrate` or `push` script in this repo — `packages/db/src/migrate.ts` applies whatever is in `drizzle/` at API startup.
-- [ ] `pnpm --filter @homebox/db build`.
+- [x] `pnpm --filter @homebox/db build`.
 
 **Verify:** a fresh DB (delete `data/homebox.db`, run `pnpm --filter @homebox/api seed`) has the column; an existing DB picks it up on next API start via `runMigrations`.
 
@@ -93,11 +93,11 @@
 >
 > Every hit that returns item rows goes in this task's list, whether or not it currently filters anything.
 
-- [ ] Produce that list before writing code, and paste it into the task's commit body.
-- [ ] Add `isNull(items.trashedAt)` to the base predicate in `buildWhere` (`items/repo.ts:96`) — this covers the catalog rows and every facet query composed from it.
-- [ ] Add it to `listDraftItems` (`items/repo.ts:327`), `countPublishedItemsOfType` (`itemTypes/repo.ts:143`) and `listNonEmptyValues` (`itemTypes/repo.ts:126`, and the JS filter at `itemTypes/service.ts:131`).
-- [ ] `computeBlob` (`items/fts.ts:50-61`) returns `null` for a trashed item, and `rebuildFTS` (`fts.ts:132-139`) skips them. **This is the one that bites:** without it an admin "rebuild search index" re-indexes every row and returns every trashed item to search results.
-- [ ] Tests: a trashed item appears in **none** of — catalog list, facets, FTS search, FTS snippet, drafts list, type item-count, field-value usage — and a `rebuildFTS` after trashing does not put it back into search.
+- [x] Produce that list before writing code, and paste it into the task's commit body.
+- [x] Add `isNull(items.trashedAt)` to the base predicate in `buildWhere` (`items/repo.ts:96`) — this covers the catalog rows and every facet query composed from it.
+- [x] Add it to `listDraftItems` (`items/repo.ts:327`), `countPublishedItemsOfType` (`itemTypes/repo.ts:143`) and `listNonEmptyValues` (`itemTypes/repo.ts:126`, and the JS filter at `itemTypes/service.ts:131`).
+- [x] `computeBlob` (`items/fts.ts:50-61`) returns `null` for a trashed item, and `rebuildFTS` (`fts.ts:132-139`) skips them. **This is the one that bites:** without it an admin "rebuild search index" re-indexes every row and returns every trashed item to search results.
+- [x] Tests: a trashed item appears in **none** of — catalog list, facets, FTS search, FTS snippet, drafts list, type item-count, field-value usage — and a `rebuildFTS` after trashing does not put it back into search.
 
 **Verify:** `pnpm --filter @homebox/api test`, plus a hand-check that the enumerated list from step 1 has no entry left unguarded.
 

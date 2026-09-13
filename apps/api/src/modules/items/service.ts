@@ -24,6 +24,7 @@ export type ItemDto = {
   quantity: number
   unit: string | null
   published: boolean
+  trashedAt: Date | null
   itemTypeId: number
   locationId: number | null
   createdBy: number
@@ -63,6 +64,7 @@ const toDto = (
   quantity: row.quantity,
   unit: row.unit,
   published: row.published,
+  trashedAt: row.trashedAt,
   itemTypeId: row.itemTypeId,
   locationId: row.locationId,
   createdBy: row.createdBy,
@@ -107,9 +109,12 @@ export const hydrateRows = (db: DrizzleDb, rows: ItemRow[]): ItemDto[] => {
 // Hydrate a single item row (a one-item batch; same child-table queries as a list).
 const hydrateOne = (db: DrizzleDb, row: ItemRow): ItemDto => hydrateRows(db, [row])[0]
 
+// The detail query behind `items.get`. A trashed item is not reachable: `/items/:id`
+// must 404 rather than render something the catalog hides. `repo.getItem` stays
+// unfiltered because the trash's own restore/purge paths need the raw row.
 export const getItem = (db: DrizzleDb, id: number): ItemDto => {
   const row = repo.getItem(db, id)
-  if (!row) throw new TRPCError({ code: 'NOT_FOUND' })
+  if (!row || row.trashedAt != null) throw new TRPCError({ code: 'NOT_FOUND' })
   return hydrateOne(db, row)
 }
 

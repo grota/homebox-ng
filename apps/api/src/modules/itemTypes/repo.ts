@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, ne, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { itemTypes, itemTypeFields, items, itemCustomFieldValues } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 
@@ -126,7 +126,14 @@ export const listNonEmptyValues = (db: DrizzleDb, fieldId: number): FieldValueRo
     .select({ itemId: itemCustomFieldValues.itemId, name: items.name, value: itemCustomFieldValues.value, published: items.published })
     .from(itemCustomFieldValues)
     .innerJoin(items, eq(items.id, itemCustomFieldValues.itemId))
-    .where(and(eq(itemCustomFieldValues.fieldId, fieldId), isNotNull(itemCustomFieldValues.value), ne(itemCustomFieldValues.value, '')))
+    .where(
+      and(
+        eq(itemCustomFieldValues.fieldId, fieldId),
+        isNotNull(itemCustomFieldValues.value),
+        ne(itemCustomFieldValues.value, ''),
+        isNull(items.trashedAt),
+      ),
+    )
     .all() as FieldValueRow[]
 
 // Drop one item's value for one field. Deleting the row (rather than storing
@@ -135,12 +142,17 @@ export const clearValue = (db: DrizzleDb, itemId: number, fieldId: number): void
   db.delete(itemCustomFieldValues).where(and(eq(itemCustomFieldValues.itemId, itemId), eq(itemCustomFieldValues.fieldId, fieldId))).run()
 }
 
-// Published items of the type — the population that can actually be edited, and
-// so the only one that matters for a "items missing a value" count. Drafts are
-// created value-less by the unpack flow (repo.createItem with fieldValues: [])
-// and are only renamable, so including them would be noise.
+// Published, untrashed items of the type — the population that can actually be
+// edited, and so the only one that matters for an "items missing a value" count.
+// Drafts are created value-less by the unpack flow (repo.createItem with
+// fieldValues: []) and are only renamable, so including them would be noise;
+// trashed items are not editable at all.
 export const countPublishedItemsOfType = (db: DrizzleDb, typeId: number): number =>
-  db.select({ n: sql<number>`count(*)` }).from(items).where(and(eq(items.itemTypeId, typeId), eq(items.published, true))).get()?.n ?? 0
+  db
+    .select({ n: sql<number>`count(*)` })
+    .from(items)
+    .where(and(eq(items.itemTypeId, typeId), eq(items.published, true), isNull(items.trashedAt)))
+    .get()?.n ?? 0
 
 export const deleteType = (db: DrizzleDb, id: number): boolean =>
   db.delete(itemTypes).where(eq(itemTypes.id, id)).run().changes > 0

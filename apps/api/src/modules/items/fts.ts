@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { items, itemTags, tags, itemCustomFieldValues, itemTypes, locations, itemsFts } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 
@@ -46,7 +46,9 @@ type ItemSearchBlob = {
 }
 
 // Recompute the searchable blob for a single item. Returns null when the item
-// no longer exists, so `reindexItem` can clear any stale row.
+// no longer exists — or is in the trash, which is indexed the same way as
+// absent: `reindexItem` then clears any stale row, so a trashed item is not
+// searchable and cannot be resurrected into results by a reindex.
 const computeBlob = (db: DrizzleDb, itemId: number): ItemSearchBlob | null => {
   const item = db
     .select({
@@ -54,11 +56,12 @@ const computeBlob = (db: DrizzleDb, itemId: number): ItemSearchBlob | null => {
       description: items.description,
       itemTypeId: items.itemTypeId,
       locationId: items.locationId,
+      trashedAt: items.trashedAt,
     })
     .from(items)
     .where(eq(items.id, itemId))
     .get()
-  if (!item) return null
+  if (!item || item.trashedAt != null) return null
 
   const tagNames = db
     .select({ name: tags.name })
@@ -128,12 +131,16 @@ export const reindexLocationSubtree = (db: DrizzleDb, locationId: number): void 
   for (const id of ids) reindexItem(db, id)
 }
 
-// Wipe and re-insert the whole index from scratch.
+// Wipe and re-insert the whole index from scratch. Trashed items are skipped —
+// the point of the reindex is to restore *searchable* content, and a trashed item
+// is not searchable. Skipping here rather than relying on `computeBlob` alone
+// keeps the count this returns honest about what it did.
 export const rebuildFTS = (db: DrizzleDb): void => {
   db.run(sql`DELETE FROM items_fts`)
   const ids = db
     .select({ id: items.id })
     .from(items)
+    .where(isNull(items.trashedAt))
     .all()
     .map((r) => r.id)
   for (const id of ids) reindexItem(db, id)
