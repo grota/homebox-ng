@@ -1,4 +1,4 @@
-import { createReadStream } from 'node:fs'
+import { createReadStream, existsSync } from 'node:fs'
 import { writeFile, mkdtemp, rm } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
@@ -8,7 +8,7 @@ import { parseSessionCookie } from '../../context.js'
 import type { DbHolder } from '../../context.js'
 import { getSessionUser } from '../../auth/sessions.js'
 import { createBackup, validateBackup, applyRestore } from './service.js'
-import { archivePath, listBackups, sweepRunningToFailed, writeBackupMeta } from './store.js'
+import { archivePath, deleteBackup, isBackupId, listBackups, readBackupMeta, sweepRunningToFailed, writeBackupMeta } from './store.js'
 
 // How long a validated-but-unconfirmed restore stays available before it is
 // treated as abandoned and its temp dir is cleaned up.
@@ -55,26 +55,35 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
   // must not stop the server from booting.
   void sweepRunningToFailed(dataDir).catch(() => {})
 
-  // Download a fresh backup archive. (Deleted in the next task — a stored
-  // backup's own download route replaces it.)
-  app.get('/backup', async (req, reply) => {
+  // Download a stored backup. A plain GET so the browser can navigate to it and
+  // let the `Content-Disposition` header do the naming.
+  app.get('/backups/:id/download', async (req, reply) => {
     if (!admin(req, reply)) return
-    const tmp = await mkdtemp(join(tmpdir(), 'homebox-backup-'))
-    const archive = join(tmp, 'backup.tar.gz')
-    try {
-      await createBackup(dbHolder.current, dataDir, archive)
-    } catch (err) {
-      await rm(tmp, { recursive: true, force: true }).catch(() => {})
-      throw err
-    }
+    const { id } = req.params as { id: string }
+    if (!isBackupId(id)) return reply.code(404).send({ error: 'not found' })
+    const meta = await readBackupMeta(dataDir, id)
+    // Only a completed backup has an archive — `409`, never a 404, so a row that
+    // exists but is not ready is distinguishable from one that never did.
+    if (!meta || meta.status !== 'completed') return reply.code(409).send({ error: 'backup not ready' })
+    const archive = archivePath(dataDir, id)
+    if (!existsSync(archive)) return reply.code(409).send({ error: 'archive missing' })
+    // `createdAt` is an ISO string; the filename gets the timestamp the old
+    // fixed name never carried.
+    const stamp = meta.createdAt.slice(0, 19).replace(/:/g, '-')
     reply.header('Content-Type', 'application/gzip')
-    reply.header('Content-Disposition', 'attachment; filename="homebox-backup.tar.gz"')
-    const stream = createReadStream(archive)
-    // Remove the temp dir (dump + uploads copy + archive) once the download
-    // finishes. Errors are swallowed: the archive was already served, so a
-    // cleanup failure must not break the response.
-    stream.on('close', () => void rm(tmp, { recursive: true, force: true }).catch(() => {}))
-    return reply.send(stream)
+    reply.header('Content-Disposition', `attachment; filename="homebox-backup-${stamp}.tar.gz"`)
+    return reply.send(createReadStream(archive))
+  })
+
+  // Remove a stored backup: the archive and its sidecar.
+  app.delete('/backups/:id', async (req, reply) => {
+    if (!admin(req, reply)) return
+    const { id } = req.params as { id: string }
+    if (!isBackupId(id)) return reply.code(404).send({ error: 'not found' })
+    const result = await deleteBackup(dataDir, id)
+    if (result === 'not-found') return reply.code(404).send({ error: 'not found' })
+    if (result === 'running') return reply.code(409).send({ error: 'backup_in_progress' })
+    return { ok: true }
   })
 
   // Start a stored backup. Returns as soon as the record is durable — the tar
