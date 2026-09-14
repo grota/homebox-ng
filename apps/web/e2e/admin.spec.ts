@@ -115,9 +115,29 @@ test('admin creates a stored backup, downloads it, and restores it', async ({ pa
   const backupPath = test.info().outputPath('homebox-backup.tar.gz')
   await download.saveAs(backupPath)
 
+  // Restore-from-row is non-destructive and stays two clicks. The row action
+  // opens the same preview card the upload path uses and applies NOTHING by
+  // itself — that is the whole safety property, so assert both halves: the card
+  // appears, and the destructive outcome has not happened.
+  await page.getByRole('button', { name: 'Restore', exact: true }).first().click()
+  await expect(page.getByText('Backup preview')).toBeVisible()
+  await expect(page.getByText('Restore complete.')).toBeHidden()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByText('Backup preview')).toBeHidden()
+
+  // Delete is the row's only data-removing action. It drops the row here, and
+  // the archive + sidecar on disk (asserted in the API suite).
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(page.getByRole('cell', { name: 'completed' })).toBeHidden()
+  await expect(page.getByRole('status')).toHaveText('Backup deleted.')
+
   // The upload path is unchanged: non-destructive preview, then confirm.
   await page.setInputFiles('#admin-backup-file', backupPath)
   await expect(page.getByText('Backup preview')).toBeVisible()
+  // Anchored on digits so raw `{placeholder}` text cannot satisfy it: i18next
+  // interpolates `{{ }}`, and a single-brace key would render the braces
+  // literally to the user. Asserting the rendered counts proves interpolation.
+  await expect(page.getByText(/\d+ users · \d+ items · \d+ uploads · max [\d.]+ MB/)).toBeVisible()
   await expect(page.getByText('This replaces all current data.')).toBeVisible()
   await page.getByRole('button', { name: 'Restore this backup' }).click()
   await expect(page.getByRole('status')).toHaveText('Restore complete.')

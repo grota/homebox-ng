@@ -117,6 +117,22 @@ const extract = async (buf: Buffer) => {
   return dest
 }
 
+// An archive's member names, read from the bytes with `tar -tzf` — the archive's
+// own contents, not what extraction happened to leave on disk. Note `-t` lists
+// recursively and GNU tar marks directories with a trailing `/`, so a caller
+// wanting top-level entries splits each name on `/`.
+const members = async (buf: Buffer): Promise<string[]> => {
+  const tmp = mkdtempSync(join(tmpdir(), 'homebox-members-'))
+  try {
+    const archive = join(tmp, 'b.tar.gz')
+    writeFileSync(archive, buf)
+    const { stdout } = await exec('tar', ['-tzf', archive])
+    return stdout.trim().split('\n').filter(Boolean)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+}
+
 // Count temp dirs under os.tmpdir() with the given prefix. A backup create
 // stages `homebox-backup-*` and the upload path stages `homebox-restore-*`; a
 // leaked dir shows up here and is the regression we assert against. Note the test
@@ -187,6 +203,14 @@ describe('backup & restore', () => {
     expect(existsSync(dump)).toBe(true)
     expect(integrityOk(dump)).toBe(true)
     expect(existsSync(join(dest, 'uploads'))).toBe(true)
+
+    // The layout is exactly the dump and the uploads tree — nothing else. This
+    // instance HAS stored backups on disk (`dataDir/backups/`, where this very
+    // archive lives), so a naive `tar` of the data dir would nest them here. It
+    // does not: `createBackup` stages the two entries and tars those, so a backup
+    // can never contain another backup (nor balloon as the history grows).
+    const topLevel = [...new Set((await members(buf)).map((m) => m.split('/')[0]))]
+    expect(topLevel.sort()).toEqual(['homebox.db', 'uploads'])
   })
 
   it('creates a valid backup on a fresh install with no uploads/ tree', async () => {

@@ -61,7 +61,7 @@
       },
       "uploadLabel": "Restore from a backup archive",
       "preview": "Backup preview",
-      "previewDetail": "{users} users · {items} items · {uploads} uploads · max {mb} MB",
+      "previewDetail": "{{users}} users · {{items}} items · {{uploads}} uploads · max {{mb}} MB",
       "confirm": "Restore this backup",
       "cancel": "Cancel",
       "replaceWarning": "This replaces all current data.",
