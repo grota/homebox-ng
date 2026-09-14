@@ -243,6 +243,37 @@ test('a catalog card opens the item surface, full-screen and nav-less', async ({
   await expect(page.getByRole('button', { name: 'Edit photo', exact: true })).toBeVisible()
 })
 
+// Re-opening the item you just closed. Its photo is in the browser's cache by
+// then, so `load` arrives earlier than it did on the first visit — and the viewer
+// used to clear the scene that load had just set, leaving "Loading…" up for good
+// on an image that was decoded the entire time. Another timing bug, so again
+// jsdom cannot see it (its effects flush inside `act`, always before the load):
+// this leg is the only thing that pins it.
+test('re-opening the same item shows its photo again', async ({ page }) => {
+  const login = await page.request.post('/trpc/auth.login', {
+    data: { email: 'admin@b.co', password: 'password123' },
+  })
+  expect(login.ok()).toBeTruthy()
+
+  await page.goto('/items')
+  const card = page.getByRole('link', { name: 'Lamp', exact: true })
+  const stage = page.getByTestId('photo-viewer')
+
+  await card.click()
+  // An unloaded photo carries `visibility: hidden`, so this fails the moment the
+  // scene is missing rather than merely looking wrong.
+  await expect(stage.getByRole('img', { name: 'Lamp', exact: true })).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(page).toHaveURL(/\/items$/)
+
+  // Same item, straight away: the second request is a cache hit, which is exactly
+  // the ordering that used to lose the photo.
+  await card.click()
+  await expect(stage.getByRole('img', { name: 'Lamp', exact: true })).toBeVisible()
+  await expect(page.getByText('Loading…')).toHaveCount(0)
+})
+
 // Escape belongs to the topmost layer, and only to it. This is the leg that pins
 // it, and it cannot be a unit test: the bug is a *timing* one. Radix handles
 // Escape on the document, so by the time the event has bubbled back out to

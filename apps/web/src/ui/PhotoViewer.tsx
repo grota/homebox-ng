@@ -93,10 +93,23 @@ export function PhotoViewer({ src, alt }: PhotoViewerProps) {
   // this component by photo id, which remounts it and makes this redundant — kept
   // because "the caller must key it" is a rule nobody will remember, and the bug
   // it prevents is showing photo 3 at photo 2's zoom.
-  useEffect(() => {
+  //
+  // Adjusted during render rather than in an effect, and that is not a style
+  // choice. An effect with `[src]` deps runs *after* the commit that put the
+  // `<img>` in the DOM, so a photo the browser already has cached can fire `load`
+  // — and set a scene — before the effect runs to clear it. The reset then wipes
+  // the photo that had just loaded, the `<img>` goes back to `invisible`, and no
+  // further `load` ever arrives to set it again: "Loading…" for good, on an image
+  // that is decoded and ready. Re-opening the item you just closed reproduces it
+  // every time, because that is when the photo is warm. Setting state during
+  // render happens before the new `<img>` is committed, so the order cannot
+  // invert.
+  const [renderedSrc, setRenderedSrc] = useState(src)
+  if (renderedSrc !== src) {
+    setRenderedSrc(src)
     setScene(null)
     setFailed(false)
-  }, [src])
+  }
 
   const measure = () => containerRef.current?.getBoundingClientRect()
 
