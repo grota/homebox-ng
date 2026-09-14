@@ -108,6 +108,41 @@ describe('items search + facets', () => {
     expect(screen.getByRole('button', { name: 'All locations' })).toHaveAttribute('aria-pressed', 'false')
   })
 
+  // Search has two modes — a word matches from its start as you type, a quoted
+  // word means that word and nothing else — and neither was visible anywhere.
+  // Someone who never learns the second one cannot search precisely at all.
+  it('offers a hint explaining how the search behaves', () => {
+    renderPage(['/items'])
+
+    expect(screen.getByRole('button', { name: 'Search syntax help' })).toBeInTheDocument()
+
+    const hint = screen.getByRole('tooltip')
+    // The facts that are not guessable from using the box: bare words are ANDed,
+    // only the *last* one gets the appended prefix, and the boolean operators are
+    // capitalised — which is the part a user gets wrong, because `or` and `OR`
+    // look alike and behave nothing alike.
+    expect(hint).toHaveTextContent('Words are ANDed together.')
+    expect(hint).toHaveTextContent('appended (it is considered a prefix)')
+    expect(hint).toHaveTextContent('to match exactly')
+    expect(hint).toHaveTextContent('are operators rather than words to find. In lower case they are ordinary words.')
+    expect(hint).toHaveTextContent('Parentheses group the operators')
+    // `opacity-0`, not `hidden`: a `display: none` bubble is gone from the
+    // accessibility tree, so the hint would exist only for people who can already
+    // see it hover — and it would never appear for a keyboard user at all.
+    expect(hint).not.toHaveClass('hidden')
+  })
+
+  // The hint button sits *beside* the label, never inside it. Everything inside a
+  // `<label>` becomes the labelled control's accessible name, so nesting the
+  // button there would rename the search box to "Search" followed by the whole
+  // hint — for a screen reader, and for every `getByLabelText('Search')` here.
+  it('keeps the search box named just "Search", with the hint outside the label', () => {
+    renderPage(['/items'])
+
+    expect(screen.getByLabelText('Search')).toHaveAttribute('id', 'item-search')
+    expect(screen.getByText('Search', { selector: 'label' })).toHaveTextContent(/^Search$/)
+  })
+
   it('treats "All locations" as the selected location when none is chosen', () => {
     renderPage(['/items?q=lamp'])
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { hexColor } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
-import { Badge, Button, Card, cn, Field, hoverScrim, Input, PageHeader, Pagination } from '../../ui'
+import { Badge, Button, Card, cn, Field, hoverScrim, Input, PageHeader, Pagination, Tooltip } from '../../ui'
 import { ItemForm } from './ItemForm'
 
 // Sent explicitly rather than left to the server's default, so the request that
@@ -164,7 +164,46 @@ export function ItemsPage() {
       />
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <Field label="Search" htmlFor="item-search" className="flex-1 min-w-0 max-w-[26rem]">
+        <Field
+          label="Search"
+          htmlFor="item-search"
+          className="flex-1 min-w-0 max-w-[26rem]"
+          // The search has two modes and nothing on screen said so: words match
+          // from their start as you type, and quotes ask for the word itself.
+          // Someone who never learns the second can't search precisely at all —
+          // every search would drag in "background" when they wanted "back".
+          labelAdornment={
+            <Tooltip
+              label={
+                <ul className="list-disc space-y-1 pl-4">
+                  <li>Words are <code>AND</code>ed together.</li>
+                  <li>
+                    Only the last word has <code>*</code> appended (it is considered a prefix), so word order
+                    matters.
+                  </li>
+                  <li>
+                    Wrap a word in <code>"quotes"</code> to match exactly.
+                  </li>
+                  <li>
+                    Uppercase <code>NOT</code>, <code>AND</code> and <code>OR</code> (in order of precedence)
+                    are operators rather than words to find. In lower case they are ordinary words.
+                  </li>
+                  <li>
+                    Parentheses group the operators: <code>(oak OR pine) wooden</code>.
+                  </li>
+                </ul>
+              }
+            >
+              <Button size="sm" variant="ghost" aria-label="Search syntax help">
+                <svg viewBox="0 0 16 16" aria-hidden className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="8" cy="8" r="6.5" />
+                  <path d="M8 7.2v4" strokeLinecap="round" />
+                  <circle cx="8" cy="4.9" r="0.9" fill="currentColor" stroke="none" />
+                </svg>
+              </Button>
+            </Tooltip>
+          }
+        >
           <Input
             id="item-search"
             type="search"

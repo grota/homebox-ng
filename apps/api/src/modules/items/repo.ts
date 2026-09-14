@@ -112,8 +112,47 @@ const buildWhere = (db: DrizzleDb, filters: RelationalFilters, searchPredicate?:
 // reuses the same composition for all three.
 type SearchCtx = { predicate?: SQL; join: SQL }
 
+// FTS5 matches whole *tokens*: `MATCH 'back'` does not find "background" — it
+// looks for the word "back" and finds nothing. So the term is sent as a prefix
+// query, `back*`, which is what typing "back" means when you are on your way to
+// "background". This is a search box you type into one character at a time; a
+// search that only matches complete words is a search that shows you nothing
+// until you have already finished typing.
+//
+// One trailing `*` covers the whole term, multi-word included: FTS5 reads
+// `proven back*` as `proven AND back*`. Only the last token is prefixed, which is
+// the one you are still typing — prefixing every token would make `vene lamp`
+// match "veneer lamp", and the words before it are ones you have already
+// finished.
+//
+// Three terms are left exactly as typed, and they are the escape hatch from the
+// prefixing above:
+//
+//   A term ending in `*` is already a prefix query — `back**` is a syntax error,
+//   which would silently drop the whole query to the `LIKE` fallback.
+//
+//   A term ending in `"` is a *quoted phrase*, and the user wrote the quotes to
+//   say exactly that. Prefixing it is what makes `"back"` match "background":
+//   measured against SQLite, `"back"` returns 1 row and `"back"*` returns 3. So
+//   quotes are how you ask for the word itself rather than any word starting with
+//   it — the precise search that always-prefixing would otherwise take away.
+//
+//   A term ending in `)` is a bracketed group, and `*` cannot follow a bracket.
+//
+// No new wildcard syntax is invented here on purpose. FTS5 already has the
+// operators worth having — `*`, `"`, `AND`/`OR`/`NOT` in capitals, and brackets —
+// and anything else is a parser to own: a star in the middle is not an error but
+// silently means something else (`ba*ck` returns 0 rows and no complaint), and
+// `%` is a syntax error outright.
+// A closing bracket is the third: `*` cannot follow one — `(a OR b)*` is a syntax
+// error, which would drop the whole query to the literal fallback and make every
+// grouped search silently find nothing. Leaving it alone sends the user's own
+// syntax exactly as written, at the cost of no prefix on the group's last word.
+const prefixTerm = (term: string): string =>
+  term.endsWith('*') || term.endsWith('"') || term.endsWith(')') ? term : `${term}*`
+
 const ftsCtx = (term: string): SearchCtx => ({
-  predicate: sql`items_fts MATCH ${term}`,
+  predicate: sql`items_fts MATCH ${prefixTerm(term)}`,
   join: sql`JOIN items_fts ON items.id = items_fts.item_id`,
 })
 
@@ -258,12 +297,30 @@ export const searchItems = (db: DrizzleDb, opts: SearchItemsOptions): { rows: Se
     try {
       return runFtsSearch(db, opts, term, pageSize, offset)
     } catch (e) {
-      // FTS5 throws a `SQLITE_ERROR` on a syntactically invalid `MATCH` (e.g. an
-      // unbalanced quote). The list must never throw on user search input, so we
-      // fall back to a literal name `LIKE` with the same relational filters and
-      // the same facet composition. A non-FTS error is rethrown.
+      // FTS5 throws a `SQLITE_ERROR` when it reads the text as *syntax* and the
+      // syntax is wrong. Two ways that happens, and both are ordinary typing:
+      // a hyphen or a colon is FTS5's column filter (`wd-40` parses as "column
+      // wd, term 40"), and an odd number of quotes is an unterminated string.
+      //
+      // The fix is FTS5's own escaping rule applied to the whole input: wrap it in
+      // double quotes, and double any quotes inside it. That is valid for *any*
+      // input, so the retry cannot fail on syntax — and it is still a real FTS5
+      // search, so results stay ranked, cover every column and carry snippets,
+      // unlike the name-only `LIKE` below. The tokenizer then splits `wd-40` into
+      // `wd` and `40` on the query side exactly as it did on the document side, so
+      // the phrase matches the item that has "wd 40" in it.
+      //
+      // The trailing `*` sits outside the quotes to keep the last token a prefix;
+      // `prefixTerm` leaves the result alone because it already ends in `*`.
       if (isSqliteError(e)) {
-        return runPlainSearch(db, opts, likeCtx(term), pageSize, offset)
+        const quoted = `"${term.replace(/"/g, '""')}"*`
+        try {
+          return runFtsSearch(db, opts, quoted, pageSize, offset)
+        } catch {
+          // Quoting is total, so this is unreachable — kept as the floor because
+          // a literal `LIKE` is the one path that cannot fail on anything.
+          return runPlainSearch(db, opts, likeCtx(term), pageSize, offset)
+        }
       }
       throw e
     }

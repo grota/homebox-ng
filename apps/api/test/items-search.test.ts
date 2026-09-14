@@ -59,6 +59,109 @@ describe('items.search across the tRPC boundary', () => {
     expect(data.total).toBe(1)
   })
 
+  // The search box is typed into one character at a time, so a term has to match
+  // the *beginning* of a word. FTS5 matches whole tokens by default, which meant
+  // "lant" found nothing and only the finished word "lantern" did — the search
+  // stayed silent until you had already finished typing.
+  it('matches a word by its prefix, so a half-typed term finds it', async () => {
+    const res = await list({ search: 'lant' })
+    expect(res.statusCode).toBe(200)
+    const data = res.json()?.result?.data
+    expect(data.total).toBe(1)
+    expect(data.items[0].id).toBe(itemId)
+  })
+
+  // One trailing `*` covers the whole term: FTS5 reads this as `brass AND lant*`.
+  it('prefix-matches the last word of a multi-word term', async () => {
+    const res = await list({ search: 'brass lant' })
+    expect(res.json()?.result?.data.total).toBe(1)
+  })
+
+  // The rule, pinned so changing it is a decision rather than a drift: only the
+  // *last* word is a prefix — the one you are still typing. Words before it are
+  // ones you have finished, and prefixing those too would make "vene lamp" match
+  // "veneer lamp".
+  it('requires the earlier words of a multi-word term to be complete', async () => {
+    const res = await list({ search: 'bras lantern' })
+    expect(res.json()?.result?.data.total).toBe(0)
+  })
+
+  // The pair that matters, and the reason quotes are load-bearing: prefixing is
+  // what makes a half-typed word useful, and it is also what stops `back` from
+  // ever meaning the word "back" — it matches "background" and "backup" too.
+  // Quotes are the way back to precision, using FTS5's own syntax rather than a
+  // wildcard rule of our own.
+  it('finds a word by prefix, but a quoted term means that word exactly', async () => {
+    const prefixed = await list({ search: 'lan' })
+    expect(prefixed.json()?.result?.data.total).toBe(1)
+
+    // The token "lan" does not exist — only "lantern" does — so an exact match
+    // finds nothing while the prefix above finds the item. If quoting ever gets
+    // prefixed, these two flip and this fails.
+    const exact = await list({ search: '"lan"' })
+    expect(exact.json()?.result?.data.total).toBe(0)
+
+    const wholeWord = await list({ search: '"brass lantern"' })
+    expect(wholeWord.json()?.result?.data.total).toBe(1)
+  })
+
+  // `*` is FTS5's own prefix operator, so a user who types one is already
+  // speaking the syntax — appending a second would be a syntax error, which
+  // would quietly drop the query into the `LIKE` fallback.
+  it('leaves a term that already ends in a star alone', async () => {
+    const res = await list({ search: 'lant*' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()?.result?.data.total).toBe(1)
+  })
+
+  // A hyphen is FTS5's column-filter operator, so `brass-lantern` is read as
+  // "column brass, term lantern" and the MATCH throws. The input is then handed
+  // back as one quoted string — FTS5's own escaping rule — which is valid for
+  // anything, and whose tokenizer splits `brass-lantern` into `brass` + `lantern`
+  // exactly as it did when the item was indexed, so the phrase matches.
+  //
+  // The snippet is the assertion that carries the weight: the name-only `LIKE`
+  // fallback returns `snippet: null`, so a snippet proves this went through FTS5.
+  it('finds a hyphenated term rather than dropping to the name-only fallback', async () => {
+    const res = await list({ search: 'brass-lantern' })
+    expect(res.statusCode).toBe(200)
+    const data = res.json()?.result?.data
+    expect(data.total).toBe(1)
+    expect(data.items[0].id).toBe(itemId)
+    expect(data.items[0].snippet).toBeTruthy()
+  })
+
+  it('finds a colon-separated term the same way', async () => {
+    const res = await list({ search: 'brass:lantern' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()?.result?.data.total).toBe(1)
+  })
+
+  // Brackets group, and the app must not append its prefix star after one: a `*`
+  // cannot follow a closing bracket, so `(brass OR zzz)*` is a syntax error and
+  // the whole query drops to the literal fallback — where "OR" is only a word, and
+  // a grouped search silently finds nothing. This is the regression test for that
+  // one character in `prefixTerm`.
+  it('runs a bracketed query instead of losing it to the literal fallback', async () => {
+    const res = await list({ search: '(brass OR zzz)' })
+    expect(res.statusCode).toBe(200)
+    const data = res.json()?.result?.data
+    expect(data.total).toBe(1)
+    expect(data.items[0].snippet).toBeTruthy()
+  })
+
+  // The operators are capitalised. In lower case these are ordinary words, so
+  // `brass or lantern` asks for the token "or" — which nothing has.
+  it('treats a lower-case or as a word, not an operator', async () => {
+    const res = await list({ search: 'brass or lantern' })
+    expect(res.json()?.result?.data.total).toBe(0)
+  })
+
+  it('treats a capitalised OR as an operator', async () => {
+    const res = await list({ search: 'brass OR lantern' })
+    expect(res.json()?.result?.data.total).toBe(1)
+  })
+
   it('returns the plain list but still computes facets when no search is given', async () => {
     const res = await list({})
     expect(res.statusCode).toBe(200)
