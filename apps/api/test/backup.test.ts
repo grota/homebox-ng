@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { gzipSync } from 'node:zlib'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { createBackup } from '../src/modules/backup/service'
 
 const exec = promisify(execFile)
 
@@ -292,5 +293,28 @@ describe('backup & restore', () => {
     expect(itemsAfter).toBe(itemsBefore)
     // The rejected archive must not leak its temp dir.
     expect(await waitFor(() => tmpDirCount('homebox-restore-') === dirsBefore)).toBe(true)
+  })
+
+  it('createBackup writes the archive to destPath and leaves no temp dir behind', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'homebox-svc-'))
+    const srcData = join(root, 'data')
+    mkdirSync(srcData, { recursive: true })
+    const svcDbPath = join(root, 'svc.db')
+    const svcDb = createDb(svcDbPath)
+    runMigrations(svcDb)
+    try {
+      const before = tmpDirCount('homebox-backup-')
+      const dest = join(root, 'out.tar.gz')
+      await createBackup(svcDb, srcData, dest)
+      expect(existsSync(dest)).toBe(true)
+      const extracted = await extract(readFileSync(dest))
+      expect(integrityOk(join(extracted, 'homebox.db'))).toBe(true)
+      expect(existsSync(join(extracted, 'uploads'))).toBe(true)
+      // Staging is disposable: the tar lands at destPath, tmp is emptied.
+      expect(await waitFor(() => tmpDirCount('homebox-backup-') === before)).toBe(true)
+    } finally {
+      rawDb(svcDb).close()
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

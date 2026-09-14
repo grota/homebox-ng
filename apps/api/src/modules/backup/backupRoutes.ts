@@ -42,17 +42,25 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
     if (dest) void rm(dirname(dest), { recursive: true, force: true }).catch(() => {})
   }
 
-  // Download a fresh backup archive.
+  // Download a fresh backup archive. (Deleted in the next task — a stored
+  // backup's own download route replaces it.)
   app.get('/backup', async (req, reply) => {
     if (!admin(req, reply)) return
-    const { archivePath, baseDir } = await createBackup(dbHolder.current, dataDir)
+    const tmp = await mkdtemp(join(tmpdir(), 'homebox-backup-'))
+    const archive = join(tmp, 'backup.tar.gz')
+    try {
+      await createBackup(dbHolder.current, dataDir, archive)
+    } catch (err) {
+      await rm(tmp, { recursive: true, force: true }).catch(() => {})
+      throw err
+    }
     reply.header('Content-Type', 'application/gzip')
     reply.header('Content-Disposition', 'attachment; filename="homebox-backup.tar.gz"')
-    const stream = createReadStream(archivePath)
-    // Remove the whole temp base dir (dump + uploads copy + archive) once the
-    // download finishes. Errors are swallowed: the archive was already served, so
-    // a cleanup failure must not break the response.
-    stream.on('close', () => void rm(baseDir, { recursive: true, force: true }).catch(() => {}))
+    const stream = createReadStream(archive)
+    // Remove the temp dir (dump + uploads copy + archive) once the download
+    // finishes. Errors are swallowed: the archive was already served, so a
+    // cleanup failure must not break the response.
+    stream.on('close', () => void rm(tmp, { recursive: true, force: true }).catch(() => {}))
     return reply.send(stream)
   })
 
