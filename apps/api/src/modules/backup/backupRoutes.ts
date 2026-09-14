@@ -90,6 +90,45 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
     return { ok: true }
   })
 
+  // Phase 1 for a STORED backup: validate the archive already on disk. Same
+  // contract as `POST /upload/backup` — returns a preview and a restoreId, and
+  // applies nothing — so the confirm step and the preview card are shared.
+  app.post('/backups/:id/restore', async (req, reply) => {
+    if (!admin(req, reply)) return
+    const { id } = req.params as { id: string }
+    if (!isBackupId(id)) return reply.code(404).send({ error: 'not found' })
+    const meta = await readBackupMeta(dataDir, id)
+    // Same three cases as `download`: the id is well-formed, so a missing sidecar
+    // means the row never existed (404), while a row that exists but is not
+    // completed is a 409 so "still running" never reads as "gone".
+    if (!meta) return reply.code(404).send({ error: 'not found' })
+    if (meta.status !== 'completed') return reply.code(409).send({ error: 'backup not ready' })
+    const archive = archivePath(dataDir, id)
+    if (!existsSync(archive)) return reply.code(409).send({ error: 'archive missing' })
+
+    // The archive stays where it is — only the extraction is temporary, so a
+    // failed validation never endangers the stored backup.
+    const tmp = await mkdtemp(join(tmpdir(), 'homebox-restore-'))
+    const dest = join(tmp, 'extract')
+    try {
+      const { preview, restoreId } = await validateBackup(archive, dest)
+      // Keep the validated extraction for the confirm step, and arm an expiry
+      // timer so a never-confirmed restore can't leak the temp dir forever.
+      restoreDirs.set(restoreId, dest)
+      const timer = setTimeout(() => dropRestore(restoreId, dest), RESTORE_TTL_MS)
+      timer.unref()
+      restoreDirsTimers.set(restoreId, timer)
+      return { preview, restoreId }
+    } catch {
+      // An unreadable stored archive (bad gzip, missing dump, failed integrity
+      // check) is a client error, not a server fault. Return 400 and leave the
+      // live DB untouched — validateBackup applies nothing. Clean up the temp dir
+      // so it can't leak; the stored archive itself is untouched.
+      await rm(tmp, { recursive: true, force: true }).catch(() => {})
+      return reply.code(400).send({ error: 'invalid backup archive' })
+    }
+  })
+
   // Start a stored backup. Returns as soon as the record is durable — the tar
   // itself runs in the background (see `runCreate`).
   app.post('/backups', async (req, reply) => {

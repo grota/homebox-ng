@@ -272,8 +272,7 @@ describe('backup & restore', () => {
       ['GET', '/backups'],
       ['GET', `/backups/${id}/download`],
       ['DELETE', `/backups/${id}`],
-      // `POST /backups/:id/restore` is not listed: the route does not exist yet,
-      // so it cannot answer 401/403. Its gating is added with the route.
+      ['POST', `/backups/${id}/restore`],
     ]
     for (const [method, url] of routes) {
       const anon = await app.inject({ method: method as 'GET', url })
@@ -317,7 +316,7 @@ describe('backup & restore', () => {
     expect(integrityOk(join(dest, 'homebox.db'))).toBe(true)
   })
 
-  it('refuses to download or delete a backup that is not completed', async () => {
+  it('refuses to download, restore or delete a backup that is not completed', async () => {
     const id = randomUUID()
     mkdirSync(join(dataDir, 'backups'), { recursive: true })
     writeFileSync(join(dataDir, 'backups', `${id}.json`), JSON.stringify({ id, status: 'running', createdAt: new Date().toISOString() }))
@@ -328,6 +327,8 @@ describe('backup & restore', () => {
     expect((await app.inject({ method: 'GET', url: `/backups/${id}/download`, headers: { cookie: adminCookie } })).statusCode).toBe(409)
     expect((await app.inject({ method: 'DELETE', url: `/backups/${id}`, headers: { cookie: adminCookie } })).statusCode).toBe(409)
     expect((await app.inject({ method: 'GET', url: `/backups/${orphan}/download`, headers: { cookie: adminCookie } })).statusCode).toBe(409)
+    expect((await app.inject({ method: 'POST', url: `/backups/${id}/restore`, headers: { cookie: adminCookie } })).statusCode).toBe(409)
+    expect((await app.inject({ method: 'POST', url: `/backups/${orphan}/restore`, headers: { cookie: adminCookie } })).statusCode).toBe(409)
   })
 
   it('answers 404 for an unknown id, never 409: "never existed" is not "not ready"', async () => {
@@ -337,6 +338,7 @@ describe('backup & restore', () => {
     const unknown = randomUUID()
     expect((await app.inject({ method: 'GET', url: `/backups/${unknown}/download`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
     expect((await app.inject({ method: 'DELETE', url: `/backups/${unknown}`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'POST', url: `/backups/${unknown}/restore`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
   })
 
   it('deletes a stored backup, removing both files', async () => {
@@ -472,6 +474,11 @@ describe('backup & restore', () => {
     // The first request holds the guard across real disk I/O, so the second
     // always observes it set.
     expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409])
+    // The winner's job is still running: wait it out, or the next test to create
+    // a backup in this app can observe the guard and get a 409 of its own.
+    const winner = (a.statusCode === 200 ? a : b).json().backup.id as string
+    const metaFile = join(dataDir, 'backups', `${winner}.json`)
+    expect(await waitFor(() => (JSON.parse(readFileSync(metaFile, 'utf8')) as { status: string }).status === 'completed')).toBe(true)
   })
 
   it('sweeps a leftover running sidecar to failed when the server boots', async () => {
@@ -501,5 +508,39 @@ describe('backup & restore', () => {
     expect((await app.inject({ method: 'GET', url: '/backups' })).statusCode).toBe(401)
     expect((await app.inject({ method: 'POST', url: '/backups', headers: { cookie: nonAdminCookie } })).statusCode).toBe(403)
     expect((await app.inject({ method: 'GET', url: '/backups', headers: { cookie: nonAdminCookie } })).statusCode).toBe(403)
+  })
+
+  it('restores the live data from a stored backup (row round-trip)', async () => {
+    // Take a snapshot of the current state...
+    const { id } = await createBackupRow(adminCookie)
+
+    // ...diverge from it...
+    const all = (await listItems(adminCookie)).json()?.result?.data?.items
+    const orig = all.find((i: { name: string }) => i.name === 'Original')
+    await app.inject({ method: 'POST', url: '/trpc/items.trash', headers: { cookie: adminCookie }, payload: { id: orig.id } })
+    await app.inject({ method: 'POST', url: '/trpc/items.create', headers: { cookie: adminCookie }, payload: { name: 'RowChanged', itemTypeId, locationId: null, quantity: 1 } })
+    expect(await itemNames(adminCookie)).toContain('RowChanged')
+    expect(await itemNames(adminCookie)).not.toContain('Original')
+
+    // ...then restore from the row, which validates without touching anything.
+    const start = await app.inject({ method: 'POST', url: `/backups/${id}/restore`, headers: { cookie: adminCookie } })
+    expect(start.statusCode).toBe(200)
+    const { preview, restoreId } = start.json()
+    expect(preview.itemCount).toBeGreaterThanOrEqual(1)
+    expect(typeof restoreId).toBe('string')
+    // Still diverged: validation applied nothing.
+    expect(await itemNames(adminCookie)).toContain('RowChanged')
+
+    // Confirming goes through the unchanged endpoint.
+    const restore = await app.inject({ method: 'POST', url: '/backup/restore', headers: { cookie: adminCookie }, payload: { restoreId } })
+    expect(restore.statusCode).toBe(200)
+    expect(restore.json()).toEqual({ ok: true })
+    expect(await itemNames(adminCookie)).toContain('Original')
+    expect(await itemNames(adminCookie)).not.toContain('RowChanged')
+
+    // The backup that was restored FROM still exists: metadata lives beside the
+    // files, so replacing homebox.db cannot erase the list (ADR-0006).
+    const list = await app.inject({ method: 'GET', url: '/backups', headers: { cookie: adminCookie } })
+    expect((list.json().backups as Array<{ id: string }>).some((b) => b.id === id)).toBe(true)
   })
 })
