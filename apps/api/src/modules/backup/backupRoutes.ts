@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs'
 import { writeFile, mkdtemp, rm } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
@@ -7,6 +8,7 @@ import { parseSessionCookie } from '../../context.js'
 import type { DbHolder } from '../../context.js'
 import { getSessionUser } from '../../auth/sessions.js'
 import { createBackup, validateBackup, applyRestore } from './service.js'
+import { archivePath, listBackups, sweepRunningToFailed, writeBackupMeta } from './store.js'
 
 // How long a validated-but-unconfirmed restore stays available before it is
 // treated as abandoned and its temp dir is cleaned up.
@@ -42,6 +44,17 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
     if (dest) void rm(dirname(dest), { recursive: true, force: true }).catch(() => {})
   }
 
+  // One create at a time: a create is a multi-megabyte tar plus a full uploads
+  // copy, and two at once only fight for the same disk. In-process, not a lock
+  // file — one process owns this directory (ADR-0006), which is also what makes
+  // the boot sweep below exact rather than a heuristic.
+  let creating = false
+
+  // Nothing can be mid-backup before this process starts, so any `running`
+  // sidecar on disk belongs to a process that died. Best-effort: a failure here
+  // must not stop the server from booting.
+  void sweepRunningToFailed(dataDir).catch(() => {})
+
   // Download a fresh backup archive. (Deleted in the next task — a stored
   // backup's own download route replaces it.)
   app.get('/backup', async (req, reply) => {
@@ -62,6 +75,47 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
     // cleanup failure must not break the response.
     stream.on('close', () => void rm(tmp, { recursive: true, force: true }).catch(() => {}))
     return reply.send(stream)
+  })
+
+  // Start a stored backup. Returns as soon as the record is durable — the tar
+  // itself runs in the background (see `runCreate`).
+  app.post('/backups', async (req, reply) => {
+    if (!admin(req, reply)) return
+    if (creating) return reply.code(409).send({ error: 'backup_in_progress' })
+    creating = true
+    const id = randomUUID()
+    const createdAt = new Date().toISOString()
+    try {
+      // Durable BEFORE the response: the row the client is handed must exist on
+      // disk, never be a projection of work that might not start.
+      await writeBackupMeta(dataDir, { id, status: 'running', createdAt })
+    } catch {
+      creating = false
+      return reply.code(500).send({ error: 'could not start backup' })
+    }
+    // ponytail: in-process promise, not a durable queue — if the API dies
+    // mid-backup the archive is lost and the boot sweep marks the row failed.
+    // Add a real worker only if backups must survive a restart (ADR-0006).
+    void runCreate(id, createdAt)
+    return { backup: { id, status: 'running', createdAt, sizeBytes: null } }
+  })
+
+  const runCreate = async (id: string, createdAt: string): Promise<void> => {
+    try {
+      await createBackup(dbHolder.current, dataDir, archivePath(dataDir, id))
+      await writeBackupMeta(dataDir, { id, status: 'completed', createdAt })
+    } catch (err) {
+      // The failure must be visible in the list, not just in a log.
+      await writeBackupMeta(dataDir, { id, status: 'failed', createdAt, error: (err as Error).message }).catch(() => {})
+    } finally {
+      creating = false
+    }
+  }
+
+  // List stored backups, newest first.
+  app.get('/backups', async (req, reply) => {
+    if (!admin(req, reply)) return
+    return { backups: await listBackups(dataDir) }
   })
 
   // Phase 1 — ingest + validate (non-destructive).

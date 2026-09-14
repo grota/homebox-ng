@@ -3,6 +3,7 @@ import { buildApp } from '../src/server'
 import { createDb, runMigrations } from '@homebox/db'
 import FormData from 'form-data'
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { promisify } from 'node:util'
 import { existsSync, chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
@@ -83,6 +84,16 @@ const getBackup = async (cookie: string) => {
   expect(res.statusCode).toBe(200)
   expect(res.headers['content-type']).toContain('application/gzip')
   return res.rawPayload
+}
+
+// Start a server-side backup and wait for the background job to finish.
+const createBackupRow = async (cookie: string): Promise<{ id: string }> => {
+  const res = await app.inject({ method: 'POST', url: '/backups', headers: { cookie } })
+  expect(res.statusCode).toBe(200)
+  const { backup } = res.json()
+  const archive = join(dataDir, 'backups', `${backup.id}.tar.gz`)
+  expect(await waitFor(() => existsSync(archive))).toBe(true)
+  return { id: backup.id as string }
 }
 
 const extract = async (buf: Buffer) => {
@@ -343,5 +354,79 @@ describe('backup & restore', () => {
       rawDb(svcDb).close()
       rmSync(root, { recursive: true, force: true })
     }
+  })
+
+  it('POST /backups stores an archive and flips its sidecar to completed', async () => {
+    const res = await app.inject({ method: 'POST', url: '/backups', headers: { cookie: adminCookie } })
+    expect(res.statusCode).toBe(200)
+    const { backup } = res.json()
+    expect(backup.status).toBe('running')
+    expect(backup.sizeBytes).toBeNull()
+    expect(backup.id).toMatch(/^[0-9a-f-]{36}$/)
+
+    // The row is durable before the response, so the sidecar already exists.
+    const metaFile = join(dataDir, 'backups', `${backup.id}.json`)
+    expect(existsSync(metaFile)).toBe(true)
+
+    // The background job lands the archive and rewrites the sidecar.
+    const archive = join(dataDir, 'backups', `${backup.id}.tar.gz`)
+    expect(await waitFor(() => existsSync(archive))).toBe(true)
+    expect(await waitFor(() => (JSON.parse(readFileSync(metaFile, 'utf8')) as { status: string }).status === 'completed')).toBe(true)
+
+    // And it is a real archive.
+    const dest = await extract(readFileSync(archive))
+    expect(integrityOk(join(dest, 'homebox.db'))).toBe(true)
+    expect(existsSync(join(dest, 'uploads'))).toBe(true)
+  })
+
+  it('GET /backups lists stored backups newest first with a size', async () => {
+    await createBackupRow(adminCookie)
+    const res = await app.inject({ method: 'GET', url: '/backups', headers: { cookie: adminCookie } })
+    expect(res.statusCode).toBe(200)
+    const { backups } = res.json()
+    expect(backups.length).toBeGreaterThanOrEqual(1)
+    expect(backups[0].status).toBe('completed')
+    expect(backups[0].sizeBytes).toBeGreaterThan(0)
+    const times = backups.map((b: { createdAt: string }) => b.createdAt)
+    expect([...times].sort().reverse()).toEqual(times)
+  })
+
+  it('refuses a second backup while one is already running', async () => {
+    const [a, b] = await Promise.all([
+      app.inject({ method: 'POST', url: '/backups', headers: { cookie: adminCookie } }),
+      app.inject({ method: 'POST', url: '/backups', headers: { cookie: adminCookie } }),
+    ])
+    // The first request holds the guard across real disk I/O, so the second
+    // always observes it set.
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409])
+  })
+
+  it('sweeps a leftover running sidecar to failed when the server boots', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'homebox-sweep-'))
+    const sweepDataDir = join(root, 'data')
+    const backups = join(sweepDataDir, 'backups')
+    mkdirSync(backups, { recursive: true })
+    const id = randomUUID()
+    const metaFile = join(backups, `${id}.json`)
+    writeFileSync(metaFile, JSON.stringify({ id, status: 'running', createdAt: new Date().toISOString() }))
+    const sweepDbPath = join(root, 'sweep.db')
+    const sweepDb = createDb(sweepDbPath)
+    runMigrations(sweepDb)
+    const sweepApp = buildApp({ db: sweepDb, dataDir: sweepDataDir, dbPath: sweepDbPath })
+    try {
+      await sweepApp.ready()
+      const flipped = await waitFor(() => (JSON.parse(readFileSync(metaFile, 'utf8')) as { status: string }).status === 'failed')
+      expect(flipped).toBe(true)
+    } finally {
+      await sweepApp.close()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('gates the backup list routes: 401 unauthenticated, 403 non-admin', async () => {
+    expect((await app.inject({ method: 'POST', url: '/backups' })).statusCode).toBe(401)
+    expect((await app.inject({ method: 'GET', url: '/backups' })).statusCode).toBe(401)
+    expect((await app.inject({ method: 'POST', url: '/backups', headers: { cookie: nonAdminCookie } })).statusCode).toBe(403)
+    expect((await app.inject({ method: 'GET', url: '/backups', headers: { cookie: nonAdminCookie } })).statusCode).toBe(403)
   })
 })
