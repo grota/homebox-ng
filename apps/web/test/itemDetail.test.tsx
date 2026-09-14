@@ -250,6 +250,39 @@ describe('item surface', () => {
     expect(mocks.navigate).toHaveBeenCalledWith('/items')
   })
 
+  // The edit form replaces the surface, so Escape while it is up has to close the
+  // *form* — the same thing its own Close button does. Before this, the surface's
+  // Escape ran instead and took the user back to the catalog, losing the item they
+  // were editing, which is exactly the asymmetry that made it a bug: the Close
+  // button and Escape did different things.
+  it('closes the edit form on Escape without leaving the surface', () => {
+    renderDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item' }))
+    expect(screen.getByLabelText('Name')).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
+    expect(mocks.navigate).not.toHaveBeenCalled()
+    // Still the same item: the surface came back rather than being navigated away.
+    expect(screen.getByTestId('photo-viewer')).toBeInTheDocument()
+  })
+
+  // The photo keys go quiet with the form: there is no photo on screen to move
+  // between, and paging the carousel underneath an edit is nobody's intent.
+  it('ignores the photo keys while the edit form is open', () => {
+    renderDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item' }))
+
+    fireEvent.keyDown(window, { key: 'PageDown' })
+
+    // Asserted after closing the form, deliberately: while it is up the counter is
+    // not in the DOM either way, so the same assertion made there would pass
+    // whether or not the key went through.
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.getByText('1 of 2')).toBeInTheDocument()
+  })
+
   it('deletes the photo on screen after confirmation', () => {
     renderDetail()
     fireEvent.click(screen.getByRole('button', { name: 'Delete photo' }))

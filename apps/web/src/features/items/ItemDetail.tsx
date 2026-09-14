@@ -94,13 +94,22 @@ export function ItemDetail() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (document.querySelector('[role="dialog"]')) return
+      // The edit form replaces the surface, so while it is up Escape belongs to
+      // *it* — it does the same thing its own Close button does. Without this the
+      // surface's Escape ran instead and took the user back to the catalog,
+      // losing the item they were editing. The photo keys go quiet with it: there
+      // is no photo on screen to move between.
+      if (editingItem) {
+        if (event.key === 'Escape') setEditingItem(false)
+        return
+      }
       if (event.key === 'Escape') close()
       else if (event.key === 'PageDown' && canNext) setIndex(index + 1)
       else if (event.key === 'PageUp' && canPrevious) setIndex(index - 1)
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [close, index, canNext, canPrevious, setIndex])
+  }, [close, editingItem, index, canNext, canPrevious, setIndex])
 
   // Moving to a photo that does not exist yet would set the index past the end,
   // and the clamp would land on nothing. Wait for the refetch that follows the

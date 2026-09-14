@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { hexColor } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
-import { Badge, Button, Card, Field, hoverScrim, Input, PageHeader, Pagination } from '../../ui'
+import { Badge, Button, Card, cn, Field, hoverScrim, Input, PageHeader, Pagination } from '../../ui'
 import { ItemForm } from './ItemForm'
 
 // Sent explicitly rather than left to the server's default, so the request that
@@ -201,6 +201,10 @@ export function ItemsPage() {
                       key={f.id}
                       size="sm"
                       variant={itemTypeId === f.id ? 'primary' : 'ghost'}
+                      // `aria-pressed` is what a facet chip actually is — a toggle
+                      // — and it is also the only way a test can see the selection
+                      // without reading a Tailwind class back out.
+                      aria-pressed={itemTypeId === f.id}
                       onClick={() => setTypeFilter(itemTypeId === f.id ? undefined : f.id)}
                     >
                       {f.name} ({f.count})
@@ -225,7 +229,15 @@ export function ItemsPage() {
                         key={f.id}
                         size="sm"
                         variant="ghost"
-                        className="relative group"
+                        aria-pressed={tagIds.includes(f.id)}
+                        // A ring rather than the `primary` variant the other facets
+                        // use: this chip's background is the *tag's own colour*, so
+                        // swapping it for the accent would hide the one thing the
+                        // chip exists to show. A ring is a box-shadow, so unlike a
+                        // `border-accent` class it also cannot lose to the variant's
+                        // `border-transparent` — `cn` is a plain join and cannot
+                        // resolve same-property conflicts.
+                        className={cn('relative group', tagIds.includes(f.id) && 'ring-2 ring-accent')}
                         style={color ? { background: color } : undefined}
                         onClick={() => toggleTag(f.id)}
                       >
@@ -248,19 +260,51 @@ export function ItemsPage() {
                 </div>
               )}
 
-              {facets.locations.length > 0 && (
+              {/* Shown when there is a location to pick *or* one already chosen.
+                  The chip list holds the selected location's children, so at a
+                  leaf it is empty — and gating this whole block on that list
+                  deleted the section the moment you filtered, taking the path and
+                  the way back to "All locations" with it. Which is precisely the
+                  "choosing a location gives no feedback" this fixes. */}
+              {(facets.locations.length > 0 || locationId != null) && (
                 <div className="flex flex-wrap gap-2">
                   <h2 className="w-full mb-0">Locations</h2>
-                  <Button size="sm" variant="ghost" onClick={() => setLocationFilter(undefined)}>
+                  <Button
+                    size="sm"
+                    variant={locationId == null ? 'primary' : 'ghost'}
+                    aria-pressed={locationId == null}
+                    onClick={() => setLocationFilter(undefined)}
+                  >
                     All locations
                   </Button>
-                  {breadcrumb.map((loc) => (
-                    <Button key={loc.id} size="sm" variant="ghost" onClick={() => setLocationFilter(loc.id)}>
-                      {loc.name}
-                    </Button>
+                  {/* The path down to what is selected, root first, ending in the
+                      selection itself — which is the *only* place it appears: the
+                      chip list below shows the selected location's **children**
+                      (that is the drill-down), so without this the current
+                      location would be nowhere on the page. Ancestors are plain
+                      and clickable to go back up; the last chip carries the
+                      selection's accent. */}
+                  {breadcrumb.map((loc, i) => (
+                    <span key={loc.id} className="inline-flex items-center gap-2">
+                      {i > 0 && <span aria-hidden className="text-text-muted">›</span>}
+                      <Button
+                        size="sm"
+                        variant={loc.id === locationId ? 'primary' : 'ghost'}
+                        aria-pressed={loc.id === locationId}
+                        onClick={() => setLocationFilter(loc.id)}
+                      >
+                        {loc.name}
+                      </Button>
+                    </span>
                   ))}
                   {facets.locations.map((f) => (
-                    <Button key={f.id} size="sm" variant="ghost" onClick={() => setLocationFilter(f.id)}>
+                    <Button
+                      key={f.id}
+                      size="sm"
+                      variant={locationId === f.id ? 'primary' : 'ghost'}
+                      aria-pressed={locationId === f.id}
+                      onClick={() => setLocationFilter(f.id)}
+                    >
                       {f.name} ({f.count})
                     </Button>
                   ))}
@@ -295,15 +339,26 @@ export function ItemsPage() {
                 <Card key={item.id} padding="none" className="overflow-hidden hover:border-text-muted">
                   <Link to={`/items/${item.id}`} aria-label={item.name} className="block p-3 no-underline text-inherit">
                     {photo?.thumbPath ? (
-                      <img
-                        src={'/file/' + photo.thumbPath}
-                        alt=""
-                        className="mb-3 w-full h-32 object-cover rounded-md"
-                      />
+                      <div className="relative mb-3">
+                        <img
+                          src={'/file/' + photo.thumbPath}
+                          alt=""
+                          className="w-full h-32 object-cover rounded-md"
+                        />
+                        {/* How many photos there are to look at, only when there is
+                            more than one. It reads "1/" because a card shows the
+                            primary, and the primary is position 1 of the order the
+                            surface uses — so this is the number you land on when
+                            you open the card. */}
+                        {(item.images?.length ?? 0) > 1 && (
+                          <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white tabular-nums">
+                            1/{item.images.length}
+                          </span>
+                        )}
+                      </div>
                     ) : null}
                     <h2 className="mt-0">{item.name}</h2>
                     <p>{item.location?.name}</p>
-                    <p>{item.type?.name}</p>
                     {item.tags.map((tag) => (
                       <Badge key={tag.id} color={tag.color} className="mr-1">{tag.name}</Badge>
                     ))}

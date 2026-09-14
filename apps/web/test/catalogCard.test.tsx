@@ -91,12 +91,25 @@ describe('catalog card click targets', () => {
     // name sits directly beneath it, so it has no `img` role to query.
     expect(itemLink().querySelector('img')).toHaveAttribute('src', expect.stringContaining('/file/'))
 
-    // Location, type, tags and the search snippet are card content, so they ride
-    // inside the link rather than sitting next to it as dead space.
-    for (const text of ['Living Room', 'Lighting', 'vintage']) {
+    // Location, tags and the search snippet are card content, so they ride inside
+    // the link rather than sitting next to it as dead space.
+    //
+    // The item type is deliberately absent: a card is for recognising a thing, and
+    // the type is a classification you look at once you have opened it.
+    for (const text of ['Living Room', 'vintage']) {
       expect(within(itemLink()).getByText(text)).toBeInTheDocument()
     }
+    expect(within(itemLink()).queryByText('Lighting')).not.toBeInTheDocument()
     expect(within(itemLink()).getByTestId('item-snippet')).toBeInTheDocument()
+  })
+
+  // How many photos there are to look at. It reads "1/" because a card shows the
+  // primary and the primary is position 1 of the order the surface uses — so the
+  // number here is the one you land on when you open the card.
+  it('badges the photo count when the item has more than one photo', () => {
+    renderCatalog()
+
+    expect(within(itemLink()).getByText('1/2')).toBeInTheDocument()
   })
 
   // Marking a primary exists *for* the card image — "one marked primary (used as

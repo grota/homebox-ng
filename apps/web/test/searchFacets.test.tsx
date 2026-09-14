@@ -94,6 +94,27 @@ describe('items search + facets', () => {
     tagFacets = [{ id: 1, name: 'vintage', color: null, count: 1 }]
   })
 
+  // A facet chip is a toggle, so the selected one has to *look* selected. Picking
+  // a tag or a location used to give no feedback beyond the results changing. All
+  // three dimensions say it the same way, and `aria-pressed` is also the only
+  // assertion that does not depend on reading a Tailwind class back out.
+  it('marks the selected facet in each dimension, and only the selected one', () => {
+    renderPage(['/items?q=lamp&typeId=1&locationId=1&tagIds=1'])
+
+    expect(screen.getByRole('button', { name: 'Lighting (1)' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'vintage (1)' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Living Room (1)' })).toHaveAttribute('aria-pressed', 'true')
+    // "All locations" is the selection only while no location is chosen.
+    expect(screen.getByRole('button', { name: 'All locations' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('treats "All locations" as the selected location when none is chosen', () => {
+    renderPage(['/items?q=lamp'])
+
+    expect(screen.getByRole('button', { name: 'All locations' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Living Room (1)' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('drives the query from URL params and renders a search box + facets', async () => {
     renderPage(['/items?q=lamp&typeId=1'])
 

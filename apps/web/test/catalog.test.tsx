@@ -135,5 +135,8 @@ describe('catalog pages', () => {
     expect(link).toHaveAttribute('href', '/items/1')
     // Decorative (`alt=""`), so it is queried by selector rather than by role.
     expect(link.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/file/'))
+    // One photo, so there is no count to show: "1/1" is noise on every card with a
+    // single photo, which is most of them.
+    expect(within(link).queryByText(/^\d+\/\d+$/)).not.toBeInTheDocument()
   })
 })
