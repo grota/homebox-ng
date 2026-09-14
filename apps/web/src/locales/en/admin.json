@@ -40,7 +40,25 @@
     },
     "backup": {
       "title": "Backup & restore",
-      "download": "Download backup",
+      "create": "Create backup",
+      "created": "Created",
+      "status": "Status",
+      "size": "Size",
+      "actions": "Actions",
+      "download": "Download",
+      "restore": "Restore",
+      "delete": "Delete",
+      "empty": "No backups yet.",
+      "started": "Backup started — refresh to see it finish.",
+      "deleted": "Backup deleted.",
+      "createFailed": "Could not start the backup.",
+      "deleteFailed": "Delete failed.",
+      "loadFailed": "Could not load backups.",
+      "statusLabel": {
+        "running": "running",
+        "completed": "completed",
+        "failed": "failed"
+      },
       "uploadLabel": "Restore from a backup archive",
       "preview": "Backup preview",
       "previewDetail": "{users} users · {items} items · {uploads} uploads · max {mb} MB",
@@ -49,8 +67,7 @@
       "replaceWarning": "This replaces all current data.",
       "restored": "Restore complete.",
       "restoreFailed": "Restore failed.",
-      "uploadFailed": "Upload failed.",
-      "downloadFailed": "Download failed."
+      "uploadFailed": "Upload failed."
     },
     "system": {
       "title": "System",
