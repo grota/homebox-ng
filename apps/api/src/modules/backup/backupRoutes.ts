@@ -62,9 +62,13 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
     const { id } = req.params as { id: string }
     if (!isBackupId(id)) return reply.code(404).send({ error: 'not found' })
     const meta = await readBackupMeta(dataDir, id)
-    // Only a completed backup has an archive — `409`, never a 404, so a row that
-    // exists but is not ready is distinguishable from one that never did.
-    if (!meta || meta.status !== 'completed') return reply.code(409).send({ error: 'backup not ready' })
+    // The id is already well-formed, so a missing sidecar can only mean the row
+    // never existed: that is a 404, matching `DELETE`. A row that DOES exist but
+    // is not ready is a 409 instead, so "still running" never reads as "gone".
+    if (!meta) return reply.code(404).send({ error: 'not found' })
+    // Only a completed backup has an archive — 409, not 404: the row exists, so
+    // the client should retry rather than conclude the backup is gone.
+    if (meta.status !== 'completed') return reply.code(409).send({ error: 'backup not ready' })
     const archive = archivePath(dataDir, id)
     if (!existsSync(archive)) return reply.code(409).send({ error: 'archive missing' })
     // `createdAt` is an ISO string; the filename gets the timestamp the old

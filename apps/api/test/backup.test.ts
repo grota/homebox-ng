@@ -330,6 +330,15 @@ describe('backup & restore', () => {
     expect((await app.inject({ method: 'GET', url: `/backups/${orphan}/download`, headers: { cookie: adminCookie } })).statusCode).toBe(409)
   })
 
+  it('answers 404 for an unknown id, never 409: "never existed" is not "not ready"', async () => {
+    // A well-formed UUID with no sidecar at all: `isBackupId` passes, so this is
+    // "unknown", not "malformed" — and it must not be reported as the 409 that
+    // means "exists but is not completed", which is the whole point of the gating.
+    const unknown = randomUUID()
+    expect((await app.inject({ method: 'GET', url: `/backups/${unknown}/download`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'DELETE', url: `/backups/${unknown}`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
+  })
+
   it('deletes a stored backup, removing both files', async () => {
     const { id } = await createBackupRow(adminCookie)
     const res = await app.inject({ method: 'DELETE', url: `/backups/${id}`, headers: { cookie: adminCookie } })
