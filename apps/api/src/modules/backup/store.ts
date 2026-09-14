@@ -48,10 +48,23 @@ export const writeBackupMeta = async (dataDir: string, meta: BackupMeta): Promis
   await rename(tmp, dest)
 }
 
+// A sidecar that parses but is not the shape we wrote (hand-edited, truncated,
+// copied from elsewhere) must not reach callers that trust its fields: the
+// list's `createdAt.localeCompare` sort and the download's `createdAt.slice`
+// would both throw, turning one bad row into a 500 for the whole route. One
+// check here — the single function every caller routes through — rather than a
+// guard per call site. Only the fields actually dereferenced are checked.
+const isBackupMeta = (value: unknown): value is BackupMeta => {
+  const meta = value as Partial<BackupMeta> | null
+  return !!meta && typeof meta === 'object' && typeof meta.createdAt === 'string'
+    && (meta.status === 'running' || meta.status === 'completed' || meta.status === 'failed')
+}
+
 export const readBackupMeta = async (dataDir: string, id: string): Promise<BackupMeta | null> => {
   if (!isBackupId(id)) return null
   try {
-    return JSON.parse(await readFile(metaPath(dataDir, id), 'utf8')) as BackupMeta
+    const parsed: unknown = JSON.parse(await readFile(metaPath(dataDir, id), 'utf8'))
+    return isBackupMeta(parsed) ? parsed : null
   } catch {
     return null
   }

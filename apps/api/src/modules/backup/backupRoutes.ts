@@ -72,8 +72,10 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
     const archive = archivePath(dataDir, id)
     if (!existsSync(archive)) return reply.code(409).send({ error: 'archive missing' })
     // `createdAt` is an ISO string; the filename gets the timestamp the old
-    // fixed name never carried.
-    const stamp = meta.createdAt.slice(0, 19).replace(/:/g, '-')
+    // fixed name never carried. `createdAt` is UTC (`toISOString`), so the
+    // trailing `Z` says so — without it a user in another timezone would read
+    // the stamp as local time.
+    const stamp = `${meta.createdAt.slice(0, 19).replace(/:/g, '-')}Z`
     reply.header('Content-Type', 'application/gzip')
     reply.header('Content-Disposition', `attachment; filename="homebox-backup-${stamp}.tar.gz"`)
     return reply.send(createReadStream(archive))
@@ -129,6 +131,21 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
     }
   })
 
+  // Declared BEFORE the route that references it: a `const` arrow is in the
+  // temporal dead zone until its line runs, and a ReferenceError thrown from the
+  // handler would fire after `creating = true`, deadlocking every future create.
+  const runCreate = async (id: string, createdAt: string): Promise<void> => {
+    try {
+      await createBackup(dbHolder.current, dataDir, archivePath(dataDir, id))
+      await writeBackupMeta(dataDir, { id, status: 'completed', createdAt })
+    } catch (err) {
+      // The failure must be visible in the list, not just in a log.
+      await writeBackupMeta(dataDir, { id, status: 'failed', createdAt, error: (err as Error).message }).catch(() => {})
+    } finally {
+      creating = false
+    }
+  }
+
   // Start a stored backup. Returns as soon as the record is durable — the tar
   // itself runs in the background (see `runCreate`).
   app.post('/backups', async (req, reply) => {
@@ -151,18 +168,6 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
     void runCreate(id, createdAt)
     return { backup: { id, status: 'running', createdAt, sizeBytes: null } }
   })
-
-  const runCreate = async (id: string, createdAt: string): Promise<void> => {
-    try {
-      await createBackup(dbHolder.current, dataDir, archivePath(dataDir, id))
-      await writeBackupMeta(dataDir, { id, status: 'completed', createdAt })
-    } catch (err) {
-      // The failure must be visible in the list, not just in a log.
-      await writeBackupMeta(dataDir, { id, status: 'failed', createdAt, error: (err as Error).message }).catch(() => {})
-    } finally {
-      creating = false
-    }
-  }
 
   // List stored backups, newest first.
   app.get('/backups', async (req, reply) => {

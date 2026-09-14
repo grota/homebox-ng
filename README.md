@@ -163,7 +163,7 @@ A fresh install has no users, so the app routes to `/setup` — create the first
 | `SESSION_SECRET` | **required** | Signs session cookies |
 | `PORT` | `3000` | API/SPA listen port |
 | `DATABASE_PATH` | `./data/homebox.db` | SQLite file |
-| `DATA_DIR` | `./data` (repo root) | Uploads + model cache root |
+| `DATA_DIR` | `./data` (repo root) | Uploads, stored backups (`backups/`) + model cache root |
 | `DETECTION_MOCK` | (unset) | `1` registers the deterministic mock detection provider |
 | `GEMINI_API_KEY` | (unset) | Enables the `google` detection provider |
 | `OPENAI_API_KEY` | (unset) | Enables the `openai` detection provider |

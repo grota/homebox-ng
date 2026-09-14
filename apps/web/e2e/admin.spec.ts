@@ -125,9 +125,19 @@ test('admin creates a stored backup, downloads it, and restores it', async ({ pa
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(page.getByText('Backup preview')).toBeHidden()
 
-  // Delete is the row's only data-removing action. It drops the row here, and
-  // the archive + sidecar on disk (asserted in the API suite).
+  // Delete is the row's only data-removing action, and it is irreversible — so
+  // it asks first. Register the handler only now (after the earlier steps) so no
+  // other dialog can silently satisfy it, and assert the dialog actually
+  // appeared rather than merely tolerating it. It drops the row here, and the
+  // archive + sidecar on disk (asserted in the API suite).
+  const dialogs: string[] = []
+  page.on('dialog', (dialog) => {
+    dialogs.push(dialog.message())
+    void dialog.accept()
+  })
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  expect(dialogs).toHaveLength(1)
+  expect(dialogs[0]).toContain('Delete this backup?')
   await expect(page.getByRole('cell', { name: 'completed' })).toBeHidden()
   await expect(page.getByRole('status')).toHaveText('Backup deleted.')
 

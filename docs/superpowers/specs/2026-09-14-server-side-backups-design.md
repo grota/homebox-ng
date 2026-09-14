@@ -35,8 +35,11 @@ The existing "restore from an uploaded archive" path is unchanged.
 
 ## Storage
 
-`data/backups/`, created on boot the same way `data/uploads/` is. Each backup is
-two files:
+`data/backups/`, created lazily by `writeBackupMeta` — the first write makes the
+directory. The readers tolerate its absence rather than depending on a boot-time
+mkdir: `listBackups` and `sweepRunningToFailed` return empty on ENOENT, so a
+fresh install that has never taken a backup needs no directory at all. Each
+backup is two files:
 
 ```
 data/backups/<id>.tar.gz    the archive (homebox.db + uploads/, unchanged layout)
@@ -53,8 +56,11 @@ data/backups/<id>.json      sidecar metadata
 `error` is present only on `failed`.
 
 **Size is never stored.** It is read from `stat()` at list time, so it cannot
-disagree with what is actually on disk. A `failed` backup has no archive and
-therefore no size.
+disagree with what is actually on disk. A `failed` backup normally has no
+archive, and so no size (`—` in the table) — but a create that died mid-tar can
+leave a partial `.tar.gz` behind, and that partial file's size IS reported. Size
+is a fact read from disk, not a claim derived from status, and a failed row's
+leftover bytes are exactly what an admin managing disk needs to see.
 
 **The two files must not be allowed to disagree silently.** Two files per backup
 can drift if one is deleted by hand. A sidecar claiming `completed` whose
@@ -164,6 +170,10 @@ No schema change and no migration.
   uses a `<ul>`). Built inline in the tab: a shared `ui/Table.tsx` for a single
   consumer is not worth its own module.
 - Row actions **Download · Restore · Delete**, matching the approved mockup.
+  Delete confirms first (`window.confirm`, the same pattern as every other
+  destructive action in the app) and reports the `409` on a `running` row as
+  "still running" rather than as a failure. A `failed` row renders the sidecar's
+  `error` text under its status, so the reason is visible without the server log.
 - The upload `<Field>` and its preview `<Card>` are untouched.
 - Data is refetched on mount and after each mutation. No timer.
 
@@ -185,6 +195,12 @@ status labels, and the started/deleted/delete-failed messages.
   attempt rejected as `404`
 - full create → list → restore-from-row → confirm round trip
 - `401`/`403` gating on every new route
+
+The create-failure case ("a create that fails leaves a `failed` sidecar") lives
+in its own file, `apps/api/test/backupCreateFailure.test.ts`: it `vi.mock`s
+`createBackup` to reject, which is the only way to reach the route's own catch
+deterministically — driving it end-to-end would need the live DB handle the auth
+check reads.
 
 `apps/web/e2e/admin.spec.ts` — updated for the new flow: create, row appears,
 download from the row, then the existing upload-a-file restore.

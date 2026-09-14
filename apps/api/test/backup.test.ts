@@ -335,7 +335,7 @@ describe('backup & restore', () => {
     const res = await app.inject({ method: 'GET', url: `/backups/${id}/download`, headers: { cookie: adminCookie } })
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toContain('application/gzip')
-    expect(res.headers['content-disposition']).toMatch(/attachment; filename="homebox-backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.tar\.gz"/)
+    expect(res.headers['content-disposition']).toMatch(/attachment; filename="homebox-backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.tar\.gz"/)
     const dest = await extract(res.rawPayload)
     expect(integrityOk(join(dest, 'homebox.db'))).toBe(true)
   })
@@ -566,5 +566,23 @@ describe('backup & restore', () => {
     // files, so replacing homebox.db cannot erase the list (ADR-0006).
     const list = await app.inject({ method: 'GET', url: '/backups', headers: { cookie: adminCookie } })
     expect((list.json().backups as Array<{ id: string }>).some((b) => b.id === id)).toBe(true)
+  })
+
+  it('rejects a stored restore whose archive is unreadable, leaving the DB untouched', async () => {
+    const { id } = await createBackupRow(adminCookie)
+    // Corrupt the archive in place. The sidecar still says `completed` and the
+    // file still exists, so this passes every gate ABOVE validation — only
+    // `validateBackup` can catch it. Same 400 class as the upload path, which is
+    // covered; this branch is not.
+    writeFileSync(join(dataDir, 'backups', `${id}.tar.gz`), 'this is not a gzip archive')
+    const dirsBefore = tmpDirCount('homebox-restore-')
+    const itemsBefore = (await listItems(adminCookie)).json()?.result?.data?.items?.length
+    const res = await app.inject({ method: 'POST', url: `/backups/${id}/restore`, headers: { cookie: adminCookie } })
+    expect(res.statusCode).toBe(400)
+    expect(res.json()).toEqual({ error: 'invalid backup archive' })
+    const itemsAfter = (await listItems(adminCookie)).json()?.result?.data?.items?.length
+    expect(itemsAfter).toBe(itemsBefore)
+    // A rejected archive must not leak its temp dir (extraction + mkdtemp base).
+    expect(await waitFor(() => tmpDirCount('homebox-restore-') === dirsBefore)).toBe(true)
   })
 })

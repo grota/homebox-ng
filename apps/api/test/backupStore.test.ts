@@ -45,6 +45,31 @@ describe('backup store', () => {
     expect(await readBackupMeta(dataDir(), '../../etc/passwd')).toBeNull()
   })
 
+  it('treats a sidecar that parses but is not a BackupMeta as absent', async () => {
+    // Valid JSON, wrong shape: no `createdAt`. Unguarded, the list's
+    // `createdAt.localeCompare` sort sees an undefined timestamp — it either
+    // throws (500-ing GET /backups entirely, rather than degrading one row) or
+    // emits a row with no date, depending on which argument V8 hands the
+    // comparator. The assertion is on the outcome, which is order-independent.
+    // A second, well-formed row is planted too: `Array.sort` never runs its
+    // comparator for a single element, so one row alone could never trip this.
+    const id = randomUUID()
+    const good = randomUUID()
+    mkdirSync(backupsDir(dataDir()), { recursive: true })
+    writeFileSync(join(backupsDir(dataDir()), `${id}.json`), JSON.stringify({ id, status: 'completed' }))
+    plantArchive(good)
+    await writeBackupMeta(dataDir(), { id: good, status: 'completed', createdAt: '2026-09-14T00:00:00.000Z' })
+    expect(await readBackupMeta(dataDir(), id)).toBeNull()
+    expect((await listBackups(dataDir())).map((r) => r.id)).toEqual([good])
+  })
+
+  it('treats a sidecar with an unknown status as absent', async () => {
+    const id = randomUUID()
+    mkdirSync(backupsDir(dataDir()), { recursive: true })
+    writeFileSync(join(backupsDir(dataDir()), `${id}.json`), JSON.stringify({ id, status: 'finished', createdAt: '2026-09-14T00:00:00.000Z' }))
+    expect(await readBackupMeta(dataDir(), id)).toBeNull()
+  })
+
   it('lists nothing when the store does not exist yet', async () => {
     expect(await listBackups(dataDir())).toEqual([])
   })

@@ -86,11 +86,21 @@ export function AdminBackupTab() {
   }
 
   const remove = async (row: BackupRow) => {
+    // Deleting removes the only copy of the archive, and the three row actions
+    // sit adjacent — so a misclick aimed at Restore or Download can land here.
+    // Same `window.confirm` the other destructive actions in this app use.
+    if (!window.confirm(t('admin.backup.deleteConfirm'))) return
     setBusy(true)
     setError(null)
     setMessage(null)
     try {
       const res = await fetch(`/backups/${row.id}`, { method: 'DELETE' })
+      // A `running` row is refused (409), which is not a failure: say so rather
+      // than reporting that the delete failed when nothing did.
+      if (res.status === 409) {
+        setError(t('admin.backup.deleteInProgress'))
+        return
+      }
       if (!res.ok) throw new Error('bad status')
       setMessage(t('admin.backup.deleted'))
       await load()
@@ -194,7 +204,13 @@ export function AdminBackupTab() {
               return (
                 <tr key={row.id} className="border-b border-border">
                   <td className="py-2">{new Date(row.createdAt).toLocaleString()}</td>
-                  <td className="py-2">{t(`admin.backup.statusLabel.${row.status}`)}</td>
+                  <td className="py-2">
+                    {t(`admin.backup.statusLabel.${row.status}`)}
+                    {/* The sidecar records why a create failed (ADR-0006:
+                        diagnosable failures are the point of the sidecar), so
+                        show it — otherwise the admin has to read the server. */}
+                    {row.error && <span className="block text-text-muted text-xs">{row.error}</span>}
+                  </td>
                   <td className="py-2">{formatSize(row.sizeBytes)}</td>
                   <td className="py-2">
                     <div className="flex justify-end gap-3">

@@ -51,8 +51,10 @@
       "empty": "No backups yet.",
       "started": "Backup started — refresh to see it finish.",
       "deleted": "Backup deleted.",
+      "deleteConfirm": "Delete this backup? The archive is removed from the server and cannot be recovered.",
       "createFailed": "Could not start the backup.",
       "deleteFailed": "Delete failed.",
+      "deleteInProgress": "This backup is still running — delete it once it finishes.",
       "loadFailed": "Could not load backups.",
       "statusLabel": {
         "running": "running",
