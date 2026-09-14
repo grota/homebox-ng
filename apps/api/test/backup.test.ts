@@ -86,13 +86,21 @@ const getBackup = async (cookie: string) => {
   return res.rawPayload
 }
 
-// Start a server-side backup and wait for the background job to finish.
+// Start a server-side backup and wait for the background job to finish. "Finish"
+// is the sidecar flipping to `completed`, which happens only after the tar lands
+// — not `existsSync(archive)`, which is true from the START of the tar because
+// `createBackup` writes straight to the destination (no temp + rename). Waiting
+// on the archive would leave the sidecar still `running` (breaking the caller's
+// assertion) and the create guard still set (breaking the next test's 409).
+// Observing `completed` also proves the guard is clear: `creating = false` runs
+// in the same microtask as the completing `writeBackupMeta`, so no event-loop
+// turn can slip in between.
 const createBackupRow = async (cookie: string): Promise<{ id: string }> => {
   const res = await app.inject({ method: 'POST', url: '/backups', headers: { cookie } })
   expect(res.statusCode).toBe(200)
   const { backup } = res.json()
-  const archive = join(dataDir, 'backups', `${backup.id}.tar.gz`)
-  expect(await waitFor(() => existsSync(archive))).toBe(true)
+  const metaFile = join(dataDir, 'backups', `${backup.id}.json`)
+  expect(await waitFor(() => (JSON.parse(readFileSync(metaFile, 'utf8')) as { status: string }).status === 'completed')).toBe(true)
   return { id: backup.id as string }
 }
 
