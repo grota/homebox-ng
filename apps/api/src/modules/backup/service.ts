@@ -32,6 +32,11 @@ export const createBackup = async (db: DrizzleDb, dataDir: string, destPath: str
     // layout stable.
     await mkdir(join(staging, 'uploads'), { recursive: true }).catch(() => {})
     await exec('tar', ['-czf', destPath, 'homebox.db', 'uploads'], { cwd: staging })
+  } catch (err) {
+    // All-or-nothing: a partial archive (tar failed mid-write — ENOSPC, say)
+    // must not survive at `destPath` for a later reader.
+    await rm(destPath, { force: true }).catch(() => {})
+    throw err
   } finally {
     // Best-effort: the archive is already at `destPath`, so a staging cleanup
     // failure must not fail the backup.

@@ -4,7 +4,7 @@ import { createDb, runMigrations } from '@homebox/db'
 import FormData from 'form-data'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -311,6 +311,33 @@ describe('backup & restore', () => {
       expect(integrityOk(join(extracted, 'homebox.db'))).toBe(true)
       expect(existsSync(join(extracted, 'uploads'))).toBe(true)
       // Staging is disposable: the tar lands at destPath, tmp is emptied.
+      expect(await waitFor(() => tmpDirCount('homebox-backup-') === before)).toBe(true)
+    } finally {
+      rawDb(svcDb).close()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('createBackup leaves nothing at destPath when the archive cannot be written', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'homebox-svc-'))
+    const srcData = join(root, 'data')
+    mkdirSync(srcData, { recursive: true })
+    const svcDb = createDb(join(root, 'svc.db'))
+    runMigrations(svcDb)
+    try {
+      const before = tmpDirCount('homebox-backup-')
+      // An unwritable destination: `tar` opens (and would create) the archive
+      // file before writing members, so this is the ENOSPC-shaped failure a real
+      // stored backup can hit — one that happens AFTER the destination exists. A
+      // nonexistent parent dir would not do: `tar` refuses before creating
+      // anything there, so nothing could be left behind either way.
+      const dest = join(root, 'out.tar.gz')
+      writeFileSync(dest, '')
+      chmodSync(dest, 0o000)
+      await expect(createBackup(svcDb, srcData, dest)).rejects.toThrow()
+      // All-or-nothing: a truncated archive must not survive for a later reader.
+      expect(existsSync(dest)).toBe(false)
+      // Staging is disposable on the failure path too.
       expect(await waitFor(() => tmpDirCount('homebox-backup-') === before)).toBe(true)
     } finally {
       rawDb(svcDb).close()
