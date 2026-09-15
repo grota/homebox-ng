@@ -176,6 +176,9 @@ const drag = (canvas: HTMLElement, from: { x: number; y: number }, to: { x: numb
   fireEvent.pointerUp(canvas, { pointerId: 1, clientX: to.x, clientY: to.y })
 }
 
+// The scale out of the image wrapper's `translate(...) scale(...)` style.
+const scaleOf = (wrapper: HTMLElement) => Number(wrapper.style.transform.match(/scale\(([\d.]+)\)/)![1])
+
 describe('ManualUnpackModal', () => {
   it('offers no submit until something is drawn', () => {
     open()
@@ -384,5 +387,64 @@ describe('ManualUnpackModal', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('not a decodable image')
     // Still there, with the work intact.
     expect(screen.getByPlaceholderText('Item name')).toBeInTheDocument()
+  })
+
+  // The phone report this pins: the canvas has `touch-action: none`, so the
+  // browser never turns two fingers into page zoom — if the modal does not
+  // implement the pinch, nobody does.
+  it('zooms with a two-finger pinch', () => {
+    const { canvas } = open()
+    const wrapper = screen.getByTestId('manual-unpack-image')
+
+    const before = scaleOf(wrapper)
+    fireEvent.pointerDown(canvas, { pointerId: 1, button: 0, clientX: 200, clientY: 100 })
+    fireEvent.pointerDown(canvas, { pointerId: 2, button: 0, clientX: 300, clientY: 100 })
+    fireEvent.pointerMove(canvas, { pointerId: 2, buttons: 1, clientX: 350, clientY: 100 })
+
+    expect(scaleOf(wrapper)).toBeGreaterThan(before)
+  })
+
+  // The second finger lands mid-draw more often than not — a box half-drawn by
+  // the first finger must not be committed by the pinch's pointerups.
+  it('discards the box a finger was drawing when a second finger lands', () => {
+    const { canvas } = open()
+    fireEvent.pointerDown(canvas, { pointerId: 1, button: 0, clientX: 130, clientY: 112 })
+    fireEvent.pointerMove(canvas, { pointerId: 1, buttons: 1, clientX: 230, clientY: 212 })
+
+    fireEvent.pointerDown(canvas, { pointerId: 2, button: 0, clientX: 300, clientY: 150 })
+    fireEvent.pointerUp(canvas, { pointerId: 2 })
+    fireEvent.pointerUp(canvas, { pointerId: 1 })
+
+    expect(screen.queryByPlaceholderText('Item name')).not.toBeInTheDocument()
+  })
+
+  // The desktop report this pins: the handles are authored in image pixels,
+  // which the transform then scales — 12 units was ~3px on a phone photo at
+  // fit, and every one of them showed the generic hand.
+  it('gives each handle its axis cursor, at a screen-constant size', async () => {
+    const { canvas } = open()
+    drag(canvas, { x: 130, y: 112 }, { x: 230, y: 212 })
+    await screen.findByPlaceholderText('Item name')
+
+    const handle = (h: string) => canvas.querySelector(`[data-handle="${h}"]`)!
+    expect(handle('nw').getAttribute('class')).toContain('cursor-nwse-resize')
+    expect(handle('se').getAttribute('class')).toContain('cursor-nwse-resize')
+    expect(handle('ne').getAttribute('class')).toContain('cursor-nesw-resize')
+    expect(handle('sw').getAttribute('class')).toContain('cursor-nesw-resize')
+    expect(handle('n').getAttribute('class')).toContain('cursor-ns-resize')
+    expect(handle('s').getAttribute('class')).toContain('cursor-ns-resize')
+    expect(handle('e').getAttribute('class')).toContain('cursor-ew-resize')
+    expect(handle('w').getAttribute('class')).toContain('cursor-ew-resize')
+
+    // At this suite's 0.5 display scale a 16px on-screen handle is 32 image
+    // units wide; a fixed image-pixel size would shrink with every photo.
+    expect(handle('nw').getAttribute('width')).toBe('32')
+  })
+
+  // The keyboard sentence is a column of wrapped text on a phone, and names
+  // keys a phone does not have — the small-screen wording is the short one.
+  it('has a short tap wording of the hint for screens without a keyboard', () => {
+    open()
+    expect(screen.getByText(/Tap a box to select it/)).toBeInTheDocument()
   })
 })

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, SyntheticEvent } from 'react'
 import { Button, Input, Modal } from '../../ui'
-import { initialView, overflows, panBy, zoomAt, type Transform } from '../../ui/zoom'
+import { initialView, overflows, panBy, zoomAt, type Point, type Transform } from '../../ui/zoom'
 import { boxFromCorners, isDrawable, moveBox, resizeBox, toImagePoint, toPixelBox, type Box, type Handle, type Size } from './geometry'
 
 /** What the caller sends: a rectangle in the source image's own pixels, and the
@@ -10,19 +10,59 @@ export type Region = { name: string; box: Box }
 
 type DrawnRegion = Region & { id: number }
 
-// Where a gesture started. `draw`/`move`/`resize` hold *image* points; `pan` holds
-// a *screen* point, because panning is measured in viewport pixels.
+// Where a gesture started. `draw`/`move`/`resize` hold *image* points; `pan`
+// holds a *screen* point, because panning is measured in viewport pixels — and
+// `pinch` holds the previous frame's spread and midpoint, both screen values,
+// for the same reason.
 type Mode =
   | { kind: 'draw'; from: { x: number; y: number } }
   | { kind: 'move'; id: number; from: { x: number; y: number }; start: Box }
   | { kind: 'resize'; id: number; handle: Handle; from: { x: number; y: number }; start: Box }
   | { kind: 'pan'; from: { x: number; y: number } }
+  | { kind: 'pinch'; dist: number; mid: Point }
 
 // A fixed cycle, assigned by creation order. No palette to configure and no theme
 // token to invent; the number in the row and on the box is the reliable channel,
 // this is the fast one.
 const HUES = ['#e11d48', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316']
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
+
+// The on-screen size of a selected box's resize handles, in CSS px. The handles
+// are authored in image pixels, which the transform then scales: a fixed
+// image-pixel size renders at size×scale — the old 12 units were ~3px on a phone
+// photo at fit, too small to hit and smaller on every bigger photo. Dividing by
+// the scale keeps the square this wide at every zoom.
+const HANDLE_PX = 16
+
+// A handle's cursor is the axis it drags on: the diagonals for the corners,
+// horizontal and vertical for the edge midpoints — not the generic hand, which
+// says "click", the one thing a handle does not do.
+const HANDLE_CURSORS: Record<Handle, string> = {
+  nw: 'cursor-nwse-resize',
+  n: 'cursor-ns-resize',
+  ne: 'cursor-nesw-resize',
+  e: 'cursor-ew-resize',
+  se: 'cursor-nwse-resize',
+  s: 'cursor-ns-resize',
+  sw: 'cursor-nesw-resize',
+  w: 'cursor-ew-resize',
+}
+
+// A trackpad pinch arrives as a `wheel` event with `ctrlKey`, whose default
+// action is the browser's own page zoom. Module-level so the effect below has a
+// stable function to remove.
+const stopPageZoom = (event: Event) => event.preventDefault()
+
+// The distance between the two fingers of a pinch, and the point it is centred
+// on. Screen (client) coordinates, like the map they read.
+const spread = (pointers: Map<number, Point>): number => {
+  const [a, b] = [...pointers.values()]
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+const midpoint = (pointers: Map<number, Point>): Point => {
+  const [a, b] = [...pointers.values()]
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
 
 type ManualUnpackModalProps = {
   /** The image to draw on: an object URL for an upload, or a stored `/file/…` path. */
@@ -65,6 +105,9 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
   const focusNameFor = useRef<number | null>(null)
   // Read by the mount-focus frame, which runs after this render's closure.
   const drawnAnything = useRef(false)
+  // Every finger currently down, so a second one can turn the gesture into a
+  // pinch. Screen coordinates: a pinch is measured in viewport pixels, like a pan.
+  const pointers = useRef(new Map<number, Point>())
 
   // Start on the drawing surface, not on the first button in the DOM. Radix
   // focuses the first focusable element, which is "Cancel" — a poor default for
@@ -86,6 +129,20 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
       containerRef.current?.focus()
     })
     return () => cancelAnimationFrame(frame)
+  }, [])
+
+  // A trackpad pinch arrives as a `wheel` event with `ctrlKey`, whose default
+  // action is the browser's own page zoom — and nothing else can cancel it:
+  // React registers `onWheel` passively on the root (verified in
+  // react-dom@19.2.8's `listenToNativeEvent`), so the JSX handler below can
+  // never `preventDefault`. This native, non-passive listener runs first and only
+  // cancels the default action — no `stopPropagation` — so the zoom handler fires
+  // too.
+  useEffect(() => {
+    const node = containerRef.current
+    if (!node) return
+    node.addEventListener('wheel', stopPageZoom, { passive: false })
+    return () => node.removeEventListener('wheel', stopPageZoom)
   }, [])
 
   // Space toggles the move mode. It doubles as the shortcut for the header
@@ -163,6 +220,9 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
   // was promising a grab cursor in a state where nothing can be grabbed.
   const canPan = !!(natural && viewport && transform && overflows(natural, viewport, transform.scale))
 
+  // Handles are authored in image pixels but sized for the screen — see HANDLE_PX.
+  const handleHalf = transform ? HANDLE_PX / 2 / transform.scale : 0
+
   const pointAt = useCallback((clientX: number, clientY: number) => {
     const rect = wrapperRef.current?.getBoundingClientRect()
     if (!rect || !natural || rect.width <= 0) return null
@@ -177,6 +237,18 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
     // modal that was resized while open would otherwise keep the stale answer.
     setViewport(viewportSize())
     event.currentTarget.setPointerCapture?.(event.pointerId)
+
+    // A second finger turns the gesture into a pinch, whatever the first finger
+    // was doing. A box half-drawn or half-dragged is discarded, not committed:
+    // the pinch that replaces it has no end point to commit at.
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (pointers.current.size >= 2) {
+      setPending(null)
+      if (pointers.current.size === 2) {
+        setMode({ kind: 'pinch', dist: spread(pointers.current), mid: midpoint(pointers.current) })
+      }
+      return
+    }
 
     // Space pans, and panning beats everything: with the key held, a drag that
     // starts inside a rectangle must not move it.
@@ -204,7 +276,31 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
   }
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (pointers.current.has(event.pointerId)) {
+      pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    }
     if (!natural || !mode) return
+
+    if (mode.kind === 'pinch') {
+      const box = containerRef.current?.getBoundingClientRect()
+      if (!box || pointers.current.size < 2) return
+      const dist = spread(pointers.current)
+      const mid = midpoint(pointers.current)
+      if (mode.dist > 0 && dist > 0) {
+        const viewport = { width: box.width, height: box.height }
+        // Anchor at the midpoint the fingers started this move on: the content
+        // under it is zoomed in place, then carried to where the midpoint went.
+        // One finger draws here, it does not pan — so the pinch has to do both.
+        const at = { x: mode.mid.x - box.left, y: mode.mid.y - box.top }
+        setTransform((t) =>
+          t
+            ? panBy(natural, viewport, zoomAt(natural, viewport, t, dist / mode.dist, at), mid.x - mode.mid.x, mid.y - mode.mid.y)
+            : t,
+        )
+      }
+      setMode({ kind: 'pinch', dist, mid })
+      return
+    }
 
     if (mode.kind === 'pan') {
       // Deltas from the last move, not `movementX`: that is unreliable under
@@ -229,8 +325,15 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
     }
   }
 
-  const onPointerUp = () => {
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    pointers.current.delete(event.pointerId)
     if (!mode) return
+    // Lifting a finger ends the pinch; the finger still down does not resume
+    // whatever it was doing before the second one landed.
+    if (mode.kind === 'pinch') {
+      if (pointers.current.size < 2) setMode(null)
+      return
+    }
     if (mode.kind === 'pan') { setMode(null); return }
     if (mode.kind === 'draw' && pending) {
       // A click with no drag is not a rectangle.
@@ -260,6 +363,26 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
   }
 
   const filled = regions.filter((r) => r.name.trim() !== '')
+
+  // Two wordings of the same state: the keyboard one for screens that have a
+  // keyboard, the tap one for screens that do not. CSS picks which is visible —
+  // both are always in the DOM, so a rotated tablet or a resized window just
+  // swaps the sentence.
+  const hint = panMode
+    ? canPan
+      ? {
+          keyboard: 'Dragging moves the photo. Press Space again, or click “Moving”, to go back to drawing boxes.',
+          touch: 'Dragging moves the photo. Tap “Moving” to go back to drawing boxes.',
+        }
+      : {
+          keyboard: 'The whole photo is already visible — zoom in first, then drag to move it.',
+          touch: 'The whole photo is already visible — pinch to zoom, then drag to move it.',
+        }
+    : {
+        keyboard:
+          'Drag on the photo to draw a box. Click a box to select it; press Delete to remove it. To move the photo: zoom in, then press Space (or click Move photo).',
+        touch: 'Drag on the photo to draw a box. Tap a box to select it.',
+      }
   const requestClose = () => {
     if (regions.length > 0 && !window.confirm('Throw away the boxes you have drawn?')) return
     onClose()
@@ -292,19 +415,19 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
   return (
     <Modal open onOpenChange={(next) => { if (!next) requestClose() }} title="Manual unpack" size="full">
       <div className="flex h-full flex-col bg-surface">
-        <div className="flex items-center justify-between gap-4 border-b border-border p-3">
+        <div className="flex flex-col gap-2 border-b border-border p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           {/* The hint answers the question the cursor raises. Holding Space on a
               photo that already fits used to show a grab cursor and then do
               nothing, which reads as a broken drag rather than as "there is
-              nothing off-screen". */}
-          <p className="text-sm text-text-muted">
-            {panMode
-              ? canPan
-                ? 'Dragging moves the photo. Press Space again, or click “Moving”, to go back to drawing boxes.'
-                : 'The whole photo is already visible — zoom in first, then drag to move it.'
-              : 'Drag on the photo to draw a box. Click a box to select it; press Delete to remove it. To move the photo: zoom in, then press Space (or click Move photo).'}
-          </p>
-          <div className="flex shrink-0 gap-2">
+              nothing off-screen".
+
+              Two renderings, one per input kind: the keyboard sentence names
+              shortcuts a phone does not have, and squeezed into a column beside
+              the buttons it made the bar taller than the canvas below it. On a
+              narrow screen the bar stacks and the short tap wording shows. */}
+          <p className="hidden text-sm text-text-muted sm:block">{hint.keyboard}</p>
+          <p className="text-sm text-text-muted sm:hidden">{hint.touch}</p>
+          <div className="flex shrink-0 justify-end gap-2">
             <Button
               aria-pressed={panMode}
               onClick={() => setPanMode((on) => !on)}
@@ -397,14 +520,14 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
                               key={h}
                               data-handle={h}
                               data-region={r.id}
-                              x={cx - 6}
-                              y={cy - 6}
-                              width={12}
-                              height={12}
+                              x={cx - handleHalf}
+                              y={cy - handleHalf}
+                              width={handleHalf * 2}
+                              height={handleHalf * 2}
                               fill="white"
                               stroke={colourOf(r)}
                               vectorEffect="non-scaling-stroke"
-                              className="cursor-pointer"
+                              className={HANDLE_CURSORS[h]}
                             />
                           )
                         })}
