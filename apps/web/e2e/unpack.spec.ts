@@ -131,6 +131,13 @@ test('manual unpack turns drawn rectangles into named drafts', async ({ page }) 
   // alone would silently swallow the first drag and leave one rectangle.
   await expect(page.locator('[data-testid="manual-unpack-image"] svg')).toBeVisible()
 
+  // Which hint sentence shows is a CSS branch on pointer type, and this is the
+  // only place it can be observed: jsdom applies no CSS, so the unit suite can
+  // assert the two sentences differ but not that one of them is hidden. This
+  // project is a desktop Chrome (`pointer: fine`), so the keyboard sentence is
+  // the visible one — delete the variant and both show at once.
+  await expect(page.getByText(/press Space/)).toBeVisible()
+  await expect(page.getByText(/Tap a box to select it/)).toBeHidden()
 
   // Drawn against the *image*, not the canvas: the image is fitted and centred
   // inside the canvas, so canvas-relative coordinates near an edge land outside

@@ -423,10 +423,21 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
 
               Two renderings, one per input kind: the keyboard sentence names
               shortcuts a phone does not have, and squeezed into a column beside
-              the buttons it made the bar taller than the canvas below it. On a
-              narrow screen the bar stacks and the short tap wording shows. */}
-          <p className="hidden text-sm text-text-muted sm:block">{hint.keyboard}</p>
-          <p className="text-sm text-text-muted sm:hidden">{hint.touch}</p>
+              the buttons it made the bar taller than the canvas below it.
+
+              The split is by *pointer*, not by width. A phone held sideways is
+              over 900px wide and still has no Space bar, so a width test handed
+              it the keyboard sentence it cannot use — the same mismatch the two
+              sentences exist to fix. `pointer-fine:` asks the question the
+              sentence is actually about. Width still drives the bar *stacking*
+              above: that is a question about room, and room is a width.
+
+              The tap sentence is the default and the keyboard one is opt-in, so
+              a device that reports neither still gets a hint. Whichever is not
+              shown is `display: none`, which keeps it out of the accessibility
+              tree — a screen reader hears one sentence, not both. */}
+          <p className="hidden text-sm text-text-muted pointer-fine:block">{hint.keyboard}</p>
+          <p className="text-sm text-text-muted pointer-fine:hidden">{hint.touch}</p>
           <div className="flex shrink-0 justify-end gap-2">
             <Button
               aria-pressed={panMode}
@@ -484,8 +495,17 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
                 IS the image's box, and `toImagePoint` measures it. */}
             <img src={src} alt="" draggable={false} onLoad={onLoad} className="block h-full w-full select-none" />
             {natural && (
+              /* `overflow-visible` is load-bearing. The UA stylesheet clips an
+                  inline <svg> (`svg:not(:root) { overflow: hidden }`), and the
+                  handles are centred *on* a box edge — `boxFromCorners` clamps
+                  boxes to the image, so a box drawn from a photo edge is the
+                  common case, not the corner case. Clipped, its west handles
+                  lose their outer half to the paint AND to hit-testing: an 8px
+                  half-square instead of a 16px target, which is the exact
+                  complaint the handle sizing was meant to answer. Nothing
+                  escapes the canvas, which is `overflow-hidden` itself. */
               <svg
-                className="absolute left-0 top-0"
+                className="absolute left-0 top-0 overflow-visible"
                 width={natural.width}
                 height={natural.height}
                 viewBox={`0 0 ${natural.width} ${natural.height}`}

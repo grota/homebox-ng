@@ -441,10 +441,22 @@ describe('ManualUnpackModal', () => {
     expect(handle('nw').getAttribute('width')).toBe('32')
   })
 
-  // The keyboard sentence is a column of wrapped text on a phone, and names
-  // keys a phone does not have — the small-screen wording is the short one.
-  it('has a short tap wording of the hint for screens without a keyboard', () => {
+  // The sentence is chosen by pointer type, not viewport width: a phone held
+  // sideways is over 900px wide and still has no Space bar, so a width test
+  // handed it a sentence naming keys it does not have.
+  //
+  // jsdom applies no CSS, so this suite cannot see which of the two is
+  // displayed — an earlier version of this test asserted the tap sentence was
+  // "in the document" and passed whatever the classes said, including with both
+  // sentences showing. What this can honestly pin is that the two sentences stay
+  // distinct and that no keyboard-only verb leaks into the tap copy. The
+  // visible/hidden branch is asserted in e2e, where CSS actually applies.
+  it('keeps the keyboard wording out of the tap sentence', () => {
     open()
-    expect(screen.getByText(/Tap a box to select it/)).toBeInTheDocument()
+    const keyboard = screen.getByText(/press Space/)
+    const tap = screen.getByText(/Tap a box to select it/)
+
+    expect(tap).not.toBe(keyboard)
+    expect(tap.textContent).not.toMatch(/Space|Delete|click/i)
   })
 })
