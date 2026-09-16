@@ -3,11 +3,13 @@ import { buildApp } from '../src/server'
 import { createDb, runMigrations } from '@homebox/db'
 import FormData from 'form-data'
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { promisify } from 'node:util'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { createBackup } from '../src/modules/backup/service'
 
 const exec = promisify(execFile)
 
@@ -77,11 +79,32 @@ afterAll(async () => {
   rmSync(rootDir, { recursive: true, force: true })
 })
 
-const getBackup = async (cookie: string) => {
-  const res = await app.inject({ method: 'GET', url: '/backup', headers: { cookie } })
+// Same contract as before: create a backup, return its bytes. Now a stored row
+// rather than a stream from the deleted `GET /backup`.
+const getBackup = async (cookie: string): Promise<Buffer> => {
+  const { id } = await createBackupRow(cookie)
+  const res = await app.inject({ method: 'GET', url: `/backups/${id}/download`, headers: { cookie } })
   expect(res.statusCode).toBe(200)
   expect(res.headers['content-type']).toContain('application/gzip')
   return res.rawPayload
+}
+
+// Start a server-side backup and wait for the background job to finish. "Finish"
+// is the sidecar flipping to `completed`, which happens only after the tar lands
+// — not `existsSync(archive)`, which is true from the START of the tar because
+// `createBackup` writes straight to the destination (no temp + rename). Waiting
+// on the archive would leave the sidecar still `running` (breaking the caller's
+// assertion) and the create guard still set (breaking the next test's 409).
+// Observing `completed` also proves the guard is clear: `creating = false` runs
+// in the same microtask as the completing `writeBackupMeta`, so no event-loop
+// turn can slip in between.
+const createBackupRow = async (cookie: string): Promise<{ id: string }> => {
+  const res = await app.inject({ method: 'POST', url: '/backups', headers: { cookie } })
+  expect(res.statusCode).toBe(200)
+  const { backup } = res.json()
+  const metaFile = join(dataDir, 'backups', `${backup.id}.json`)
+  expect(await waitFor(() => (JSON.parse(readFileSync(metaFile, 'utf8')) as { status: string }).status === 'completed')).toBe(true)
+  return { id: backup.id as string }
 }
 
 const extract = async (buf: Buffer) => {
@@ -94,8 +117,24 @@ const extract = async (buf: Buffer) => {
   return dest
 }
 
-// Count temp dirs under os.tmpdir() with the given prefix. The backup route
-// creates `homebox-backup-*` (GET /backup) and `homebox-restore-*` (upload); a
+// An archive's member names, read from the bytes with `tar -tzf` — the archive's
+// own contents, not what extraction happened to leave on disk. Note `-t` lists
+// recursively and GNU tar marks directories with a trailing `/`, so a caller
+// wanting top-level entries splits each name on `/`.
+const members = async (buf: Buffer): Promise<string[]> => {
+  const tmp = mkdtempSync(join(tmpdir(), 'homebox-members-'))
+  try {
+    const archive = join(tmp, 'b.tar.gz')
+    writeFileSync(archive, buf)
+    const { stdout } = await exec('tar', ['-tzf', archive])
+    return stdout.trim().split('\n').filter(Boolean)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+}
+
+// Count temp dirs under os.tmpdir() with the given prefix. A backup create
+// stages `homebox-backup-*` and the upload path stages `homebox-restore-*`; a
 // leaked dir shows up here and is the regression we assert against. Note the test
 // setup's own root uses `homebox-backup-test-*`, which also matches the backup
 // prefix — so we always compare against a baseline captured before the call.
@@ -157,13 +196,21 @@ const itemNames = async (cookie: string) => {
 }
 
 describe('backup & restore', () => {
-  it('GET /backup streams a gzip archive whose dump passes integrity check and includes uploads/', async () => {
+  it('downloads an archive whose dump passes integrity check and includes uploads/', async () => {
     const buf = await getBackup(adminCookie)
     const dest = await extract(buf)
     const dump = join(dest, 'homebox.db')
     expect(existsSync(dump)).toBe(true)
     expect(integrityOk(dump)).toBe(true)
     expect(existsSync(join(dest, 'uploads'))).toBe(true)
+
+    // The layout is exactly the dump and the uploads tree — nothing else. This
+    // instance HAS stored backups on disk (`dataDir/backups/`, where this very
+    // archive lives), so a naive `tar` of the data dir would nest them here. It
+    // does not: `createBackup` stages the two entries and tars those, so a backup
+    // can never contain another backup (nor balloon as the history grows).
+    const topLevel = [...new Set((await members(buf)).map((m) => m.split('/')[0]))]
+    expect(topLevel.sort()).toEqual(['homebox.db', 'uploads'])
   })
 
   it('creates a valid backup on a fresh install with no uploads/ tree', async () => {
@@ -181,7 +228,14 @@ describe('backup & restore', () => {
       await freshApp.inject({ method: 'POST', url: '/trpc/auth.setup', payload: { name: 'Admin', email: 'admin@fresh.co', password: 'password123' } })
       const login = await freshApp.inject({ method: 'POST', url: '/trpc/auth.login', payload: { email: 'admin@fresh.co', password: 'password123' } })
       const cookie = login.headers['set-cookie'] as string
-      const res = await freshApp.inject({ method: 'GET', url: '/backup', headers: { cookie } })
+      const start = await freshApp.inject({ method: 'POST', url: '/backups', headers: { cookie } })
+      expect(start.statusCode).toBe(200)
+      const { backup } = start.json()
+      // Wait on the sidecar, not the archive — `createBackup` tars straight to
+      // the destination, so the file exists from the moment `tar` opens it.
+      const metaFile = join(freshDataDir, 'backups', `${backup.id}.json`)
+      expect(await waitFor(() => (JSON.parse(readFileSync(metaFile, 'utf8')) as { status: string }).status === 'completed')).toBe(true)
+      const res = await freshApp.inject({ method: 'GET', url: `/backups/${backup.id}/download`, headers: { cookie } })
       expect(res.statusCode).toBe(200)
       expect(res.headers['content-type']).toContain('application/gzip')
       const dest = await extract(res.rawPayload)
@@ -236,21 +290,25 @@ describe('backup & restore', () => {
   })
 
   it('gates every backup route: 401 unauthenticated, 403 non-admin', async () => {
-    // Unauthenticated → 401.
-    const g = await app.inject({ method: 'GET', url: '/backup' })
-    expect(g.statusCode).toBe(401)
-    const u1 = await app.inject({ method: 'POST', url: '/upload/backup', headers: {}, payload: {} })
-    expect(u1.statusCode).toBe(401)
-    const r1 = await app.inject({ method: 'POST', url: '/backup/restore', headers: {}, payload: { restoreId: 'nope' } })
-    expect(r1.statusCode).toBe(401)
-
-    // Authenticated non-admin → 403.
-    const g2 = await app.inject({ method: 'GET', url: '/backup', headers: { cookie: nonAdminCookie } })
-    expect(g2.statusCode).toBe(403)
-    const u2 = await app.inject({ method: 'POST', url: '/upload/backup', headers: { cookie: nonAdminCookie }, payload: {} })
-    expect(u2.statusCode).toBe(403)
-    const r2 = await app.inject({ method: 'POST', url: '/backup/restore', headers: { cookie: nonAdminCookie }, payload: { restoreId: 'nope' } })
-    expect(r2.statusCode).toBe(403)
+    const id = randomUUID()
+    const routes: Array<[string, string]> = [
+      ['POST', '/backups'],
+      ['GET', '/backups'],
+      ['GET', `/backups/${id}/download`],
+      ['DELETE', `/backups/${id}`],
+      ['POST', `/backups/${id}/restore`],
+    ]
+    for (const [method, url] of routes) {
+      const anon = await app.inject({ method: method as 'GET', url })
+      expect([url, anon.statusCode]).toEqual([url, 401])
+      const nonAdmin = await app.inject({ method: method as 'GET', url, headers: { cookie: nonAdminCookie } })
+      expect([url, nonAdmin.statusCode]).toEqual([url, 403])
+    }
+    // The upload path keeps its own gating.
+    expect((await app.inject({ method: 'POST', url: '/upload/backup', headers: {}, payload: {} })).statusCode).toBe(401)
+    expect((await app.inject({ method: 'POST', url: '/upload/backup', headers: { cookie: nonAdminCookie }, payload: {} })).statusCode).toBe(403)
+    expect((await app.inject({ method: 'POST', url: '/backup/restore', headers: {}, payload: { restoreId: 'nope' } })).statusCode).toBe(401)
+    expect((await app.inject({ method: 'POST', url: '/backup/restore', headers: { cookie: nonAdminCookie }, payload: { restoreId: 'nope' } })).statusCode).toBe(403)
   })
 
   it('rejects an invalid archive with 400 and leaves the live DB untouched', async () => {
@@ -266,13 +324,66 @@ describe('backup & restore', () => {
     expect(await waitFor(() => tmpDirCount('homebox-restore-') === dirsBefore)).toBe(true)
   })
 
-  it('does not leak the temp dir after GET /backup downloads an archive', async () => {
-    const backupDirsBefore = tmpDirCount('homebox-backup-')
-    // Download triggers createBackup, which materializes a full uploads copy + DB
-    // dump into a `homebox-backup-*` temp dir; the download path must remove the
-    // WHOLE dir (not just the archive) once streaming finishes.
-    await getBackup(adminCookie)
-    expect(await waitFor(() => tmpDirCount('homebox-backup-') === backupDirsBefore)).toBe(true)
+  it('does not leak the staging temp dir after creating a stored backup', async () => {
+    const before = tmpDirCount('homebox-backup-')
+    await createBackupRow(adminCookie)
+    expect(await waitFor(() => tmpDirCount('homebox-backup-') === before)).toBe(true)
+  })
+
+  it('downloads a stored backup with a timestamped filename', async () => {
+    const { id } = await createBackupRow(adminCookie)
+    const res = await app.inject({ method: 'GET', url: `/backups/${id}/download`, headers: { cookie: adminCookie } })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('application/gzip')
+    expect(res.headers['content-disposition']).toMatch(/attachment; filename="homebox-backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.tar\.gz"/)
+    const dest = await extract(res.rawPayload)
+    expect(integrityOk(join(dest, 'homebox.db'))).toBe(true)
+  })
+
+  it('refuses to download, restore or delete a backup that is not completed', async () => {
+    const id = randomUUID()
+    mkdirSync(join(dataDir, 'backups'), { recursive: true })
+    writeFileSync(join(dataDir, 'backups', `${id}.json`), JSON.stringify({ id, status: 'running', createdAt: new Date().toISOString() }))
+    // Plant a stale `completed` sidecar with no archive beside it.
+    const orphan = randomUUID()
+    writeFileSync(join(dataDir, 'backups', `${orphan}.json`), JSON.stringify({ id: orphan, status: 'completed', createdAt: new Date().toISOString() }))
+
+    expect((await app.inject({ method: 'GET', url: `/backups/${id}/download`, headers: { cookie: adminCookie } })).statusCode).toBe(409)
+    expect((await app.inject({ method: 'DELETE', url: `/backups/${id}`, headers: { cookie: adminCookie } })).statusCode).toBe(409)
+    expect((await app.inject({ method: 'GET', url: `/backups/${orphan}/download`, headers: { cookie: adminCookie } })).statusCode).toBe(409)
+    expect((await app.inject({ method: 'POST', url: `/backups/${id}/restore`, headers: { cookie: adminCookie } })).statusCode).toBe(409)
+    expect((await app.inject({ method: 'POST', url: `/backups/${orphan}/restore`, headers: { cookie: adminCookie } })).statusCode).toBe(409)
+  })
+
+  it('answers 404 for an unknown id, never 409: "never existed" is not "not ready"', async () => {
+    // A well-formed UUID with no sidecar at all: `isBackupId` passes, so this is
+    // "unknown", not "malformed" — and it must not be reported as the 409 that
+    // means "exists but is not completed", which is the whole point of the gating.
+    const unknown = randomUUID()
+    expect((await app.inject({ method: 'GET', url: `/backups/${unknown}/download`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'DELETE', url: `/backups/${unknown}`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'POST', url: `/backups/${unknown}/restore`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
+  })
+
+  it('deletes a stored backup, removing both files', async () => {
+    const { id } = await createBackupRow(adminCookie)
+    const res = await app.inject({ method: 'DELETE', url: `/backups/${id}`, headers: { cookie: adminCookie } })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ ok: true })
+    expect(existsSync(join(dataDir, 'backups', `${id}.tar.gz`))).toBe(false)
+    expect(existsSync(join(dataDir, 'backups', `${id}.json`))).toBe(false)
+    expect((await app.inject({ method: 'DELETE', url: `/backups/${id}`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
+  })
+
+  it('rejects a path-traversal id on every :id route as 404', async () => {
+    const evil = encodeURIComponent('../../etc/passwd')
+    expect((await app.inject({ method: 'GET', url: `/backups/${evil}/download`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'DELETE', url: `/backups/${evil}`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'POST', url: `/backups/${evil}/restore`, headers: { cookie: adminCookie } })).statusCode).toBe(404)
+  })
+
+  it('no longer serves GET /backup', async () => {
+    expect((await app.inject({ method: 'GET', url: '/backup', headers: { cookie: adminCookie } })).statusCode).toBe(404)
   })
 
   it('rejects an archive that would escape the extraction dir (path traversal) and leaves the live DB untouched', async () => {
@@ -291,6 +402,187 @@ describe('backup & restore', () => {
     const itemsAfter = (await listItems(adminCookie)).json()?.result?.data?.items?.length
     expect(itemsAfter).toBe(itemsBefore)
     // The rejected archive must not leak its temp dir.
+    expect(await waitFor(() => tmpDirCount('homebox-restore-') === dirsBefore)).toBe(true)
+  })
+
+  it('createBackup writes the archive to destPath and leaves no temp dir behind', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'homebox-svc-'))
+    const srcData = join(root, 'data')
+    mkdirSync(srcData, { recursive: true })
+    const svcDbPath = join(root, 'svc.db')
+    const svcDb = createDb(svcDbPath)
+    runMigrations(svcDb)
+    try {
+      const before = tmpDirCount('homebox-backup-')
+      const dest = join(root, 'out.tar.gz')
+      await createBackup(svcDb, srcData, dest)
+      expect(existsSync(dest)).toBe(true)
+      const extracted = await extract(readFileSync(dest))
+      expect(integrityOk(join(extracted, 'homebox.db'))).toBe(true)
+      expect(existsSync(join(extracted, 'uploads'))).toBe(true)
+      // Staging is disposable: the tar lands at destPath, tmp is emptied.
+      expect(await waitFor(() => tmpDirCount('homebox-backup-') === before)).toBe(true)
+    } finally {
+      rawDb(svcDb).close()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('createBackup leaves nothing at destPath when the archive cannot be written', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'homebox-svc-'))
+    const srcData = join(root, 'data')
+    mkdirSync(srcData, { recursive: true })
+    const svcDb = createDb(join(root, 'svc.db'))
+    runMigrations(svcDb)
+    try {
+      const before = tmpDirCount('homebox-backup-')
+      // An unwritable destination: `tar` opens (and would create) the archive
+      // file before writing members, so this is the ENOSPC-shaped failure a real
+      // stored backup can hit — one that happens AFTER the destination exists. A
+      // nonexistent parent dir would not do: `tar` refuses before creating
+      // anything there, so nothing could be left behind either way.
+      const dest = join(root, 'out.tar.gz')
+      writeFileSync(dest, '')
+      chmodSync(dest, 0o000)
+      await expect(createBackup(svcDb, srcData, dest)).rejects.toThrow()
+      // All-or-nothing: a truncated archive must not survive for a later reader.
+      expect(existsSync(dest)).toBe(false)
+      // Staging is disposable on the failure path too.
+      expect(await waitFor(() => tmpDirCount('homebox-backup-') === before)).toBe(true)
+    } finally {
+      rawDb(svcDb).close()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('POST /backups stores an archive and flips its sidecar to completed', async () => {
+    const res = await app.inject({ method: 'POST', url: '/backups', headers: { cookie: adminCookie } })
+    expect(res.statusCode).toBe(200)
+    const { backup } = res.json()
+    expect(backup.status).toBe('running')
+    expect(backup.sizeBytes).toBeNull()
+    expect(backup.id).toMatch(/^[0-9a-f-]{36}$/)
+
+    // The row is durable before the response, so the sidecar already exists.
+    const metaFile = join(dataDir, 'backups', `${backup.id}.json`)
+    expect(existsSync(metaFile)).toBe(true)
+
+    // The background job lands the archive and rewrites the sidecar.
+    const archive = join(dataDir, 'backups', `${backup.id}.tar.gz`)
+    expect(await waitFor(() => existsSync(archive))).toBe(true)
+    expect(await waitFor(() => (JSON.parse(readFileSync(metaFile, 'utf8')) as { status: string }).status === 'completed')).toBe(true)
+
+    // And it is a real archive.
+    const dest = await extract(readFileSync(archive))
+    expect(integrityOk(join(dest, 'homebox.db'))).toBe(true)
+    expect(existsSync(join(dest, 'uploads'))).toBe(true)
+  })
+
+  it('GET /backups lists stored backups newest first with a size', async () => {
+    await createBackupRow(adminCookie)
+    const res = await app.inject({ method: 'GET', url: '/backups', headers: { cookie: adminCookie } })
+    expect(res.statusCode).toBe(200)
+    const { backups } = res.json()
+    expect(backups.length).toBeGreaterThanOrEqual(1)
+    expect(backups[0].status).toBe('completed')
+    expect(backups[0].sizeBytes).toBeGreaterThan(0)
+    const times = backups.map((b: { createdAt: string }) => b.createdAt)
+    expect([...times].sort().reverse()).toEqual(times)
+  })
+
+  it('refuses a second backup while one is already running', async () => {
+    const [a, b] = await Promise.all([
+      app.inject({ method: 'POST', url: '/backups', headers: { cookie: adminCookie } }),
+      app.inject({ method: 'POST', url: '/backups', headers: { cookie: adminCookie } }),
+    ])
+    // The first request holds the guard across real disk I/O, so the second
+    // always observes it set.
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409])
+    // The winner's job is still running: wait it out, or the next test to create
+    // a backup in this app can observe the guard and get a 409 of its own.
+    const winner = (a.statusCode === 200 ? a : b).json().backup.id as string
+    const metaFile = join(dataDir, 'backups', `${winner}.json`)
+    expect(await waitFor(() => (JSON.parse(readFileSync(metaFile, 'utf8')) as { status: string }).status === 'completed')).toBe(true)
+  })
+
+  it('sweeps a leftover running sidecar to failed when the server boots', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'homebox-sweep-'))
+    const sweepDataDir = join(root, 'data')
+    const backups = join(sweepDataDir, 'backups')
+    mkdirSync(backups, { recursive: true })
+    const id = randomUUID()
+    const metaFile = join(backups, `${id}.json`)
+    writeFileSync(metaFile, JSON.stringify({ id, status: 'running', createdAt: new Date().toISOString() }))
+    const sweepDbPath = join(root, 'sweep.db')
+    const sweepDb = createDb(sweepDbPath)
+    runMigrations(sweepDb)
+    const sweepApp = buildApp({ db: sweepDb, dataDir: sweepDataDir, dbPath: sweepDbPath })
+    try {
+      await sweepApp.ready()
+      const flipped = await waitFor(() => (JSON.parse(readFileSync(metaFile, 'utf8')) as { status: string }).status === 'failed')
+      expect(flipped).toBe(true)
+    } finally {
+      await sweepApp.close()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('gates the backup list routes: 401 unauthenticated, 403 non-admin', async () => {
+    expect((await app.inject({ method: 'POST', url: '/backups' })).statusCode).toBe(401)
+    expect((await app.inject({ method: 'GET', url: '/backups' })).statusCode).toBe(401)
+    expect((await app.inject({ method: 'POST', url: '/backups', headers: { cookie: nonAdminCookie } })).statusCode).toBe(403)
+    expect((await app.inject({ method: 'GET', url: '/backups', headers: { cookie: nonAdminCookie } })).statusCode).toBe(403)
+  })
+
+  it('restores the live data from a stored backup (row round-trip)', async () => {
+    // Take a snapshot of the current state...
+    const { id } = await createBackupRow(adminCookie)
+
+    // ...diverge from it...
+    const all = (await listItems(adminCookie)).json()?.result?.data?.items
+    const orig = all.find((i: { name: string }) => i.name === 'Original')
+    await app.inject({ method: 'POST', url: '/trpc/items.trash', headers: { cookie: adminCookie }, payload: { id: orig.id } })
+    await app.inject({ method: 'POST', url: '/trpc/items.create', headers: { cookie: adminCookie }, payload: { name: 'RowChanged', itemTypeId, locationId: null, quantity: 1 } })
+    expect(await itemNames(adminCookie)).toContain('RowChanged')
+    expect(await itemNames(adminCookie)).not.toContain('Original')
+
+    // ...then restore from the row, which validates without touching anything.
+    const start = await app.inject({ method: 'POST', url: `/backups/${id}/restore`, headers: { cookie: adminCookie } })
+    expect(start.statusCode).toBe(200)
+    const { preview, restoreId } = start.json()
+    expect(preview.itemCount).toBeGreaterThanOrEqual(1)
+    expect(typeof restoreId).toBe('string')
+    // Still diverged: validation applied nothing.
+    expect(await itemNames(adminCookie)).toContain('RowChanged')
+
+    // Confirming goes through the unchanged endpoint.
+    const restore = await app.inject({ method: 'POST', url: '/backup/restore', headers: { cookie: adminCookie }, payload: { restoreId } })
+    expect(restore.statusCode).toBe(200)
+    expect(restore.json()).toEqual({ ok: true })
+    expect(await itemNames(adminCookie)).toContain('Original')
+    expect(await itemNames(adminCookie)).not.toContain('RowChanged')
+
+    // The backup that was restored FROM still exists: metadata lives beside the
+    // files, so replacing homebox.db cannot erase the list (ADR-0006).
+    const list = await app.inject({ method: 'GET', url: '/backups', headers: { cookie: adminCookie } })
+    expect((list.json().backups as Array<{ id: string }>).some((b) => b.id === id)).toBe(true)
+  })
+
+  it('rejects a stored restore whose archive is unreadable, leaving the DB untouched', async () => {
+    const { id } = await createBackupRow(adminCookie)
+    // Corrupt the archive in place. The sidecar still says `completed` and the
+    // file still exists, so this passes every gate ABOVE validation — only
+    // `validateBackup` can catch it. Same 400 class as the upload path, which is
+    // covered; this branch is not.
+    writeFileSync(join(dataDir, 'backups', `${id}.tar.gz`), 'this is not a gzip archive')
+    const dirsBefore = tmpDirCount('homebox-restore-')
+    const itemsBefore = (await listItems(adminCookie)).json()?.result?.data?.items?.length
+    const res = await app.inject({ method: 'POST', url: `/backups/${id}/restore`, headers: { cookie: adminCookie } })
+    expect(res.statusCode).toBe(400)
+    expect(res.json()).toEqual({ error: 'invalid backup archive' })
+    const itemsAfter = (await listItems(adminCookie)).json()?.result?.data?.items?.length
+    expect(itemsAfter).toBe(itemsBefore)
+    // A rejected archive must not leak its temp dir (extraction + mkdtemp base).
     expect(await waitFor(() => tmpDirCount('homebox-restore-') === dirsBefore)).toBe(true)
   })
 })

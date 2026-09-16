@@ -16,30 +16,31 @@ const exec = promisify(execFile)
 const rawDb = (db: DrizzleDb) =>
   (db as unknown as { $client: { backup: (d: string) => Promise<void>; close: () => void; pragma: (s: string) => void } }).$client
 
-// Build `tmp/uploads` (copy of the live tree) then tar it with the dump at the
-// archive root: layout = `homebox.db` + `uploads/…`. Returns the archive path,
-// the temp base dir (so the route can remove the whole tree on the download
-// path), and size. On success the caller removes `baseDir`; on a failure here we
-// clean up the temp dir ourselves so we never leak `tmp`.
-export const createBackup = async (db: DrizzleDb, dataDir: string): Promise<{ archivePath: string; baseDir: string; size: number }> => {
-  const tmp = await mkdtemp(join(tmpdir(), 'homebox-backup-'))
+// Stage the dump and an uploads copy in a disposable temp dir, then tar the two
+// entries (layout = `homebox.db` + `uploads/`) straight to `destPath`. Staging
+// is removed on every exit path, so nothing leaks into tmp. `destPath` must be
+// absolute — `tar` runs with the staging dir as its cwd.
+export const createBackup = async (db: DrizzleDb, dataDir: string, destPath: string): Promise<void> => {
+  const staging = await mkdtemp(join(tmpdir(), 'homebox-backup-'))
   try {
-    const dump = join(tmp, 'homebox.db')
+    const dump = join(staging, 'homebox.db')
     await rawDb(db).backup(dump) // safe: handles WAL, produces a standalone file
     // Only include the uploads tree if it exists (a fresh install may have none).
-    try { await cp(join(dataDir, 'uploads'), join(tmp, 'uploads'), { recursive: true }) } catch { /* no uploads yet */ }
-    // Guarantee `tmp/uploads` exists so `tar` never fails on a backup whose live
-    // uploads tree is absent (a fresh install) — an empty dir keeps the layout stable.
-    await mkdir(join(tmp, 'uploads'), { recursive: true }).catch(() => {})
-    const archive = join(tmp, `backup-${randomUUID()}.tar.gz`)
-    await exec('tar', ['-czf', archive, 'homebox.db', 'uploads'], { cwd: tmp })
-    return { archivePath: archive, baseDir: tmp, size: (await stat(archive)).size }
+    try { await cp(join(dataDir, 'uploads'), join(staging, 'uploads'), { recursive: true }) } catch { /* no uploads yet */ }
+    // Guarantee `staging/uploads` exists so `tar` never fails on a backup whose
+    // live uploads tree is absent (a fresh install) — an empty dir keeps the
+    // layout stable.
+    await mkdir(join(staging, 'uploads'), { recursive: true }).catch(() => {})
+    await exec('tar', ['-czf', destPath, 'homebox.db', 'uploads'], { cwd: staging })
   } catch (err) {
-    // Backup creation failed partway (bad dump, tar error). Don't leak the temp
-    // dir (which holds the uploads copy + dump). Errors are swallowed: nothing
-    // was served, but the caller gets the original failure.
-    await rm(tmp, { recursive: true, force: true }).catch(() => {})
+    // All-or-nothing: a partial archive (tar failed mid-write — ENOSPC, say)
+    // must not survive at `destPath` for a later reader.
+    await rm(destPath, { force: true }).catch(() => {})
     throw err
+  } finally {
+    // Best-effort: the archive is already at `destPath`, so a staging cleanup
+    // failure must not fail the backup.
+    await rm(staging, { recursive: true, force: true }).catch(() => {})
   }
 }
 

@@ -88,29 +88,67 @@ test('admin invites a user who is forced to change their password on first login
   }
 })
 
-test('admin downloads a backup and restores it (round-trip)', async ({ page }) => {
+test('admin creates a stored backup, downloads it, and restores it', async ({ page }) => {
   await loginAdmin(page)
 
-  // Open the Backup & restore tab.
   await page.goto('/admin')
-  // A tab, not a button, since AdminPage moved to a Radix-backed Tabs primitive —
-  // the tablist/tab semantics are the point of that change.
   await page.getByRole('tab', { name: 'Backup & restore' }).click()
 
-  // Download a fresh backup archive via the Download button (real blob download).
+  // Create: stored server-side, and the tab says to refresh rather than polling.
+  await page.getByRole('button', { name: 'Create backup' }).click()
+  await expect(page.getByRole('status')).toHaveText('Backup started — refresh to see it finish.')
+
+  // There is no polling, so a reload is how the row reaches `completed`. The
+  // selected tab is local React state (AdminPage), not a URL param, so every
+  // reload drops back to Users and the tab must be re-opened each time.
+  await expect(async () => {
+    await page.reload()
+    await page.getByRole('tab', { name: 'Backup & restore' }).click()
+    await expect(page.getByRole('cell', { name: 'completed' })).toBeVisible({ timeout: 1000 })
+  }).toPass({ timeout: 20000 })
+
+  // Download from the row (a real blob download).
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Download backup' }).click(),
+    page.getByRole('button', { name: 'Download', exact: true }).first().click(),
   ])
   const backupPath = test.info().outputPath('homebox-backup.tar.gz')
   await download.saveAs(backupPath)
 
-  // Upload the downloaded archive → non-destructive preview renders.
+  // Restore-from-row is non-destructive and stays two clicks. The row action
+  // opens the same preview card the upload path uses and applies NOTHING by
+  // itself — that is the whole safety property, so assert both halves: the card
+  // appears, and the destructive outcome has not happened.
+  await page.getByRole('button', { name: 'Restore', exact: true }).first().click()
+  await expect(page.getByText('Backup preview')).toBeVisible()
+  await expect(page.getByText('Restore complete.')).toBeHidden()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByText('Backup preview')).toBeHidden()
+
+  // Delete is the row's only data-removing action, and it is irreversible — so
+  // it asks first. Register the handler only now (after the earlier steps) so no
+  // other dialog can silently satisfy it, and assert the dialog actually
+  // appeared rather than merely tolerating it. It drops the row here, and the
+  // archive + sidecar on disk (asserted in the API suite).
+  const dialogs: string[] = []
+  page.on('dialog', (dialog) => {
+    dialogs.push(dialog.message())
+    void dialog.accept()
+  })
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  expect(dialogs).toHaveLength(1)
+  expect(dialogs[0]).toContain('Delete this backup?')
+  await expect(page.getByRole('cell', { name: 'completed' })).toBeHidden()
+  await expect(page.getByRole('status')).toHaveText('Backup deleted.')
+
+  // The upload path is unchanged: non-destructive preview, then confirm.
   await page.setInputFiles('#admin-backup-file', backupPath)
   await expect(page.getByText('Backup preview')).toBeVisible()
+  // Anchored on digits so raw `{placeholder}` text cannot satisfy it: i18next
+  // interpolates `{{ }}`, and a single-brace key would render the braces
+  // literally to the user. Asserting the rendered counts proves interpolation.
+  await expect(page.getByText(/\d+ users · \d+ items · \d+ uploads · max [\d.]+ MB/)).toBeVisible()
   await expect(page.getByText('This replaces all current data.')).toBeVisible()
-
-  // Confirm the (destructive) restore → success status message.
   await page.getByRole('button', { name: 'Restore this backup' }).click()
   await expect(page.getByRole('status')).toHaveText('Restore complete.')
 })
