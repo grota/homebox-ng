@@ -99,6 +99,23 @@ Two consequences worth stating because they look like mistakes:
 2. **The toolchain appears in both stages.** `better-sqlite3` compiles in whichever stage installs
    it. In the runtime stage it is removed in the same `RUN`, so the final image has neither.
 
+**The pnpm store cache mount is shared by two stages that run at the same time.** BuildKit
+schedules independent stages in parallel, and builder and runtime are independent until the
+`COPY --from=builder` near the end — so both ran `pnpm install` against one cache mount at once. Two
+concurrent installs writing a single content-addressable store is a data race, and it took the first
+release down (run `35147094867`) with `ERR_PNPM_ENOENT` on a store file the index still promised:
+both installs started at 0.09s elapsed and the builder's died 43s later. It does not reproduce
+locally, where the stages happen to serialise, which is exactly why it reached CI.
+
+`sharing=locked` on both mounts is the fix: BuildKit takes a per-cache-id lock for as long as a step
+holds the mount, so the installs take turns while still sharing the store — the second copies from
+cache instead of re-downloading. Verified by rebuilding cold and reading the timeline: the builder's
+install now starts at 34.12s, the moment the runtime's (0.58s → 34.16s) ends.
+
+A second, quieter bug rode along with it: `# syntax=docker/dockerfile:1.7` was on line 13, and Docker
+reads that directive **only** on line 1 — anywhere else it is ignored silently and the built-in
+frontend runs the file. So `sharing=locked` would have shipped as a no-op had it not been caught.
+
 Then: `USER node` (uid 1000), `ENV NODE_ENV=production DATA_DIR=/data DATABASE_PATH=/data/homebox.db`.
 Absolute data paths sidestep `env.ts`'s workspace-root walk entirely — `resolveDataPath` honours
 absolute values, so the walk stops mattering the moment the vars are set. `VOLUME /data` and

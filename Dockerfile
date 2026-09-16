@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # The release image: one process serving the API and the built SPA, over a single
 # `/data` volume. Design and evidence: `docs/superpowers/specs/2026-09-16-docker-packaging-design.md`.
 #
@@ -9,8 +11,32 @@
 #   * The runtime stage runs `pnpm install` rather than copying `node_modules`
 #     from the builder, because the builder's tree also contains typescript,
 #     vite, vitest and playwright.
+#
+# The `# syntax` line above must stay on line 1 — that is the only position Docker
+# reads it in, and anywhere else it is ignored in silence, leaving the built-in
+# frontend to run the file. That is how a `sharing=locked` cache mount first
+# shipped here as a no-op.
 
-# syntax=docker/dockerfile:1.7
+# ── The pnpm store cache mount is SHARED BETWEEN TWO CONCURRENT STAGES ──────────
+#
+# BuildKit runs independent stages in parallel, and the builder and runtime stages
+# are independent until the `COPY --from=builder` near the end. Both run
+# `pnpm install` against the same cache mount. Two concurrent installs writing one
+# content-addressable store is a data race, and it fails like this:
+#
+#     ERR_PNPM_ENOENT  ENOENT: no such file or directory, copyfile
+#     '/pnpm/store/v3/files/01/daeb…' -> '…/formdata-polyfill_tmp_832/formdata.min.js'
+#
+# a store file the index still promises, gone. Measured on the first release run
+# (gh run 35147094867): both installs started at 0.09s elapsed and the builder's
+# died 43s later. It does not reproduce locally, where the stages happen to
+# serialise — which is exactly why it reached CI.
+#
+# `sharing=locked` makes BuildKit take a per-cache-id lock for as long as a step
+# has the mount, so the two installs take turns instead of racing. The store is
+# still shared, so the second install copies from cache rather than re-downloading.
+# Removing the lock, or giving the stages separate ids, are both worse: the first
+# restores the race, the second throws away the reuse.
 
 # ─── builder ────────────────────────────────────────────────────────────────────
 FROM node:26-bookworm-slim AS builder
@@ -46,7 +72,7 @@ COPY packages/shared/package.json packages/shared/
 # auto-runs `node-gyp rebuild` purely because its `binding.gyp` is present. So the
 # C toolchain is required on Node 22 as much as 26, and `--ignore-scripts` is not
 # an escape — that produces a clean install whose `better-sqlite3` cannot load.
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store,sharing=locked \
     set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends python3 make g++; \
@@ -117,7 +143,7 @@ COPY packages/shared/package.json packages/shared/
 # image merely fatter with nothing to say so; this fails the build instead, and
 # already has: a `-maxdepth` one level short found nothing and stopped the build
 # rather than shipping quietly.
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store,sharing=locked \
     set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends python3 make g++; \
