@@ -9,6 +9,13 @@ import type { ProviderConfig } from './local.js'
 
 type GetSettings = () => InstanceSettingsDto
 
+export type RegisterOptions = {
+  /** Register the deterministic provider under every name (e2e smoke). */
+  mock?: boolean
+  /** Where the local provider caches its model; see `detection/model.ts`. */
+  dataDir?: string
+}
+
 // Register the built-in providers. `getSettings` reads instance settings through
 // a holder so per-request config (model/device/threshold) is available to each
 // provider's `detectBoxes` without widening the `DetectionProviderImpl` interface.
@@ -19,7 +26,7 @@ type GetSettings = () => InstanceSettingsDto
 // `detectionProvider` setting happens to be (`createItemsFromImage` looks up the provider
 // by settings value, which is one of `DETECTION_PROVIDERS`, and `instanceSettings
 // .update` rejects 'mock'). This makes mock mode self-sufficient.
-export const registerDetectionProviders = (getSettings: GetSettings, opts: { mock?: boolean } = {}): void => {
+export const registerDetectionProviders = (getSettings: GetSettings, opts: RegisterOptions = {}): void => {
   detectionRegistry.clear()
   if (opts.mock) {
     const mock = createMockProvider()
@@ -28,7 +35,9 @@ export const registerDetectionProviders = (getSettings: GetSettings, opts: { moc
     return
   }
   const getConfig = (): ProviderConfig => ((getSettings().detectionConfig ?? {}) as ProviderConfig)
-  detectionRegistry.register(createLocalProvider(getConfig))
+  // `dataDir` reaches the local provider because that is where the model is
+  // cached — see `detection/model.ts` for why it is not beside the code.
+  detectionRegistry.register(createLocalProvider(getConfig, { dataDir: opts.dataDir }))
   detectionRegistry.register(createOpenAIProvider(getConfig))
   detectionRegistry.register(createGoogleProvider(getConfig))
 }

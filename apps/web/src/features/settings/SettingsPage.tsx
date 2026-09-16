@@ -72,6 +72,15 @@ export function SettingsPage() {
       <p className="text-text-muted" data-testid="locale-date">
         {t('settings.datePreview')}: {formatDate(new Date())}
       </p>
+
+      {/* Which build this is. The release image bakes its git tag in at build
+          time as `VITE_APP_VERSION` (see the Dockerfile's `APP_VERSION`), so a
+          running instance can answer "what am I running?" without anyone reading
+          image labels off the host. Small, and last on purpose: it answers a
+          question, it is not a control. A source checkout says `dev`. */}
+      <p className="text-xs text-text-muted" data-testid="app-version">
+        {t('settings.version')}: {import.meta.env.VITE_APP_VERSION ?? 'dev'}
+      </p>
     </section>
   )
 }

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { createLocalProvider } from '../src/modules/detection/local'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createLocalProvider, pointModelCacheAt } from '../src/modules/detection/local'
+import { modelCacheDir } from '../src/modules/detection/model'
 import type { DetectionBox } from '../src/modules/detection/provider'
 
 const fakePipeline = async (_name: string, _model: string, _opts: unknown) =>
@@ -24,5 +28,29 @@ describe('createLocalProvider', () => {
     // in-bounds rather than left as the provider's raw coords.
     const boxes = await provider.detectBoxes(Buffer.from('img'), { width: 100, height: 100 })
     expect(boxes[0].box).toEqual({ x: 0, y: 0, width: 100, height: 100 })
+  })
+})
+
+// The bug this pins, reported as "the warm-up CLI does nothing": the server never
+// set `env.cacheDir`, so transformers.js used its own default — a `.cache/` inside
+// the package directory in `node_modules`. The CLI, which *did* set it, warmed
+// DATA_DIR/models/detection, which the server never read: two downloads, and
+// nothing shared between them.
+//
+// Importing the real module is the point. Asserting `modelCacheDir()` alone would
+// have passed the whole time the bug was live.
+describe('pointModelCacheAt', () => {
+  it('points the transformers cache at DATA_DIR, not at node_modules', async () => {
+    const { env } = await import('@huggingface/transformers')
+    const before = env.cacheDir
+    const dataDir = mkdtempSync(join(tmpdir(), 'hbng-model-'))
+    try {
+      await pointModelCacheAt(dataDir)
+      // transformers.js normalises to a trailing slash; compare on the directory.
+      expect(env.cacheDir.replace(/\/+$/, '')).toBe(modelCacheDir(dataDir))
+      expect(env.cacheDir).not.toContain('node_modules')
+    } finally {
+      env.cacheDir = before
+    }
   })
 })

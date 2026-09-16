@@ -1,9 +1,9 @@
-import { mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fastifyStatic from '@fastify/static'
 import { createDb, runMigrations } from '@homebox/db'
 import { loadEnv } from './env.js'
+import { assertWritableDataDir } from './dataDir.js'
 import { buildApp } from './server.js'
 
 // Resolve the built SPA regardless of whether we run from `src/` (tsx) or
@@ -13,10 +13,12 @@ const webDist = join(fileURLToPath(new URL('.', import.meta.url)), '../../web/di
 
 const env = loadEnv()
 
-// better-sqlite3 refuses to create the database's parent directory; make it so
-// a fresh checkout with a missing `data/` dir still boots (e.g. the E2E's
-// `DATABASE_PATH=./data/e2e.db`).
-mkdirSync(dirname(env.DATABASE_PATH), { recursive: true })
+// Creates the data and database directories if they are missing (better-sqlite3
+// refuses to create the database's parent), and fails here — with the uid and the
+// `chown` in the message — when they exist but this process cannot write them. A
+// bind-mounted `data/` owned by another user is the case, and everything
+// downstream of it fails with an error that hides the cause.
+assertWritableDataDir(env.DATA_DIR, env.DATABASE_PATH)
 
 const db = createDb(env.DATABASE_PATH)
 runMigrations(db)

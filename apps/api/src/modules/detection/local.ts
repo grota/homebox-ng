@@ -1,17 +1,53 @@
 import type { DetectionProviderImpl } from './provider.js'
 import { clampBox } from './coords.js'
 import { DetectionProviderError } from './errors.js'
+import { DEFAULT_MODEL, modelCacheDir } from './model.js'
+import { DEFAULT_DATA_DIR } from '../../env.js'
 
 export type ProviderConfig = { model?: string; device?: string; threshold?: number }
 type Pipeline = (image: Buffer) => Promise<{ label: string; score: number; box: { xmin: number; ymin: number; xmax: number; ymax: number } }[]>
 
-const DEFAULT_MODEL = 'onnx-community/rfdetr_nano-ONNX'
+/**
+ * Point transformers.js at DATA_DIR, before anything is fetched.
+ *
+ * Exported as its own step so it can be asserted directly: this is the line whose
+ * absence was the bug (see the comment inside `loadPipeline`), and the failure it
+ * caused — a cache inside `node_modules` — is invisible until either the warm-up
+ * CLI turns out to do nothing or a container re-downloads the model on every
+ * recreate. Testing only `modelCacheDir` would not have caught it.
+ *
+ * The dynamic import is free the second time: the module is already loaded by the
+ * pipeline call that follows.
+ */
+export const pointModelCacheAt = async (dataDir: string): Promise<void> => {
+  const { env } = await import('@huggingface/transformers')
+  env.cacheDir = modelCacheDir(dataDir)
+}
+
+export type LocalProviderDeps = {
+  /** Injected in tests, so no unit test has to load onnxruntime. */
+  pipeline?: (name: string, model: string, opts: Record<string, unknown>) => Promise<Pipeline>
+  /** Where the model is cached. Defaults to the workspace-root data dir. */
+  dataDir?: string
+}
 
 export const createLocalProvider = (
   getConfig: () => ProviderConfig,
-  deps: { pipeline?: (name: string, model: string, opts: Record<string, unknown>) => Promise<Pipeline> } = {},
+  deps: LocalProviderDeps = {},
 ): DetectionProviderImpl => {
   const loadPipeline = deps.pipeline ?? (async (_name: string, model: string, opts: Record<string, unknown>) => {
+    // Point the cache at DATA_DIR *before* the first fetch, and inside this lazy
+    // path rather than at startup — setting it eagerly would pull the heavy native
+    // module in on every boot, which is the thing the lazy import exists to avoid.
+    //
+    // Omitting this was a real bug with two faces. transformers.js defaults to a
+    // `.cache/` inside its own directory in `node_modules`, so the model was
+    // downloaded there instead of into the data directory: locally, the
+    // `detection:model` CLI warmed a directory the server never read; in a
+    // container, the model would have lived in the image's writable layer and been
+    // re-downloaded on every recreate.
+    await pointModelCacheAt(deps.dataDir ?? DEFAULT_DATA_DIR)
+
     // Lazy import: @huggingface/transformers drags onnxruntime-node which is
     // native and heavy; keep module load light and only load it on first use.
     const { pipeline } = await import('@huggingface/transformers')
