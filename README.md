@@ -49,10 +49,16 @@ built `dist/`, so **build before you run**.
 
 ## Prerequisites
 
-- **Node 20+** (LTS recommended)
-- **pnpm 9.15.0** — pinned via `packageManager`; `corepack enable pnpm` if you don't have it.
-- For the **local (transformers.js) detection provider**, a C++ toolchain for native builds
-  (node-gyp). The `google`/`openai`/`mock` providers need no native build.
+- **Node 26** — what development and the release image both use, and they have to agree:
+  `better-sqlite3` is a native addon compiled against whichever Node installed it.
+- **pnpm 9.15.0** — pinned via `packageManager`. `corepack` no longer ships with Node 26, so install
+  it the way CI and the Dockerfile do:
+  `npm i -g "$(node -p 'require("./package.json").packageManager')"`.
+- A **C++ toolchain** — `python3`, `make`, `g++` — for `pnpm install`. This is not optional and it
+  is not specific to the local detection provider: `better-sqlite3` ships no install script and
+  bundles its prebuilds, but it *does* carry a `binding.gyp`, so pnpm runs `node-gyp rebuild` on
+  every install, on Node 22 as much as 26. Without it the install fails with `gyp ERR! find Python`.
+  (`--ignore-scripts` gets past the install and leaves a `better-sqlite3` that cannot load.)
 
 ## Getting started (developer)
 
@@ -155,6 +161,84 @@ packages must be built before anything typechecks — `pnpm dev` does that, but 
 
 A fresh install has no users, so the app routes to `/setup` — create the first admin there. The
 `requiresSetup` query returns `setupRequired` until an admin exists.
+
+## Running from the Docker image
+
+One image, one process, one volume: the API serves `/trpc`, the uploads, and the built SPA. Design
+and the measurements behind it: `docs/superpowers/specs/2026-09-16-docker-packaging-design.md`.
+
+```bash
+mkdir -p /srv/homebox-ng/data
+sudo chown -R 1000:1000 /srv/homebox-ng/data     # see below, this one matters
+
+docker run -d \
+  --name homebox-ng \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -v /srv/homebox-ng/data:/data \
+  -e SESSION_SECRET="$(openssl rand -hex 32)" \
+  ghcr.io/grota/homebox-ng:latest
+```
+
+Open <http://localhost:3000>; the first visit routes to `/setup`.
+
+### `/data` must be writable by uid 1000
+
+The container runs as uid/gid **1000** — the Node image's `node` user — so a bind mount has to be
+owned by it. Get this wrong and the container exits at startup naming the uid, the path and the
+`chown`, instead of failing later with an `SQLITE_CANTOPEN` that points nowhere near the cause.
+
+Everything persistent lives under `/data`: the SQLite database, uploads, stored backups, and the
+detection model's cache. Back up that one directory and you have everything.
+
+### Configuration
+
+`SESSION_SECRET` is required; the rest have defaults. Pass the detection keys the same way if you
+use those providers.
+
+| Variable | Image default |
+|---|---|
+| `SESSION_SECRET` | *(required — no default)* |
+| `PORT` | `3000` |
+| `DATA_DIR` | `/data` |
+| `DATABASE_PATH` | `/data/homebox.db` |
+
+`GEMINI_API_KEY`, `OPENAI_API_KEY`, `MAX_UPLOAD_MB` and `DETECTION_MODEL` behave as in
+[Environment variables](#environment-variables).
+
+### Pulling the image
+
+The GHCR package is private, like the repository, so the first pull needs a token with
+`read:packages`:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u grota --password-stdin
+```
+
+### The detection model is not in the image
+
+It is downloaded on first use into `/data/models/detection` and cached there, so it is fetched once
+per data directory and survives every image upgrade — including one that changes `DETECTION_MODEL`.
+The first detection needs outbound network access; after that it does not.
+
+There is deliberately no warm-up step for the container: the `pnpm detection:model` CLI runs through
+`tsx`, which is a devDependency and is not in the runtime image. The in-request download is the
+supported path, and it is why a skipped warm-up is never fatal.
+
+### Upgrading, and pinning
+
+Migrations run automatically on boot, so an upgrade is a pull and a restart:
+
+```bash
+docker pull ghcr.io/grota/homebox-ng:latest
+```
+
+Every release is tagged `vX.Y.Z` as well as `latest`, and `/health` reports the version it was built
+from, so you can pin a tag and still tell what is running:
+
+```bash
+curl -s localhost:3000/health     # {"ok":true,"version":"v1.2.3"}
+```
 
 ## Environment variables
 

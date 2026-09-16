@@ -1,0 +1,54 @@
+# The green/red signal for `main`.
+#
+# Unit tests only. The Playwright suite is deliberately absent: it needs the built
+# app, a minted database, a temp uploads dir and `DETECTION_MOCK=1`, which is a CI
+# project of its own — and wiring it in here would let a release be blocked by
+# reasons unrelated to what is being released. It runs locally, where it already
+# works. See `docs/superpowers/specs/2026-09-16-docker-packaging-design.md`.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One run per ref: a second push supersedes the first rather than queueing behind it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The version comes from `packageManager` in package.json, so the pinned
+      # pnpm here. `corepack` is gone from Node 26, hence the explicit install.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
+      - name: Install pnpm
+        run: npm i -g "$(node -p 'require("./package.json").packageManager')"
+
+      # `better-sqlite3` auto-runs `node-gyp rebuild` because its `binding.gyp` is
+      # present, so the C toolchain is required on any Node major, not just 26.
+      # That means the runner needs python3 and a compiler; ubuntu-latest has both.
+      #
+      # `ONNXRUNTIME_NODE_INSTALL_CUDA=skip` stops onnxruntime-node's postinstall
+      # fetching ~343 MB of CUDA providers on every Linux/x64 install.
+      - name: Install
+        env:
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+        run: pnpm install --frozen-lockfile
+
+      # The packages must be built before anything typechecks: `apps/web` resolves
+      # its tRPC types through `@homebox/api`'s `dist/`, and every package's `main`
+      # points at its own `dist/`. `-r` walks the workspace in dependency order.
+      - name: Build
+        run: pnpm -r build
+
+      - name: Test
+        run: pnpm -r test

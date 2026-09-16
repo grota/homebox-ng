@@ -1,0 +1,45 @@
+# Keep the build context to what the image build actually reads.
+#
+# Nothing here is needed to produce the image: both stages install from the
+# lockfile and build from source, and the version arrives as a build argument, so
+# even `.git` is dead weight. A smaller context is a faster and more cacheable
+# `COPY . .`.
+#
+# EVERY PATTERN THAT SHOULD MATCH BELOW THE ROOT NEEDS ITS `**/` FORM. A bare
+# `*.tsbuildinfo` matches only at the context root — Docker's matcher does not
+# give it gitignore's "any depth" behaviour. That silently cost this image its
+# build: the three `tsconfig.tsbuildinfo` files were copied in, `**/dist` was
+# correctly excluded, and `tsc -b` — finding a build-info file that said
+# everything was up to date and no `dist/` to contradict it — emitted nothing.
+# `@homebox/api` then failed with "Cannot find module '@homebox/db'". Bare
+# patterns are kept alongside their `**/` form only for readability; the `**/`
+# one is what does the work.
+
+.git
+.github
+
+# Installed and generated trees — the image builds its own.
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.turbo
+
+# Local state: the dev database, uploads, and the model cache.
+data
+.dev
+.worktrees
+.claude
+.agents
+.superpowers
+skills-lock.json
+
+# Secrets. The image reads its configuration from the environment at run time.
+.env
+.env.*
+
+# Test and docs artifacts.
+**/test-results
+**/playwright-report
+**/blob-report
+.playwright-mcp
+docs
