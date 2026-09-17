@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
 import { uploadImage } from '../upload/PhotoUpload'
 import { Button, Field, Input, Select, Textarea } from '../../ui'
@@ -102,7 +103,19 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (itemTypeId === '') return
+    // Report it rather than returning in silence. The submit button is enabled,
+    // so a click that did nothing read as a broken form rather than as "you have
+    // not chosen a type" — the same trap `UnpackModal` already handles with a
+    // message. The two cases get different wording because "choose a type" is
+    // useless advice when there are no types to choose from.
+    if (itemTypeId === '') {
+      setError(
+        allTypes.length === 0
+          ? 'There are no item types yet — create one before adding an item.'
+          : 'Choose a type.'
+      )
+      return
+    }
     setError(null)
     const input = {
       name,
@@ -189,11 +202,22 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
         </Field>
       </div>
 
+      {/* `required` on the *control*, not on `Field` — the same way `Name` above
+          does it. `Field`'s asterisk is rendered inside the `<label>`, so asking
+          for it would change this control's accessible name from "Type" to
+          "Type *" for every screen reader and every `getByLabelText('Type')`. The
+          asterisk is decoration; the constraint is the attribute.
+
+          It is skipped while the control is disabled, which is what lets the
+          guard in `handleSubmit` give the real reason instead of the browser's
+          "please select an item in the list" for a list that is empty. */}
       <Field label="Type" htmlFor="item-type">
         <Select
           id="item-type"
           value={itemTypeId === '' ? '' : String(itemTypeId)}
           onChange={(e) => handleTypeChange(e.target.value)}
+          required
+          disabled={allTypes.length === 0}
         >
           <option value="">Select a type</option>
           {allTypes.map((type) => (
@@ -203,6 +227,16 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
           ))}
         </Select>
       </Field>
+
+      {/* An unseeded instance has no types, so the select above holds nothing but
+          its placeholder and the form cannot be completed by any amount of
+          typing. Saying so, with the way out, is the whole difference between
+          "this form is broken" and "this instance has no types yet". */}
+      {allTypes.length === 0 && (
+        <p className="text-text-muted text-sm">
+          No item types yet — <Link to="/types">create one</Link> before adding an item.
+        </p>
+      )}
 
       <Field label="Location" htmlFor="item-location">
         <Select

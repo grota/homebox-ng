@@ -1,5 +1,16 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+
+// The instance's item types, mutable so one test can render the state a fresh
+// install is in — none defined, where the form cannot be completed at all.
+// `vi.hoisted` because `vi.mock`'s factory is hoisted above this file's own
+// declarations, so it cannot close over a plain `const` here.
+const mockItemTypes = vi.hoisted(() => {
+  const types = [
+    { id: 1, name: 'Light', fields: [{ id: 9, name: 'Price', fieldType: 'currency', required: false }] },
+  ]
+  return { types, seed: types }
+})
 
 // mock the tRPC module so hooks resolve deterministically without a backend.
 // `Provider` is a passthrough so <AppProviders> (which renders <trpc.Provider>)
@@ -57,10 +68,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       // reachable; the step test below depends on it.
       itemTypes: {
         list: {
-          useQuery: () => ({
-            data: [{ id: 1, name: 'Light', fields: [{ id: 9, name: 'Price', fieldType: 'currency', required: false }] }],
-            isLoading: false,
-          }),
+          useQuery: () => ({ data: mockItemTypes.types, isLoading: false }),
         },
       },
       tags: {
@@ -83,6 +91,31 @@ import { ItemsPage } from '../src/features/items/ItemsPage'
 import { AppProviders } from '../src/app/AppProviders'
 
 describe('catalog pages', () => {
+  beforeEach(() => { mockItemTypes.types = mockItemTypes.seed })
+
+  // An install with no item types: the Type select holds nothing but its
+  // placeholder, so the form cannot be completed however much you type. The
+  // submit button was enabled and `handleSubmit` returned in silence, so clicking
+  // it did nothing and said nothing — the only way to learn why was to read the
+  // API's schema. It is now said twice: up front beside the control, and again if
+  // you submit anyway.
+  it('explains why an item cannot be created when the instance has no types', async () => {
+    mockItemTypes.types = []
+    render(<AppProviders><ItemsPage /></AppProviders>)
+    fireEvent.click(screen.getByRole('button', { name: /new item/i }))
+
+    expect(screen.getByText(/No item types yet/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /create one/i })).toHaveAttribute('href', '/types')
+    // `required` on a select with no options is unsatisfiable, so the control is
+    // disabled instead — which is also why native validation lets the submit
+    // through to the guard that reports the real reason.
+    expect(screen.getByLabelText('Type')).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
+    fireEvent.click(screen.getByRole('button', { name: /create item/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no item types yet/i)
+  })
+
   it('renders the item list and a create form', async () => {
     render(<AppProviders><ItemsPage /></AppProviders>)
     expect(await screen.findByText(/Lamp/i)).toBeInTheDocument()
