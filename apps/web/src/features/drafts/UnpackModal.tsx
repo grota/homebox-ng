@@ -23,13 +23,23 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
   const preview = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
 
+  const allTypes = types.data ?? []
+  // With exactly one type there is nothing to choose, so it is already chosen —
+  // opening a select whose only option is the one you must pick is a step that
+  // can only go wrong. Derived rather than copied into state by an effect: the
+  // query resolves after the first render, so an effect would add a second render
+  // and leave a window in which the form says "choose a type" while the one type
+  // sits right there. A real choice still wins, the moment it is made.
+  const selectedTypeId: number | '' =
+    itemTypeId === '' && allTypes.length === 1 ? allTypes[0].id : itemTypeId
+
   const submitAuto = async () => {
     if (!file) return
-    if (itemTypeId === '') { setErr(t('drafts.chooseType')); return }
+    if (selectedTypeId === '') { setErr(t('drafts.chooseType')); return }
     setBusy(true); setErr(null)
     try {
       const fd = new FormData()
-      fd.append('itemTypeId', String(itemTypeId))
+      fd.append('itemTypeId', String(selectedTypeId))
       fd.append('photo', file)
       const res = await fetch('/upload/unpack', { method: 'POST', body: fd, credentials: 'include' })
       if (!res.ok) throw new Error(await res.text())
@@ -46,7 +56,7 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
   const submitManual = async (regions: Region[]) => {
     if (!file) return
     const fd = new FormData()
-    fd.append('itemTypeId', String(itemTypeId))
+    fd.append('itemTypeId', String(selectedTypeId))
     fd.append('regions', JSON.stringify(regions))
     fd.append('photo', file)
     const res = await fetch('/upload/unpack/manual', { method: 'POST', body: fd, credentials: 'include' })
@@ -58,7 +68,7 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
   }
 
   const openManual = () => {
-    if (itemTypeId === '') { setErr(t('drafts.chooseType')); return }
+    if (selectedTypeId === '') { setErr(t('drafts.chooseType')); return }
     setErr(null)
     setManual(true)
   }
@@ -68,9 +78,9 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
       <Card className="space-y-3">
         <h2 className="font-semibold">{t('drafts.unpackTitle')}</h2>
         <Input type="file" accept="image/*" onChange={(e: ChangeEvent<HTMLInputElement>) => setFile(e.target.files?.[0] ?? null)} />
-        <Select value={itemTypeId} onChange={(e) => setItemTypeId(e.target.value ? Number(e.target.value) : '')}>
+        <Select value={selectedTypeId} onChange={(e) => setItemTypeId(e.target.value ? Number(e.target.value) : '')}>
           <option value="">{t('drafts.chooseType')}</option>
-          {(types.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          {allTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </Select>
         <div className="flex gap-2">
           {/* Detection takes seconds and nothing else on the page moves while it

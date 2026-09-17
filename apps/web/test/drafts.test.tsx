@@ -26,6 +26,10 @@ vi.mock('react-i18next', () => ({
 // results and empty states can both be exercised without a backend.
 let draftData: any[] = []
 
+// The instance's item types, read by `UnpackModal`'s select. Empty by default —
+// which is also why the tests below that never touch it keep working.
+let typeData: { id: number; name: string; fields: never[] }[] = []
+
 // The bulk-trash action's `mutateAsync`, exposed so a case can assert what the
 // button sends. Reaching it from a test is the same deferred-reference pattern as
 // `draftData` below: the factory closes over it and only reads it at render.
@@ -57,7 +61,8 @@ function RouterProbe() {
 }
 
 // Stub the tRPC router so `DraftsPage` renders without a backend. The page also
-// renders `UnpackModal`, so `itemTypes.list` is stubbed to an empty list too.
+// renders `UnpackModal`, so `itemTypes.list` reads `typeData` above — empty
+// unless a case sets it, which is the state most of these want.
 // No submit is exercised, so no `fetch` mock is needed.
 vi.mock('../src/api/trpc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/api/trpc')>()
@@ -98,7 +103,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         },
       },
       itemTypes: {
-        list: { useQuery: () => ({ data: [], isLoading: false }) },
+        list: { useQuery: () => ({ data: typeData, isLoading: false }) },
       },
     },
   }
@@ -106,7 +111,10 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
 
 import { DraftsPage } from '../src/features/drafts'
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  typeData = []
+})
 
 describe('drafts page', () => {
   it('renders a draft with its name, publish/trash actions, and a select-all checkbox', () => {
@@ -139,6 +147,33 @@ describe('drafts page', () => {
     // come from, so they enable and disable together.
     expect(screen.getByRole('button', { name: 'drafts.unpackAuto' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'drafts.unpackManual' })).toBeDisabled()
+  })
+
+  // A fresh instance has exactly one type, so the select starts with it chosen:
+  // opening a select whose only option is the one you must pick is a step that
+  // can only go wrong. This is the common case, not the corner one.
+  it('preselects the type when the instance has exactly one', () => {
+    draftData = []
+    typeData = [{ id: 3, name: 'Box', fields: [] }]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('combobox')).toHaveValue('3')
+  })
+
+  // The other half of the rule: with a real choice to make, nothing is chosen for
+  // you, and the submit guard still has something to say.
+  it('leaves the type unpicked when there is more than one', () => {
+    draftData = []
+    typeData = [{ id: 3, name: 'Box', fields: [] }, { id: 4, name: 'Shelf', fields: [] }]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('combobox')).toHaveValue('')
   })
 
   it('offers no pagination when everything fits on one page', () => {
