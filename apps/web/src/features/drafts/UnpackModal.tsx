@@ -77,18 +77,40 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
     <>
       <Card className="space-y-3">
         <h2 className="font-semibold">{t('drafts.unpackTitle')}</h2>
-        <Input type="file" accept="image/*" onChange={(e: ChangeEvent<HTMLInputElement>) => setFile(e.target.files?.[0] ?? null)} />
-        <Select value={selectedTypeId} onChange={(e) => setItemTypeId(e.target.value ? Number(e.target.value) : '')}>
-          <option value="">{t('drafts.chooseType')}</option>
-          {allTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </Select>
-        <div className="flex gap-2">
-          {/* Detection takes seconds and nothing else on the page moves while it
-              runs, so the button says what is happening rather than going quiet. */}
-          <Button variant="primary" disabled={busy || !file} onClick={() => void submitAuto()}>
-            {busy ? t('drafts.unpacking') : t('drafts.unpackAuto')}
-          </Button>
-          <Button disabled={busy || !file} onClick={openManual}>{t('drafts.unpackManual')}</Button>
+        {/* One row: the photo, the type, and both ways to unpack. They are one
+            decision seen at once — the same file and the same type feed either
+            action — so they read as a single control group rather than as a form
+            you fill in and then act on. Manual comes first because it is the one
+            that opens another surface; auto resolves where it stands.
+            `flex-wrap` rather than a hard one-line rule: the row is wider than a
+            phone, and wrapping keeps every control usable there instead of
+            squeezing them into a strip. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            type="file"
+            accept="image/*"
+            // `min-w-0` lets the native control shrink below its intrinsic width
+            // rather than forcing the row wider than the card.
+            className="min-w-0"
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setFile(e.target.files?.[0] ?? null)}
+          />
+          <Select value={selectedTypeId} onChange={(e) => setItemTypeId(e.target.value ? Number(e.target.value) : '')}>
+            <option value="">{t('drafts.chooseType')}</option>
+            {allTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </Select>
+          {/* The pair wraps together. Left as loose siblings, a narrow screen
+              broke them across two lines — select + Manual, then Auto alone —
+              which separates two actions that differ only in where the boxes
+              come from. */}
+          <div className="flex gap-2">
+            <Button disabled={busy || !file} onClick={openManual}>{t('drafts.unpackManual')}</Button>
+            {/* Detection takes seconds and nothing else on the page moves while
+                it runs, so the button says what is happening rather than going
+                quiet. */}
+            <Button variant="primary" disabled={busy || !file} onClick={() => void submitAuto()}>
+              {busy ? t('drafts.unpacking') : t('drafts.unpackAuto')}
+            </Button>
+          </div>
         </div>
         {err && <p role="alert" className="text-danger">{err}</p>}
       </Card>
