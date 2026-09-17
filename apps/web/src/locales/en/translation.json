@@ -33,6 +33,8 @@
     "unpacking": "Unpacking…",
     "unpackManual": "Manual unpack",
     "chooseType": "Choose a type…",
+    "noTypes": "No item types yet — unpacking needs one first.",
+    "createOne": "Create an item type",
     "publish": "Publish",
     "trash": "Move to trash",
     "selectAll": "Select all",

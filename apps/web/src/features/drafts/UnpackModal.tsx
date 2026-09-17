@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
 import { Button, Card, Input, Select } from '../../ui'
 import { ManualUnpackModal, type Region } from './ManualUnpackModal'
@@ -33,9 +34,29 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
   const selectedTypeId: number | '' =
     itemTypeId === '' && allTypes.length === 1 ? allTypes[0].id : itemTypeId
 
+  const manualRef = useRef<HTMLButtonElement>(null)
+
+  // Choosing a photo is the last step before choosing *how* to unpack, and the
+  // native picker leaves focus on itself — so it is handed to the first of the
+  // two actions, and the next move is a keystroke rather than a trip to the mouse.
+  //
+  // An effect, not a line in the change handler: the button is `disabled` until
+  // the photo reaches state, and a disabled button cannot take focus, so
+  // focusing inline does nothing at all — in a browser as much as in a test.
+  // Guarded on `file` because the field is also cleared after a successful
+  // unpack, which must not move focus.
+  useEffect(() => {
+    if (file) manualRef.current?.focus()
+  }, [file])
+
+  // One message per reason, because they are different problems with different
+  // fixes: "choose a type" is useless advice on an instance that has none to
+  // choose from, and it is the answer both actions used to give.
+  const typeError = () => (allTypes.length === 0 ? t('drafts.noTypes') : t('drafts.chooseType'))
+
   const submitAuto = async () => {
     if (!file) return
-    if (selectedTypeId === '') { setErr(t('drafts.chooseType')); return }
+    if (selectedTypeId === '') { setErr(typeError()); return }
     setBusy(true); setErr(null)
     try {
       const fd = new FormData()
@@ -68,7 +89,7 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
   }
 
   const openManual = () => {
-    if (selectedTypeId === '') { setErr(t('drafts.chooseType')); return }
+    if (selectedTypeId === '') { setErr(typeError()); return }
     setErr(null)
     setManual(true)
   }
@@ -94,7 +115,13 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
             className="min-w-0"
             onChange={(e: ChangeEvent<HTMLInputElement>) => setFile(e.target.files?.[0] ?? null)}
           />
-          <Select value={selectedTypeId} onChange={(e) => setItemTypeId(e.target.value ? Number(e.target.value) : '')}>
+          <Select
+            value={selectedTypeId}
+            onChange={(e) => setItemTypeId(e.target.value ? Number(e.target.value) : '')}
+            // Nothing to choose from, and the line below says so; a live control
+            // that opens onto an empty list reads as a rendering bug.
+            disabled={allTypes.length === 0}
+          >
             <option value="">{t('drafts.chooseType')}</option>
             {allTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </Select>
@@ -103,15 +130,28 @@ export function UnpackModal({ onUnpacked }: { onUnpacked: (detected: number) => 
               which separates two actions that differ only in where the boxes
               come from. */}
           <div className="flex gap-2">
-            <Button disabled={busy || !file} onClick={openManual}>{t('drafts.unpackManual')}</Button>
+            {/* Manual carries the emphasis: it is first, and it is where focus
+                lands once a photo is chosen. */}
+            <Button ref={manualRef} variant="primary" disabled={busy || !file} onClick={openManual}>
+              {t('drafts.unpackManual')}
+            </Button>
             {/* Detection takes seconds and nothing else on the page moves while
                 it runs, so the button says what is happening rather than going
                 quiet. */}
-            <Button variant="primary" disabled={busy || !file} onClick={() => void submitAuto()}>
+            <Button disabled={busy || !file} onClick={() => void submitAuto()}>
               {busy ? t('drafts.unpacking') : t('drafts.unpackAuto')}
             </Button>
           </div>
         </div>
+
+        {/* An unseeded instance has no types, so unpacking cannot finish however
+            good the photo is. Said here, beside the controls, rather than only
+            after a failed submit — and with the way out. */}
+        {allTypes.length === 0 && (
+          <p className="text-text-muted text-sm">
+            {t('drafts.noTypes')} <Link to="/types">{t('drafts.createOne')}</Link>
+          </p>
+        )}
         {err && <p role="alert" className="text-danger">{err}</p>}
       </Card>
 

@@ -176,6 +176,55 @@ describe('drafts page', () => {
     expect(screen.getByRole('combobox')).toHaveValue('')
   })
 
+  // The native photo picker keeps focus after it closes, so choosing a photo hands
+  // focus to the first of the two actions: the next move is a keystroke rather
+  // than a trip back to the mouse.
+  it('moves focus to the manual unpack button once a photo is chosen', () => {
+    draftData = []
+    typeData = [{ id: 3, name: 'Box', fields: [] }]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+
+    const manual = screen.getByRole('button', { name: 'drafts.unpackManual' })
+    expect(manual).not.toHaveFocus()
+
+    fireEvent.change(document.querySelector('input[type=file]')!, {
+      target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
+    })
+
+    expect(manual).toHaveFocus()
+  })
+
+  // An instance with no types at all: the select holds nothing but its
+  // placeholder, so unpacking cannot finish however good the photo is. Both
+  // actions used to answer "Choose a type…" — advice you cannot follow when there
+  // are no types to choose from.
+  it('says there are no item types instead of telling you to choose one', () => {
+    draftData = []
+    typeData = []
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+
+    // Said beside the controls, not only after a failed submit.
+    expect(screen.getByText(/^drafts\.noTypes/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'drafts.createOne' })).toHaveAttribute('href', '/types')
+    expect(screen.getByRole('combobox')).toBeDisabled()
+
+    // Both actions are disabled until a photo is picked, so pick one first.
+    fireEvent.change(document.querySelector('input[type=file]')!, {
+      target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'drafts.unpackManual' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('drafts.noTypes')
+  })
+
   it('offers no pagination when everything fits on one page', () => {
     draftData = [draft(1, 'Draft Lamp')]
     render(

@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from 'react'
+import type { ButtonHTMLAttributes, Ref } from 'react'
 import { cn } from './cn'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost'
@@ -42,6 +42,15 @@ export const buttonClasses = (variant: ButtonVariant = 'secondary', size: Button
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant
   size?: ButtonSize
+  /**
+   * Declared only so it can be *passed*: React 19 hands `ref` to a function
+   * component as an ordinary prop, so there is no `forwardRef` to write and the
+   * spread below already forwards it. It needs spelling out because
+   * `ButtonHTMLAttributes` does not carry it.
+   *
+   * Used by the unpack row, which moves focus here once a photo is chosen.
+   */
+  ref?: Ref<HTMLButtonElement>
 }
 
 export function Button({ variant = 'secondary', size = 'md', className, type = 'button', ...rest }: ButtonProps) {
