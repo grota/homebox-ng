@@ -32,10 +32,27 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       allowedHosts: ['.localhost', '.local', 'thinkpad-x1'],
+      // Every top-level prefix the API registers AND the browser calls, by
+      // prefix. A prefix missing here is invisible in every check we own: the
+      // browser gets Vite's 404 for a method it doesn't serve (or, worse, Vite's
+      // `index.html` with a 200 for a GET, so `res.json()` parses HTML), while
+      // e2e and the container both pass — they serve the built API and the SPA on
+      // ONE origin, where there is no proxy to be wrong.
+      //
+      // That is exactly how the backup feature shipped broken in dev: `POST
+      // /backups` 404'd and the admin saw "Could not start the backup", while the
+      // e2e that creates, downloads and restores a backup stayed green.
+      //
+      // `/backup` and `/backups` are two separate route families —
+      // `app.post('/backup/restore')` and the `/backups` collection with its
+      // `/backups/:id/...` actions. `/backup` already matches `/backups` as a
+      // prefix; both are listed so neither reads as an oversight.
       proxy: {
         '/trpc': apiTarget,
         '/upload': apiTarget,
         '/file': apiTarget,
+        '/backup': apiTarget,
+        '/backups': apiTarget,
       },
     },
   }
