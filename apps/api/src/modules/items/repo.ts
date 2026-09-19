@@ -552,6 +552,211 @@ export const resolveSelectionIds = (db: DrizzleDb, clause: SelectionClause): num
     return rows.map((row) => row.id)
   })
 
+// ---------------------------------------------------------------------------
+// Bulk edit (ADR-0010). The counts and the write are both derived from the same
+// two functions, so what a modal shows and what the server pins cannot drift
+// apart — which is the whole reason the pin exists.
+// ---------------------------------------------------------------------------
+
+// A pending edit, as the modal is composing it.
+export type BulkEditChange = {
+  location?: { set: number | null }
+  tags?: { add?: number[]; remove?: number[] }
+  fieldValues?: { fieldId: number; value: string | null }[]
+}
+
+export type SelectionSummary = {
+  total: number
+  types: FacetCount[]
+  locations: { id: number | null; name: string | null; count: number }[]
+  tags: TagFacet[]
+  fields: {
+    fieldId: number
+    fieldName: string
+    fieldType: string
+    values: { value: string | null; count: number }[]
+  }[]
+  // How many items the pending edit would actually change, keyed per property
+  // (`location`, `tags.add`, `tags.remove`, `field:<id>`). **These are the numbers
+  // the pin checks**, so they are what the modal must show rather than re-derive.
+  changes: Record<string, number>
+}
+
+// The catalog items in a requested selection. Ids that name a draft or a trashed
+// item are not catalog items, so they are not in the set and cannot be written.
+const targetIds = (db: DrizzleDb, requested: number[]): number[] =>
+  requested.length
+    ? db.select({ id: items.id }).from(items).where(buildWhere(db, { ids: requested })).all().map((row) => row.id)
+    : []
+
+const countWhere = (db: DrizzleDb, targets: number[], extra: SQL): number =>
+  targets.length
+    ? db.get<{ count: number }>(sql`
+        SELECT COUNT(*) AS count FROM items WHERE items.id IN (${sql.join(targets.map((id) => sql`${id}`), sql`, `)}) AND (${extra})
+      `)?.count ?? 0
+    : 0
+
+// How many of the targets a non-empty value currently holds, per field, and how
+// many a tag change would touch. Kept next to the write so the two stay in step.
+const overwriteCounts = (db: DrizzleDb, targets: number[], change: BulkEditChange): Record<string, number> => {
+  const counts: Record<string, number> = {}
+
+  if (change.location) {
+    // `IS NOT` is null-safe in SQLite, so "set to no location" counts correctly.
+    counts.location = countWhere(db, targets, sql`items.location_id IS NOT ${change.location.set}`)
+  }
+
+  const added = change.tags?.add ?? []
+  if (added.length) {
+    // Items that do not already carry *every* added tag. A marginal count per tag
+    // would double-count the overlap, which is why this is one query.
+    counts['tags.add'] = countWhere(
+      db,
+      targets,
+      sql`(SELECT COUNT(DISTINCT t.tag_id) FROM item_tags t WHERE t.item_id = items.id AND t.tag_id IN (${sql.join(added.map((id) => sql`${id}`), sql`, `)})) < ${added.length}`,
+    )
+  }
+  const removed = change.tags?.remove ?? []
+  if (removed.length) {
+    counts['tags.remove'] = countWhere(
+      db,
+      targets,
+      sql`EXISTS (SELECT 1 FROM item_tags t WHERE t.item_id = items.id AND t.tag_id IN (${sql.join(removed.map((id) => sql`${id}`), sql`, `)}))`,
+    )
+  }
+
+  for (const field of change.fieldValues ?? []) {
+    counts[`field:${field.fieldId}`] = countWhere(
+      db,
+      targets,
+      sql`(SELECT NULLIF(v.value, '') FROM item_custom_field_values v WHERE v.item_id = items.id AND v.field_id = ${field.fieldId}) IS NOT ${field.value}`,
+    )
+  }
+
+  return counts
+}
+
+// What the selection holds, per property, plus what a pending edit would change.
+export const selectionSummary = (db: DrizzleDb, requested: number[], change: BulkEditChange = {}): SelectionSummary => {
+  const targets = targetIds(db, requested)
+  const idsSql = sql.join(targets.map((id) => sql`${id}`), sql`, `)
+  const inTargets = targets.length ? sql`items.id IN (${idsSql})` : sql`1 = 0`
+
+  const types = db.all<FacetCount>(sql`
+    SELECT items.item_type_id AS id, item_types.name AS name, COUNT(*) AS count
+    FROM items JOIN item_types ON item_types.id = items.item_type_id
+    WHERE ${inTargets}
+    GROUP BY items.item_type_id
+    ORDER BY count DESC, item_types.name ASC
+  `)
+
+  const locations = db.all<{ id: number | null; name: string | null; count: number }>(sql`
+    SELECT items.location_id AS id, locations.name AS name, COUNT(*) AS count
+    FROM items LEFT JOIN locations ON locations.id = items.location_id
+    WHERE ${inTargets}
+    GROUP BY items.location_id
+    ORDER BY count DESC, locations.name ASC
+  `)
+
+  const tags = db.all<TagFacet>(sql`
+    SELECT tags.id AS id, tags.name AS name, tags.color AS color, COUNT(*) AS count
+    FROM item_tags
+    JOIN items ON items.id = item_tags.item_id
+    JOIN tags ON tags.id = item_tags.tag_id
+    WHERE ${inTargets}
+    GROUP BY tags.id
+    ORDER BY count DESC, tags.name ASC
+  `)
+
+  // Fields only when the whole selection shares one type: a field belongs to
+  // exactly one type, so a selection spanning two has no shared field to offer.
+  const fields: SelectionSummary['fields'] = []
+  if (types.length === 1) {
+    const definitions = db.select().from(itemTypeFields).where(eq(itemTypeFields.itemTypeId, types[0].id)).orderBy(itemTypeFields.sortOrder).all()
+    for (const definition of definitions) {
+      const rows = targets.length
+        ? db.all<{ value: string | null; count: number }>(sql`
+            SELECT NULLIF(v.value, '') AS value, COUNT(*) AS count
+            FROM item_custom_field_values v
+            WHERE v.field_id = ${definition.id} AND v.item_id IN (${idsSql})
+            GROUP BY NULLIF(v.value, '')
+          `)
+        : []
+      // An item with no value row at all is the same hole as an empty one, and a
+      // bulk edit overwrites both, so they are one bucket. That bucket reads last:
+      // it is the absence of a value rather than one of the choices.
+      const withValue = rows.filter((row) => row.value != null).sort((a, b) => b.count - a.count || (a.value ?? '').localeCompare(b.value ?? ''))
+      const empty = targets.length - withValue.reduce((sum, row) => sum + row.count, 0)
+      const values = empty > 0 ? [...withValue, { value: null, count: empty }] : withValue
+      fields.push({
+        fieldId: definition.id,
+        fieldName: definition.name,
+        fieldType: definition.fieldType,
+        values,
+      })
+    }
+  }
+
+  return {
+    total: targets.length,
+    types,
+    locations,
+    tags,
+    fields,
+    changes: overwriteCounts(db, targets, change),
+  }
+}
+
+// What a pending edit would change, on its own — the pin's half of the summary.
+export const bulkEditCounts = (db: DrizzleDb, requested: number[], change: BulkEditChange) => {
+  const targets = targetIds(db, requested)
+  return { itemCount: targets.length, overwrites: overwriteCounts(db, targets, change) }
+}
+
+// The write itself: set-based, one transaction, and a reindex per item because the
+// FTS blob carries the location path and the tag names.
+export const bulkEdit = (db: DrizzleDb, requested: number[], change: BulkEditChange): number => {
+  // Derived here too, not handed in: the transaction re-derives what it writes for
+  // itself (ADR-0003 §4), so a set that moved between the check and the write
+  // cannot be written to.
+  const targets = targetIds(db, requested)
+  if (targets.length === 0) return 0
+
+  return db.transaction((tx) => {
+    const scoped = inArray(items.id, targets)
+    if (change.location) {
+      tx.update(items).set({ locationId: change.location.set, updatedAt: new Date() }).where(scoped).run()
+    }
+    const added = change.tags?.add ?? []
+    if (added.length) {
+      tx.insert(itemTags)
+        .values(targets.flatMap((itemId) => added.map((tagId) => ({ itemId, tagId }))))
+        .onConflictDoNothing()
+        .run()
+    }
+    const removed = change.tags?.remove ?? []
+    if (removed.length) {
+      tx.delete(itemTags).where(and(inArray(itemTags.itemId, targets), inArray(itemTags.tagId, removed))).run()
+    }
+    for (const field of change.fieldValues ?? []) {
+      // Not `items.update`'s whole-set replacement: this touches one field and
+      // leaves the item's other values alone. There is no unique constraint on
+      // (item_id, field_id), so there is nothing to upsert against — delete then
+      // insert, which is what `replaceFieldValues` does for one item.
+      tx.delete(itemCustomFieldValues)
+        .where(and(eq(itemCustomFieldValues.fieldId, field.fieldId), inArray(itemCustomFieldValues.itemId, targets)))
+        .run()
+      if (field.value != null && field.value !== '') {
+        tx.insert(itemCustomFieldValues)
+          .values(targets.map((itemId) => ({ itemId, fieldId: field.fieldId, value: field.value })))
+          .run()
+      }
+    }
+    for (const id of targets) reindexItem(tx as unknown as DrizzleDb, id)
+    return targets.length
+  })
+}
+
 // The catalog's real creation-date span, as whole days, so a date clause can be
 // bounded by data that exists rather than offering a range that matches nothing.
 // `null` when the catalog is empty (there is no honest span to report).

@@ -215,3 +215,41 @@ export const resolveSelection = (db: DrizzleDb, input: SelectionClauseInput): { 
 }
 
 export const createdAtRange = (db: DrizzleDb): { min: string; max: string } | null => repo.createdAtRange(db)
+
+// A **bulk edit** as the wire takes it: the change, plus the counts the modal
+// showed. The counts are what make it a deliberate write (ADR-0010).
+export type BulkEditInput = repo.BulkEditChange & {
+  ids: number[]
+  acknowledgedItemCount: number
+  acknowledgedOverwriteCounts?: Record<string, number>
+}
+
+export const selectionSummary = (db: DrizzleDb, ids: number[], pending?: repo.BulkEditChange) =>
+  repo.selectionSummary(db, ids, pending)
+
+// The write, behind the count pin. The comparison comes **before** the
+// transaction, so a refusal writes nothing (ADR-0003 §4), and the numbers are
+// re-derived from live data rather than trusted from the request — a selection
+// that moved while the modal was open is exactly what this is for.
+export const bulkUpdate = (db: DrizzleDb, input: BulkEditInput): { updated: number } => {
+  const { itemCount, overwrites } = repo.bulkEditCounts(db, input.ids, input)
+  if (itemCount === 0) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'The selection holds no catalog items.' })
+  }
+  if (itemCount !== input.acknowledgedItemCount) {
+    throw new TRPCError({
+      code: 'CONFLICT',
+      message: `The selection now holds ${itemCount} items, not ${input.acknowledgedItemCount}. Nothing was changed.`,
+    })
+  }
+  const acknowledged = input.acknowledgedOverwriteCounts ?? {}
+  for (const [property, count] of Object.entries(overwrites)) {
+    if ((acknowledged[property] ?? 0) !== count) {
+      throw new TRPCError({
+        code: 'CONFLICT',
+        message: `\`${property}\` would now change ${count} items, not ${acknowledged[property] ?? 0}. Nothing was changed.`,
+      })
+    }
+  }
+  return { updated: repo.bulkEdit(db, input.ids, input) }
+}

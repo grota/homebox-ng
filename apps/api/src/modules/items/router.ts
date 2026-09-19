@@ -55,6 +55,21 @@ const selectionClauseInput = z.object({
   createdTo: dayInput.optional(),
 })
 
+// The edit being composed in the modal. Shared by the summary (which reports what
+// it would change) and the write (which pins those same numbers).
+const bulkEditChangeInput = z.object({
+  location: z.object({ set: z.number().int().positive().nullable() }).optional(),
+  tags: z
+    .object({
+      add: z.array(z.number().int().positive()).optional(),
+      remove: z.array(z.number().int().positive()).optional(),
+    })
+    .optional(),
+  fieldValues: z
+    .array(z.object({ fieldId: z.number().int().positive(), value: z.string().nullable() }))
+    .optional(),
+})
+
 export const itemsRouter = t.router({
   // Items are catalog-wide and shared across all authenticated users (each is
   // stamped with its creator), so every procedure uses `protectedProcedure`.
@@ -70,4 +85,22 @@ export const itemsRouter = t.router({
   resolveSelection: protectedProcedure.input(selectionClauseInput).query(({ ctx, input }) => service.resolveSelection(ctx.db, input)),
   // The catalog's real creation-date span, so the date clause can be bounded by it.
   createdAtRange: protectedProcedure.query(({ ctx }) => service.createdAtRange(ctx.db)),
+  // What the selection holds, and what a pending edit would change. The modal
+  // shows the numbers this returns rather than deriving its own, so the count on
+  // the button and the count the write pins are the same code.
+  selectionSummary: protectedProcedure
+    .input(z.object({ ids: z.array(z.number().int().positive()), pending: bulkEditChangeInput.optional() }))
+    .query(({ ctx, input }) => service.selectionSummary(ctx.db, input.ids, input.pending)),
+  bulkUpdate: protectedProcedure
+    .input(
+      bulkEditChangeInput.extend({
+        // `.min(1)`: an empty selection is refused outright, never read as
+        // "everything" — a checkbox UI can produce one, and this is not the drafts
+        // verbs, where empty means all of them.
+        ids: z.array(z.number().int().positive()).min(1),
+        acknowledgedItemCount: z.number().int().min(0),
+        acknowledgedOverwriteCounts: z.record(z.number().int().min(0)).optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) => service.bulkUpdate(ctx.db, input)),
 })
