@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
 import { Button, Card, Input, Pagination } from '../../ui'
 import { UnpackModal } from './UnpackModal'
+import { flattenLocations, locationPathLabel } from '../../lib/locationPath'
 
 // Sent explicitly so the request that produced `total` and the control that reads
 // it cannot disagree about the window — the same agreement the items page makes.
@@ -34,6 +35,10 @@ export function DraftsPage() {
   // it and the two pages behave the same way.
   const page = Math.max(1, Number(params.get('page')) || 1)
   const { data, isLoading } = trpc.drafts.list.useQuery({ page, pageSize: PAGE_SIZE })
+  // The location tree, so a draft's line can show its whole path rather than the
+  // leaf name — the same argument the catalog card makes.
+  const locations = trpc.locations.list.useQuery()
+  const locationById = new Map(flattenLocations(locations.data ?? []).map((l) => [l.id, l]))
   const update = trpc.drafts.update.useMutation()
   const publish = trpc.drafts.publish.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
   const trashOne = trpc.drafts.trash.useMutation({ onSuccess: () => void utils.drafts.list.invalidate() })
@@ -204,6 +209,14 @@ export function DraftsPage() {
                   defaultValue={d.name}
                   onBlur={(e) => { if (e.target.value.trim() && e.target.value !== d.name) void update.mutateAsync({ id: d.id, name: e.target.value.trim() }) }}
                 />
+                {/* Where it belongs, as a path: a draft's location is the thing you
+                    check before publishing it into a shared catalog, and the leaf
+                    alone does not say which `garage`. */}
+                {d.location ? (
+                  <p className="truncate text-sm text-text-muted" data-testid="draft-location">
+                    {locationPathLabel(d.locationId, d.location.name, locationById)}
+                  </p>
+                ) : null}
                 {/* `flex-wrap` rather than a hard one-line row: a card this narrow
                     cannot always fit a checkbox and two labels side by side, and
                     stacking reads better than overflowing. `mt-auto` keeps the

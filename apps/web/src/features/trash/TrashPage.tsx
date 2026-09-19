@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { trpc } from '../../api/trpc'
 import { Button, Card, Modal, Pagination, PhotoViewer } from '../../ui'
 import { usePhotoIndex } from '../../lib/photoIndex'
+import { flattenLocations, locationPathLabel } from '../../lib/locationPath'
 
 const PAGE_SIZE = 20
 
@@ -33,6 +34,10 @@ export function TrashPage() {
   const [params] = useSearchParams()
   const page = Math.max(1, Number(params.get('page')) || 1)
   const { data, isLoading } = trpc.trash.list.useQuery({ page, pageSize: PAGE_SIZE })
+  // The location tree, so a row can say where the thing came from as a path — which
+  // is what tells you whether restoring it is right.
+  const locations = trpc.locations.list.useQuery()
+  const locationById = new Map(flattenLocations(locations.data ?? []).map((l) => [l.id, l]))
   const refresh = () => void utils.trash.list.invalidate()
   const restore = trpc.trash.restore.useMutation({ onSuccess: refresh })
   const purge = trpc.trash.purge.useMutation({ onSuccess: refresh })
@@ -106,6 +111,7 @@ export function TrashPage() {
                       <p className="truncate text-text">{item.name}</p>
                       <p className="text-sm text-text-muted">
                         {item.published ? t('trash.kindItem') : t('trash.kindDraft')}
+                        {item.location ? ` · ${locationPathLabel(item.locationId, item.location.name, locationById)}` : ''}
                         {item.trashedAt ? ` · ${t('trash.trashedWhen', { when: ago(new Date(item.trashedAt), i18n.language) })}` : ''}
                       </p>
                     </div>

@@ -19,6 +19,10 @@ const { restoreMutate, purgeMutate, purgeAllMutate, state } = vi.hoisted(() => (
 
 const setRows = (rows: unknown[]) => { state.rows = rows }
 
+// The location tree the row's path is built from, read lazily by the mock factory
+// (which runs on import, after this declaration).
+let locationData: any[] = []
+
 const row = (over: Record<string, unknown> = {}) => ({
   id: 1,
   name: 'Kettle',
@@ -39,6 +43,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
     trpc: {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
       useUtils: () => ({ trash: { list: { invalidate } } }),
+      locations: { list: { useQuery: () => ({ data: locationData, isLoading: false }) } },
       trash: {
         list: { useQuery: () => ({ data: { items: state.rows, total: state.rows.length }, isLoading: false }) },
         restore: { useMutation: mutation(restoreMutate) },
@@ -58,9 +63,24 @@ const renderPage = () =>
     </MemoryRouter>,
   )
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  locationData = []
+})
 
 describe('trash page', () => {
+  // Where a thing came from is what tells you whether restoring it is right — and
+  // a leaf name does not say which `garage`.
+  it("shows a trashed item's location as its path", () => {
+    locationData = [
+      { id: 1, name: 'home', parentId: null, depth: 1, children: [{ id: 2, name: 'garage', parentId: 1, depth: 2 }] },
+    ]
+    setRows([row({ locationId: 2, location: { id: 2, name: 'garage' } })])
+
+    renderPage()
+
+    expect(screen.getByText(/home › garage/)).toBeInTheDocument()
+  })
   it('says so when the trash is empty', () => {
     setRows([])
     renderPage()

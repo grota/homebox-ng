@@ -39,12 +39,19 @@ const trashAllMutate = vi.fn()
 // on success now, and that is only assertable if the callback is wired through.
 const publishAllMutate = vi.fn()
 
-// A minimal draft row. `DraftsPage` reads only `id`, `name` and `images`.
-const draft = (id: number, name: string) => ({
+// A minimal draft row. `DraftsPage` reads `id`, `name` and `images` — plus
+// `locationId`/`location`, which the card shows as a path.
+const draft = (id: number, name: string, location: { id: number; name: string } | null = null) => ({
   id,
   name,
+  locationId: location?.id ?? null,
+  location,
   images: [{ id: id * 10, originalPath: 'uploads/originals/a.png', editedPath: null, thumbPath: 'uploads/thumbs/a.jpg', isPrimary: true }],
 })
+
+// The location tree the card's path is built from. Nested, because that is what
+// `locations.list` returns and the path is the whole point.
+let locationData: any[] = []
 
 // Sits beside `DraftsPage` under the same router to make the URL observable from
 // a case, and to drive the navigation `UnpackModal.onUnpacked` performs — which
@@ -73,6 +80,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
     trpc: {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
       useUtils: () => ({ drafts: { list: { invalidate } } }),
+      locations: { list: { useQuery: () => ({ data: locationData, isLoading: false }) } },
       drafts: {
         // The paginated envelope `drafts.list` returns: one page plus the
         // unpaginated total. `total` is derived so a case only sets the rows.
@@ -114,9 +122,26 @@ import { DraftsPage } from '../src/features/drafts'
 beforeEach(() => {
   vi.clearAllMocks()
   typeData = []
+  locationData = []
 })
 
 describe('drafts page', () => {
+  // A leaf name does not say *which* `garage` — the same argument the catalog card
+  // makes, and the drafts card had the same gap.
+  it("shows a draft's location as its path", () => {
+    locationData = [
+      { id: 1, name: 'home', parentId: null, depth: 1, children: [{ id: 2, name: 'garage', parentId: 1, depth: 2 }] },
+    ]
+    draftData = [draft(1, 'Draft Lamp', { id: 2, name: 'garage' })]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId('draft-location')).toHaveTextContent('home › garage')
+  })
+
   it('renders a draft with its name, publish/trash actions, and a select-all checkbox', () => {
     draftData = [
       {
