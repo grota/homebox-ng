@@ -13,6 +13,7 @@ vi.mock('../src/lib/settings/useUserSettings', () => {
       themeMode: 'auto',
       lightThemeId: 'light-default',
       darkThemeId: 'dark-default',
+      itemsSort: 'createdAt:desc',
       formatDate: () => 'Sept 6, 2026',
       updateSettings,
     }),
@@ -45,5 +46,20 @@ describe('SettingsPage', () => {
     // doesn't check it against the real (unmocked) module's type.
     const { __updateSettings } = (await import('../src/lib/settings/useUserSettings')) as any
     expect(__updateSettings).toHaveBeenCalledWith({ themeMode: 'dark' })
+  })
+
+  // The catalog list's order is a per-user preference like the theme, so it is
+  // offered here as well as on the items page. Only the *stored* orderings are
+  // listed: `relevance` is a consequence of searching, not something to set.
+  it('stores the catalog ordering, and does not offer relevance', async () => {
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+
+    const sort = screen.getByLabelText('settings.itemsSort')
+    expect(sort).toHaveValue('createdAt:desc')
+    expect(sort).not.toHaveTextContent('relevance')
+
+    fireEvent.change(sort, { target: { value: 'name:asc' } })
+    const { __updateSettings } = (await import('../src/lib/settings/useUserSettings')) as any
+    expect(__updateSettings).toHaveBeenCalledWith({ itemsSort: 'name:asc' })
   })
 })

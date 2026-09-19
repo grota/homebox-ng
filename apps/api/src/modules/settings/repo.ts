@@ -13,6 +13,7 @@ export type UserSettingsRow = {
   themeMode: string
   lightThemeId: string
   darkThemeId: string
+  itemsSort: string
 }
 
 // Select only the DTO columns (never the `id`).
@@ -23,6 +24,7 @@ const ROW_FIELDS = {
   themeMode: userSettings.themeMode,
   lightThemeId: userSettings.lightThemeId,
   darkThemeId: userSettings.darkThemeId,
+  itemsSort: userSettings.itemsSort,
 } as const
 
 export const getByUserId = (db: DrizzleDb, userId: number): UserSettingsRow | undefined =>

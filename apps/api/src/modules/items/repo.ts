@@ -1,6 +1,7 @@
 import { and, count, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm'
 import { items, itemCustomFieldValues, itemTypeFields, itemTypes, locations, itemTags, tags, images } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
+import { DEFAULT_ITEM_SORT, type ItemSort, type ItemSortPreference } from '@homebox/shared'
 import { reindexItem } from './fts.js'
 
 // Row shape surfaced by the app layer. CamelCase object keys (the schema is
@@ -81,6 +82,7 @@ export type SearchItemsOptions = {
   locationId?: number
   itemTypeId?: number
   tagIds?: number[]
+  sort?: ItemSort
 }
 
 type RelationalFilters = { locationId?: number; itemTypeId?: number; tagIds?: number[] }
@@ -249,6 +251,37 @@ const hydrateRows = (db: DrizzleDb, idRows: { id: number; snippet: string | null
   })
 }
 
+// Every catalog ordering, and the rule that makes them all *total*.
+//
+// Each one ends in `items.id`. `items.list` pages with LIMIT/OFFSET, so an
+// ordering with ties is one where the tied rows can come back in a different
+// order per request — and a row that moves across a page boundary is a row the
+// user never sees, or sees twice. That is reachable rather than theoretical: a
+// bulk create stamps many items with the same `created_at`, and both an unpack
+// and a bulk publish create many items at once.
+const ITEM_SORT_SQL: Record<ItemSortPreference, SQL> = {
+  'createdAt:desc': sql`items.created_at DESC, items.id DESC`,
+  'createdAt:asc': sql`items.created_at ASC, items.id DESC`,
+  'updatedAt:desc': sql`items.updated_at DESC, items.id DESC`,
+  'updatedAt:asc': sql`items.updated_at ASC, items.id DESC`,
+  // `COLLATE NOCASE`, because SQLite's default collation is byte order, which
+  // sorts every uppercase name before every lowercase one. That is not a name
+  // ordering, and it reads as a bug the first time it is used.
+  'name:asc': sql`items.name COLLATE NOCASE ASC, items.id DESC`,
+  'name:desc': sql`items.name COLLATE NOCASE DESC, items.id DESC`,
+}
+
+// The `ORDER BY` fragment for one request. Ranked search keeps its rank order
+// unless a column is asked for — that is what "an explicit order overrides
+// relevance" means — and `relevance` with no term falls back to the default,
+// because with no term there is no rank to order by.
+const orderFor = (sort: ItemSort | undefined, ranked: boolean): SQL => {
+  if (ranked && (sort == null || sort === 'relevance')) {
+    return sql`rank ASC, items.created_at DESC, items.id DESC`
+  }
+  return ITEM_SORT_SQL[sort != null && sort !== 'relevance' ? sort : DEFAULT_ITEM_SORT]
+}
+
 const runFtsSearch = (db: DrizzleDb, opts: SearchItemsOptions, term: string, pageSize: number, offset: number) => {
   const ctx = ftsCtx(term)
   const where = buildWhere(db, { locationId: opts.locationId, itemTypeId: opts.itemTypeId, tagIds: opts.tagIds }, ctx.predicate)
@@ -260,7 +293,7 @@ const runFtsSearch = (db: DrizzleDb, opts: SearchItemsOptions, term: string, pag
     SELECT items.id, snippet(items_fts, -1, '', '', ' … ', 16) AS snippet
     FROM items_fts JOIN items ON items.id = items_fts.item_id
     ${where ? sql`WHERE ${where}` : sql``}
-    ORDER BY rank ASC, items.created_at DESC
+    ORDER BY ${orderFor(opts.sort, true)}
     LIMIT ${pageSize} OFFSET ${offset}
   `)
 
@@ -281,7 +314,7 @@ const runPlainSearch = (db: DrizzleDb, opts: SearchItemsOptions, ctx: SearchCtx,
   const filters = { locationId: opts.locationId, itemTypeId: opts.itemTypeId, tagIds: opts.tagIds }
   const where = buildWhere(db, filters, ctx.predicate)
   const total = db.select({ c: count() }).from(items).where(where).get()?.c ?? 0
-  const rows = db.select(ITEM_FIELDS).from(items).where(where).orderBy(desc(items.createdAt)).limit(pageSize).offset(offset).all()
+  const rows = db.select(ITEM_FIELDS).from(items).where(where).orderBy(orderFor(opts.sort, false)).limit(pageSize).offset(offset).all()
   return { rows: rows.map((r) => ({ ...r, snippet: null })), total, facets: computeFacets(db, filters, ctx) }
 }
 

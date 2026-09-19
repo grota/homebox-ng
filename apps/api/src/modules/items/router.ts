@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { itemInput } from '@homebox/shared'
+import { itemInput, ITEM_SORTS } from '@homebox/shared'
 import { t, protectedProcedure } from '../../trpc.js'
 import * as service from './service.js'
 import * as trashService from '../trash/service.js'
@@ -31,6 +31,9 @@ const listInput = z.object({
   locationId: z.number().int().positive().optional(),
   itemTypeId: z.number().int().positive().optional(),
   tagIds: z.array(z.number().int().positive()).optional(),
+  // Omitted means the default ordering (`createdAt:desc`) — and, while a search
+  // term is present, relevance, which is what this call has always done.
+  sort: z.enum(ITEM_SORTS).optional(),
 })
 
 export const itemsRouter = t.router({

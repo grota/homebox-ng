@@ -98,6 +98,16 @@ export const userSettings = sqliteTable('user_settings', {
   themeMode: text('theme_mode', { enum: ['auto', 'light', 'dark'] }).notNull().default('auto'),
   lightThemeId: text('light_theme_id').notNull().default('light-default'),
   darkThemeId: text('dark_theme_id').notNull().default('dark-default'),
+  // How this user reads the catalog list. A per-user preference rather than an
+  // instance setting. `relevance` is deliberately absent: it is a consequence of
+  // searching, not a preference, and with no search term there is no rank for it
+  // to mean. As with `theme_mode`, the `enum` constrains the TS type only — the
+  // stored value is validated by zod on the wire.
+  itemsSort: text('items_sort', {
+    enum: ['createdAt:desc', 'createdAt:asc', 'updatedAt:desc', 'updatedAt:asc', 'name:asc', 'name:desc'],
+  })
+    .notNull()
+    .default('createdAt:desc'),
 })
 
 export const instanceSettings = sqliteTable('instance_settings', {

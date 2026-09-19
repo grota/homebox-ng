@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { hexColor } from '@homebox/shared'
+import { hexColor, ITEM_SORT_PREFERENCES, type ItemSort } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
-import { Button, cn, Field, hoverScrim, Input, PageHeader, Pagination, Tooltip } from '../../ui'
+import { Button, cn, Field, hoverScrim, Input, PageHeader, Pagination, Select, Tooltip } from '../../ui'
+import { ITEM_SORT_LABELS } from '../../lib/itemSort'
+import { useUserSettings } from '../../lib/settings/useUserSettings'
 import { ItemCard } from './ItemCard'
 import { ItemForm } from './ItemForm'
 // The tree walk the card's location path and the sidebar breadcrumb share, so
@@ -78,6 +80,31 @@ export function ItemsPage() {
     return () => clearTimeout(t)
   }, [searchInput, searchParams, setSearchParams])
 
+  // The catalog's order. It is a stored per-user preference, so the control lives
+  // with the list as well as on `/settings` — a sort is something you change
+  // while looking at what you are sorting.
+  //
+  // Relevance is the one case that is not a preference: it is what a search is
+  // ordered by until the user says otherwise, and it is never written down (there
+  // is no rank to order by without a term). So the only thing remembered here is
+  // a choice made *while searching* — otherwise the stored value is the answer.
+  const { itemsSort, updateSettings } = useUserSettings()
+  // Holds a pick made on this page, including `relevance`, which is a legal pick
+  // while searching and is not a stored preference.
+  const [chosenSort, setChosenSort] = useState<ItemSort | null>(null)
+  const searching = q.trim().length > 0
+  // The pick wins as soon as it is made, in both modes: it does not wait for the
+  // optimistic settings write to land, and with nothing picked it is the stored
+  // preference — or relevance, while there is a term to rank.
+  const sort: ItemSort = chosenSort ?? (searching ? 'relevance' : itemsSort)
+
+  const chooseSort = (value: ItemSort) => {
+    setChosenSort(value)
+    // `relevance` is not storable: it means "rank", which only exists while a
+    // term is matched.
+    if (value !== 'relevance') void updateSettings({ itemsSort: value })
+  }
+
   const { data, isLoading } = trpc.items.list.useQuery({
     page,
     pageSize: PAGE_SIZE,
@@ -85,6 +112,7 @@ export function ItemsPage() {
     locationId,
     itemTypeId,
     tagIds: tagIds.length ? tagIds : undefined,
+    sort,
   })
   const items = data?.items ?? []
   const facets = data?.facets
@@ -207,6 +235,21 @@ export function ItemsPage() {
             placeholder="Search items"
             className="w-full"
           />
+        </Field>
+        {/* The order lives with the list, not only on `/settings`: a sort is
+            something you change while looking at what you are sorting. The
+            control shows the *effective* order — while a search term is active
+            that is relevance, which is not stored anywhere, so picking anything
+            else is also what makes it a preference. */}
+        <Field label="Order" htmlFor="items-sort">
+          <Select id="items-sort" value={sort} onChange={(e) => chooseSort(e.target.value as ItemSort)}>
+            {searching && <option value="relevance">{ITEM_SORT_LABELS.relevance}</option>}
+            {ITEM_SORT_PREFERENCES.map((value) => (
+              <option key={value} value={value}>
+                {ITEM_SORT_LABELS[value]}
+              </option>
+            ))}
+          </Select>
         </Field>
         <Button onClick={clearFilters} className="self-end">Clear filters</Button>
       </div>

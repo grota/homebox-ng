@@ -53,16 +53,25 @@ creates many items in a tight loop, and `createdAt` is stamped by `$defaultFn` a
 in the client:
 
 ```ts
-'createdAt:desc' | 'createdAt:asc'
-'updatedAt:desc' | 'updatedAt:asc'
-'name:asc'       | 'name:desc'
+'relevance'            // legal on the wire; never a stored preference
+'createdAt:desc'       'createdAt:asc'
+'updatedAt:desc'       'updatedAt:asc'
+'name:asc'             'name:desc'
 ```
 
 Default `createdAt:desc` — the current behaviour, so every existing caller and test is unaffected.
 
-The three sortable columns were chosen on the grounds that they are the ones a person reads a list
-by. Deliberately **not** offered: `unit` and location path (nobody orders a catalog by either), a
-value in a custom field (per-type, a join per sort), and `quantity` (asked over and considered and
+**Two lists in `@homebox/shared`, not one.** `ITEM_SORTS` is what the endpoint accepts;
+`ITEM_SORT_PREFERENCES` is `ITEM_SORTS` without `relevance` and is what the settings schema stores.
+`relevance` has to be requestable, because the client asks for it while a search term is active —
+but it must not be storable, because with no term there is no rank and a stored `relevance` would
+silently mean newest-first. Validating that at the settings boundary with a "not this one" rule
+would leave the two lists implied rather than named; two constants say it outright, and the default
+(`DEFAULT_ITEM_SORT`) is typed as a preference so it cannot drift into being unstorable.
+
+The sortable columns were chosen on the grounds that they are the ones a person reads a list by.
+Deliberately **not** offered: `unit` and location path (nobody orders a catalog by either), a value
+in a custom field (per-type, a join per sort), and `quantity` (asked over and considered and
 dropped — easy to add later as one more enum member).
 
 **Name sorting uses `COLLATE NOCASE`.** SQLite's default collation is byte order, which sorts every
@@ -71,11 +80,17 @@ would read as a bug the first time it was used.
 
 ### 2. The tiebreak is fixed, and it is not optional
 
-Every ordering ends with `items.id` as the final key:
+Every ordering ends with `items.id DESC` as the final key — **one rule, in one direction**, not a
+direction that follows the primary key:
 
-- plain path: `<sort column> <dir>, items.id <dir>` — matching drafts and trash;
-- FTS path: `rank ASC, items.createdAt DESC, items.id DESC` — relevance first, then the existing
+- plain path: `<sort column> <dir>, items.id DESC`;
+- FTS path: `rank ASC, items.created_at DESC, items.id DESC` — relevance first, then the existing
   date order, then the deterministic key.
+
+(An earlier draft of this spec had the tiebreak follow the primary direction
+(`<sort column> <dir>, items.id <dir>`). It is always `DESC`: a tiebreak exists to be deterministic,
+the direction carries no meaning, and coupling it to the primary key is one more thing to get right
+for no behavioural gain.)
 
 This closes the skip/repeat window and is worth stating plainly in the code: without it, "order by a
 column whose values are not unique" plus `LIMIT`/`OFFSET` is a correctness bug, not a style
@@ -112,6 +127,12 @@ So relevance is a *consequence of searching*, not a setting: there is one condit
 the control has two sources. The visible symptom is that clearing a search term after the second row
 **snaps the control back** to the stored value, because relevance was never stored. That is correct;
 it is recorded here so it reads as designed rather than as a glitch on first encounter.
+
+**A pick wins immediately, in either mode.** The control keeps a local `chosenSort` and uses it the
+moment it is set, rather than reading back the stored value and waiting for the optimistic settings
+write to land. Two reasons: the list reorders on the click instead of after a round trip, and the
+control does not depend on the settings cache being updated to be correct. `chosenSort` starts
+`null`, so the stored value (or relevance, while searching) is what an untouched page shows.
 
 The alternative — making *Relevance* a stored enum value that falls back to newest-first when no term
 is present — was rejected: it would stop relevance being the automatic default while searching, which

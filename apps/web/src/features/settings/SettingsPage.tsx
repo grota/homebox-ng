@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { useUserSettings } from '../../lib/settings/useUserSettings'
 import { lightThemes, darkThemes } from '../../lib/theme/registry'
-import { LOCALES } from '@homebox/shared'
+import { ITEM_SORT_OPTIONS } from '../../lib/itemSort'
+import { LOCALES, type ItemSortPreference } from '@homebox/shared'
 import { Field, Select } from '../../ui'
 
 // Curated locale labels used in the <select>. Each value is a valid `Intl` locale.
@@ -9,13 +10,14 @@ const localeOptions = LOCALES.map((l) => ({ value: l, label: l }))
 
 export function SettingsPage() {
   const { t } = useTranslation()
-  const { locale, themeMode, lightThemeId, darkThemeId, updateSettings, formatDate } = useUserSettings()
+  const { locale, themeMode, lightThemeId, darkThemeId, itemsSort, updateSettings, formatDate } = useUserSettings()
 
   const setLocale = (value: string) => updateSettings({ locale: value as (typeof LOCALES)[number] })
   const setThemeMode = (value: string) =>
     updateSettings({ themeMode: value as 'auto' | 'light' | 'dark' })
   const setLight = (value: string) => updateSettings({ lightThemeId: value })
   const setDark = (value: string) => updateSettings({ darkThemeId: value })
+  const setItemsSort = (value: ItemSortPreference) => updateSettings({ itemsSort: value })
 
   return (
     <section className="flex flex-col gap-4 max-w-[32rem] mx-auto">
@@ -63,6 +65,22 @@ export function SettingsPage() {
         >
           {darkThemes.map((th) => (
             <option key={th.id} value={th.id}>{th.name}</option>
+          ))}
+        </Select>
+      </Field>
+
+      {/* The catalog list's order. A preference rather than an instance setting:
+          how you read a list is yours, and the items page offers the same control
+          in place. `relevance` is absent here because it is a consequence of
+          searching rather than something to store. */}
+      <Field label={t('settings.itemsSort')} htmlFor="settings-items-sort">
+        <Select
+          id="settings-items-sort"
+          value={itemsSort}
+          onChange={(e) => setItemsSort(e.target.value as ItemSortPreference)}
+        >
+          {ITEM_SORT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </Select>
       </Field>

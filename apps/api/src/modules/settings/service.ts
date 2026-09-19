@@ -17,6 +17,7 @@ const toDto = (row: UserSettingsRow): UserSettingsDto => ({
   themeMode: row.themeMode as UserSettingsDto['themeMode'],
   lightThemeId: row.lightThemeId,
   darkThemeId: row.darkThemeId,
+  itemsSort: row.itemsSort as UserSettingsDto['itemsSort'],
 })
 
 // Returns the user's settings row, or the spec defaults when none exists (a

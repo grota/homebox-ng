@@ -58,6 +58,7 @@
     "dark": "Dark",
     "lightPalette": "Light palette",
     "darkPalette": "Dark palette",
+    "itemsSort": "Item order",
     "datePreview": "Today",
     "version": "Version"
   }

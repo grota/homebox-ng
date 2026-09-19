@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `items_sort` text DEFAULT 'createdAt:desc' NOT NULL;
