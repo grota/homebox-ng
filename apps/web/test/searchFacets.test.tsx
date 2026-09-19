@@ -47,7 +47,12 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         facets: {
           types: [{ id: 1, name: 'Lighting', count: 1 }],
           tags: tagFacets,
-          locations: [{ id: 1, name: 'Living Room', count: 1 }],
+          // The location facet is a tree with two counts per node (ADR-0009).
+          // This one holds its item directly and has no children, so its two
+          // counts are equal and it renders as `Living Room (1)`.
+          locations: [
+            { id: 1, name: 'Living Room', parentId: null, ownCount: 1, subtreeCount: 1 },
+          ],
         },
       },
       isLoading: false,

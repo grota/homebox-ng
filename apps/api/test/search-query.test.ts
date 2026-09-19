@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { createDb, runMigrations } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import { createItem, searchItems } from '../src/modules/items/repo'
+import type { LocationFacet } from '../src/modules/items/repo'
 import { createType } from '../src/modules/itemTypes/repo'
 import { createLocation } from '../src/modules/locations/repo'
 import { createTag } from '../src/modules/tags/repo'
@@ -77,6 +78,21 @@ beforeAll(() => {
 })
 
 describe('searchItems ranked FTS search', () => {
+  // The location facet is a nested tree (ADR-0009) and a node carries two counts,
+  // so a top-level `find` only reaches the roots and `.count` no longer exists.
+  const facetNode = (nodes: LocationFacet[], id: number | 'none'): LocationFacet | undefined => {
+    for (const node of nodes) {
+      if (node.id === id) return node
+      const found = facetNode(node.children ?? [], id)
+      if (found) return found
+    }
+    return undefined
+  }
+  const countsOf = (nodes: LocationFacet[], id: number | 'none') => {
+    const node = facetNode(nodes, id)
+    return node ? { ownCount: node.ownCount, subtreeCount: node.subtreeCount } : undefined
+  }
+
   it('searches ranked across name/description/tags/type/location with a non-null snippet', () => {
     const byName = searchItems(db, { search: 'spotlight' })
     expect(sortedIds(byName.rows)).toEqual([lamp])
@@ -102,10 +118,15 @@ describe('searchItems ranked FTS search', () => {
   })
 
   it('applies locationId + itemTypeId as AND, and tagIds as OR-within-dimension', () => {
-    // AND: Garage location AND Electronics type → only the lamp.
+    // AND: Garage location AND Electronics type. A location selects its whole
+    // subtree (ADR-0009), so this is Garage + Shelf + Drawer's electronics.
     const andResult = searchItems(db, { locationId: garage.id, itemTypeId: typeA })
-    expect(sortedIds(andResult.rows)).toEqual([lamp])
-    expect(andResult.total).toBe(1)
+    expect(sortedIds(andResult.rows)).toEqual([lamp, wire, gadget])
+    expect(andResult.total).toBe(3)
+
+    // The same AND on a leaf is the narrow case: Drawer holds one electronics item.
+    const leaf = searchItems(db, { locationId: drawer.id, itemTypeId: typeA })
+    expect(sortedIds(leaf.rows)).toEqual([gadget])
 
     // tagIds OR-within-dimension: an item with ANY of the selected tags matches.
     const tagOr = searchItems(db, { tagIds: [fragileTag.id, bulkyTag.id] })
@@ -114,17 +135,17 @@ describe('searchItems ranked FTS search', () => {
 
     // AND of location with a single tag.
     const locAndTag = searchItems(db, { locationId: garage.id, tagIds: [bulkyTag.id] })
-    expect(sortedIds(locAndTag.rows)).toEqual([chair])
-    expect(locAndTag.total).toBe(1)
+    expect(sortedIds(locAndTag.rows)).toEqual([table, chair])
+    expect(locAndTag.total).toBe(2)
 
     // No-search path reuses the plain filter and still returns facets (the type
     // dimension is excluded from the type facet).
     const noSearch = searchItems(db, { locationId: garage.id })
-    expect(sortedIds(noSearch.rows)).toEqual([lamp, chair]) // only items at Garage
-    expect(noSearch.total).toBe(2)
+    expect(sortedIds(noSearch.rows)).toEqual([lamp, table, wire, chair, gadget])
+    expect(noSearch.total).toBe(5)
     expect(noSearch.facets.types).toEqual([
-      { id: typeA, name: 'Electronics', count: 1 },
-      { id: typeB, name: 'Furniture', count: 1 },
+      { id: typeA, name: 'Electronics', count: 3 },
+      { id: typeB, name: 'Furniture', count: 2 },
     ])
   })
 
@@ -149,28 +170,28 @@ describe('searchItems ranked FTS search', () => {
       { id: fragileTag.id, name: 'fragile', color: '#ff0000', count: 1 },
     ])
 
-    // Locations facet: filter location to Garage, but the locations facet omits
-    // the location filter, so it lists the current-level children (Shelf) with
-    // their subtree count ('bright' → the Shelf item).
+    // Locations facet: the search is 'bright' (lamp + table), and the facet omits
+    // the location filter, so the whole tree comes back with both counts per node.
     const withLoc = searchItems(db, { search: 'bright', locationId: garage.id })
-    expect(sortedIds(withLoc.rows)).toEqual([lamp]) // only the Garage item
-    expect(withLoc.total).toBe(1)
-    expect(withLoc.facets.locations).toEqual([{ id: shelf.id, name: 'Shelf', count: 1 }])
+    expect(sortedIds(withLoc.rows)).toEqual([lamp, table])
+    expect(withLoc.total).toBe(2)
+    expect(countsOf(withLoc.facets.locations, garage.id)).toEqual({ ownCount: 1, subtreeCount: 2 })
+    expect(countsOf(withLoc.facets.locations, shelf.id)).toEqual({ ownCount: 1, subtreeCount: 1 })
   })
 
-  it('location facet returns the current level (children) with subtree counts', () => {
-    // No location selected → level is roots. The root's count uses the recursive
-    // subtree, so an item two levels deep (gadget in Drawer) is counted once.
+  it('returns the whole tree, with a count for every node', () => {
+    // 'tiny' matches only the Drawer item, two levels down. The whole tree comes
+    // back — any branch can be opened — and it is the ancestor's *subtree* count
+    // that makes the deep item visible from the root.
     const deep = searchItems(db, { search: 'tiny' })
     expect(sortedIds(deep.rows)).toEqual([gadget])
-    expect(deep.facets.locations).toEqual([{ id: garage.id, name: 'Garage', count: 1 }])
+    expect(countsOf(deep.facets.locations, garage.id)).toEqual({ ownCount: 0, subtreeCount: 1 })
+    expect(countsOf(deep.facets.locations, shelf.id)).toEqual({ ownCount: 0, subtreeCount: 1 })
+    expect(countsOf(deep.facets.locations, drawer.id)).toEqual({ ownCount: 1, subtreeCount: 1 })
 
-    // Location selected → level is its children. Shelf's subtree count reflects
-    // the item it holds, even though the main query (locationId=Garage) excludes it.
-    const level = searchItems(db, { search: 'oak', locationId: garage.id })
-    expect(level.rows).toEqual([])
-    expect(level.total).toBe(0)
-    expect(level.facets.locations).toEqual([{ id: shelf.id, name: 'Shelf', count: 1 }])
+    // And it is nested, not a flat list of every location.
+    expect(facetNode(deep.facets.locations, garage.id)?.children?.map((c) => c.id)).toEqual([shelf.id])
+    expect(facetNode(deep.facets.locations, shelf.id)?.children?.map((c) => c.id)).toEqual([drawer.id])
   })
 
   it('a malformed FTS term falls back to a literal name LIKE without throwing', () => {
@@ -184,7 +205,7 @@ describe('searchItems ranked FTS search', () => {
     expect(res!.total).toBe(0)
     expect(res!.facets.types).toEqual([])
     expect(res!.facets.tags).toEqual([])
-    expect(res!.facets.locations.find((l) => l.id === garage.id)?.count).toBe(0)
+    expect(countsOf(res!.facets.locations, garage.id)).toEqual({ ownCount: 0, subtreeCount: 0 })
 
     // A term that is valid FTS but matches nothing is NOT an error — it returns
     // 0 rows via the FTS path (no fallback trigger, still no throw).

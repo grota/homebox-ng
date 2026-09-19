@@ -99,6 +99,19 @@ member row where `id = root`. Assembling that into the nested shape is a reduce 
 already knows how to sort and nest — `buildTree` (`locations/service.ts:79`) does the same job for
 `locations.list`.
 
+**The filters go in the `WHERE`, not in the `LEFT JOIN`'s `ON` clause** — and this is not a style
+choice. Keeping them in the join is the nicer shape (a node with nothing matching keeps its own
+zero row), but SQLite refuses FTS5's `MATCH` anywhere but a `WHERE`: *"unable to use function MATCH
+in the requested context"*. That failure is also **invisible** from the outside, because the FTS
+path catches its own errors and silently degrades to a name-only `LIKE` search — it surfaced only as
+a handful of unrelated search tests returning nothing. So the join stays plain and the counts are
+looked up per node with a default: a node whose items were all filtered out has no row, and reads
+as zero.
+
+The recursive step joins on `l.parent_id = tree.id`, not `tree.root_id`. Joining on the root reaches
+direct children only, which quietly reports a subtree count of "root + its immediate children" — a
+one-level tree that looks right for a two-level fixture.
+
 *If the `LEFT JOIN` grouping turns awkward in Drizzle, the fallback is the existing per-node CTE
 loop over all nodes rather than one level — correct, more queries, ~30–60 of them at household
 scale. Take it and leave a `ponytail:` comment naming the ceiling; do not reach for a cache.*
@@ -163,6 +176,11 @@ be a fourth thing the items page encodes.
 - **A new `Unlocated` node**, a root-level leaf filtering `location_id IS NULL`. It is what makes the
   tree account for the catalog: without it, the roots' subtree counts sum to less than the item
   total, and `4 (12)` makes that visible where flat chips hid it. It shows one number, never two.
+  **It carries `id: 'none'`** — it is not a location and has no id to borrow — and that is the same
+  value the `locationId` filter takes and the same value the URL param carries
+  (`?locationId=none`), so the client passes a node's id straight through rather than mapping a
+  sentinel. Everything that reads `locationId` therefore widens from `number` to `number | 'none'`;
+  the alternative, `0`, is a magic number where the type could say it.
 
 ### 6. The breadcrumb is deleted
 
@@ -171,19 +189,22 @@ branch* rather than restated as a separate row of chips, exactly as it is on the
 "All locations" remains as the reset. **This is a deletion** — the client-side `parentId` walk
 (`ItemsPage.tsx:99-106`) and both `flex flex-wrap` blocks go.
 
-### 7. Two components come out of `ItemsPage.tsx`
+### 7. Only the tree came out of `ItemsPage.tsx`, so far
 
 The page is 430 lines and gains a tree, a sort control and (in the batch-edit work) a selection bar.
-`ItemsPage.tsx` keeps the page; two pieces move out:
+This change extracts **one** component, not two:
 
-- **`features/items/FacetPanel.tsx`** — the sidebar, the mobile `Filters` toggle, and the tree. It
-  owns the location tree rendering; the type and tag groups come with it unchanged.
-- **`features/items/ItemCard.tsx`** — the card. This is shared with the card-location-path work and
-  the selection checkbox (see `2026-09-19-catalog-card-location-path-design.md` and
-  `2026-09-19-catalog-batch-edit-design.md`), both of which restructure the same markup.
-
-Extraction is not tidying for its own sake: three features land on this file, and the alternative is
-a 900-line component.
+- **`features/items/LocationFacetTree.tsx`** — the tree itself: nodes, the selected id, and an
+  `onSelect`. Self-contained, with its own expansion state, and the only part of the sidebar that
+  this work rewrites.
+- **`features/items/FacetPanel.tsx`** — *not* extracted. Pulling the whole sidebar out means moving
+  the mobile `Filters` toggle and threading every filter and setter through props, and the batch-edit
+  work will have to restructure the panel anyway (it hides the facets while "Selected only" is on).
+  Doing it twice is the worse option. That extraction belongs to
+  `2026-09-19-catalog-batch-edit-design.md`.
+- **`features/items/ItemCard.tsx`** — already extracted, by
+  `2026-09-19-catalog-card-location-path-design.md`, which needs the same card markup the selection
+  checkbox will restructure.
 
 ## Testing
 

@@ -7,9 +7,9 @@ import { ITEM_SORT_LABELS } from '../../lib/itemSort'
 import { useUserSettings } from '../../lib/settings/useUserSettings'
 import { ItemCard } from './ItemCard'
 import { ItemForm } from './ItemForm'
-// The tree walk the card's location path and the sidebar breadcrumb share, so
-// the two cannot disagree about the separator or about a broken chain.
-import { flattenLocations, locationPath, type FlatLocation } from './locationPath'
+import { LocationFacetTree, type LocationFacetId } from './LocationFacetTree'
+// Flattening the location tree, so a card's location path can walk up it.
+import { flattenLocations } from './locationPath'
 
 // Sent explicitly rather than left to the server's default, so the request that
 // produced `total` and the Next guard that reads it cannot disagree about the
@@ -48,7 +48,10 @@ export function ItemsPage() {
   const utils = trpc.useUtils()
 
   const q = searchParams.get('q') ?? ''
-  const locationId = parseId(searchParams.get('locationId'))
+  // A location id, or `none` for the Unlocated bucket (ADR-0009), which is not a
+  // location and so has no id to carry.
+  const rawLocationId = searchParams.get('locationId')
+  const locationId: LocationFacetId | undefined = rawLocationId === 'none' ? 'none' : parseId(rawLocationId)
   const itemTypeId = parseId(searchParams.get('typeId'))
   const tagIds = parseTagIds(searchParams)
   const page = parseId(searchParams.get('page')) ?? 1
@@ -117,11 +120,10 @@ export function ItemsPage() {
   const items = data?.items ?? []
   const facets = data?.facets
 
-  // The location tree, as a lookup. Both the breadcrumb below and the card's
-  // location path are walks up `parentId` from here.
+  // The location tree, as a lookup: the card's location path is a walk up
+  // `parentId` from here.
   const locationsQuery = trpc.locations.list.useQuery()
   const locationById = new Map(flattenLocations(locationsQuery.data ?? []).map((l) => [l.id, l]))
-  const breadcrumb: FlatLocation[] = locationId != null ? locationPath(locationId, locationById) : []
 
   // Every filter change resets `page` to 1.
   const applyAndResetPage = (mutate: (params: URLSearchParams) => void) => {
@@ -139,7 +141,7 @@ export function ItemsPage() {
       else next.set('typeId', String(id))
     })
 
-  const setLocationFilter = (id: number | undefined) =>
+  const setLocationFilter = (id: LocationFacetId | undefined) =>
     applyAndResetPage((next) => {
       if (id == null) next.delete('locationId')
       else next.set('locationId', String(id))
@@ -343,48 +345,28 @@ export function ItemsPage() {
                   deleted the section the moment you filtered, taking the path and
                   the way back to "All locations" with it. Which is precisely the
                   "choosing a location gives no feedback" this fixes. */}
-              {(facets.locations.length > 0 || locationId != null) && (
-                <div className="flex flex-wrap gap-2">
-                  <h2 className="w-full mb-0">Locations</h2>
+              {/* The tree replaced the two flat chip runs it used to be — one for
+                  the path down to the selection, one for the current level. The
+                  hierarchy is visible now instead of being implied by chips
+                  appearing and disappearing, and the path to the selection is
+                  simply the open branch. */}
+              {(facets.locations.some((node) => !node.unlocated) || locationId != null) && (
+                <div className="flex flex-col gap-2">
+                  <h2 className="mb-0">Locations</h2>
                   <Button
                     size="sm"
+                    className="self-start"
                     variant={locationId == null ? 'primary' : 'ghost'}
                     aria-pressed={locationId == null}
                     onClick={() => setLocationFilter(undefined)}
                   >
                     All locations
                   </Button>
-                  {/* The path down to what is selected, root first, ending in the
-                      selection itself — which is the *only* place it appears: the
-                      chip list below shows the selected location's **children**
-                      (that is the drill-down), so without this the current
-                      location would be nowhere on the page. Ancestors are plain
-                      and clickable to go back up; the last chip carries the
-                      selection's accent. */}
-                  {breadcrumb.map((loc, i) => (
-                    <span key={loc.id} className="inline-flex items-center gap-2">
-                      {i > 0 && <span aria-hidden className="text-text-muted">›</span>}
-                      <Button
-                        size="sm"
-                        variant={loc.id === locationId ? 'primary' : 'ghost'}
-                        aria-pressed={loc.id === locationId}
-                        onClick={() => setLocationFilter(loc.id)}
-                      >
-                        {loc.name}
-                      </Button>
-                    </span>
-                  ))}
-                  {facets.locations.map((f) => (
-                    <Button
-                      key={f.id}
-                      size="sm"
-                      variant={locationId === f.id ? 'primary' : 'ghost'}
-                      aria-pressed={locationId === f.id}
-                      onClick={() => setLocationFilter(f.id)}
-                    >
-                      {f.name} ({f.count})
-                    </Button>
-                  ))}
+                  <LocationFacetTree
+                    nodes={facets.locations}
+                    selected={locationId}
+                    onSelect={setLocationFilter}
+                  />
                 </div>
               )}
             </aside>

@@ -28,7 +28,9 @@ const listInput = z.object({
   page: z.number().int().positive().optional(),
   pageSize: z.number().int().positive().optional(),
   search: z.string().optional(),
-  locationId: z.number().int().positive().optional(),
+  // A location id selects that location's **whole subtree** (ADR-0009), and
+  // `'none'` selects the items with no location at all.
+  locationId: z.union([z.literal('none'), z.number().int().positive()]).optional(),
   itemTypeId: z.number().int().positive().optional(),
   tagIds: z.array(z.number().int().positive()).optional(),
   // Omitted means the default ordering (`createdAt:desc`) — and, while a search

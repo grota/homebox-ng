@@ -2,6 +2,7 @@ import { and, count, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from 
 import { items, itemCustomFieldValues, itemTypeFields, itemTypes, locations, itemTags, tags, images } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import { DEFAULT_ITEM_SORT, type ItemSort, type ItemSortPreference } from '@homebox/shared'
+import { listSubtreeIds } from '../locations/repo.js'
 import { reindexItem } from './fts.js'
 
 // Row shape surfaced by the app layer. CamelCase object keys (the schema is
@@ -73,22 +74,42 @@ export const getItem = (db: DrizzleDb, id: number): ItemRow | undefined =>
 
 export type FacetCount = { id: number; name: string; count: number }
 export type TagFacet = { id: number; name: string; color: string | null; count: number }
-export type SearchFacets = { types: FacetCount[]; tags: TagFacet[]; locations: FacetCount[] }
+
+// A location in the facet tree (ADR-0009). Two counts per node because a tree puts
+// a parent's total directly above its children's: `subtreeCount` is what a
+// selection yields, `ownCount` is what sits in the node itself, and `4 (12)` says
+// both. Showing only one of them is what made the old flat chips disagree with
+// their own filter.
+export type LocationFacet = {
+  // `'none'` is the **Unlocated** bucket, which is not a location and has no
+  // children. It is a legal `locationId` filter value, so the client can pass a
+  // node's id straight through without mapping it.
+  id: number | 'none'
+  name: string
+  parentId: number | null
+  ownCount: number
+  subtreeCount: number
+  unlocated?: true
+  children?: LocationFacet[]
+}
+
+export type SearchFacets = { types: FacetCount[]; tags: TagFacet[]; locations: LocationFacet[] }
 export type SearchRow = ItemRow & { snippet: string | null }
 export type SearchItemsOptions = {
   page?: number
   pageSize?: number
   search?: string
-  locationId?: number
+  locationId?: LocationFilter
   itemTypeId?: number
   tagIds?: number[]
   sort?: ItemSort
 }
 
-type RelationalFilters = { locationId?: number; itemTypeId?: number; tagIds?: number[] }
+// A location filter is either a location id — matching that location's whole
+// subtree — or `'none'`, the items that have no location at all.
+export type LocationFilter = number | 'none'
 
-// `LocationRow`-like level node (id + name only) used by the location facet.
-type LevelNode = { id: number; name: string }
+type RelationalFilters = { locationId?: LocationFilter; itemTypeId?: number; tagIds?: number[] }
 
 // `buildWhere` composes the relational filters (and an optional search predicate)
 // into a single AND'd fragment. Two base predicates are always present — the item
@@ -97,10 +118,22 @@ type LevelNode = { id: number; name: string }
 // which compose their WHERE through here. The `tagIds` predicate is
 // OR-within-dimension: an item matches if it carries AT LEAST ONE of the selected
 // tags (membership in the subselect of `item_tags` ids).
+// A location filter matches the whole **subtree** — the node and every descendant
+// — so that a facet's count and the results it yields are the same number
+// (ADR-0009). The subtree is resolved by the same cycle-safe recursion the
+// locations module uses for its own deletes; locations are counted in dozens and
+// depth is capped at 8, so the set is small enough to materialise rather than
+// express as a correlated subquery, which is far harder to read.
+//
+// `'none'` is the Unlocated bucket, which is not a subtree of anything: an item
+// with no location needs a filter of its own rather than a wider one.
+const locationPredicate = (db: DrizzleDb, filter: LocationFilter): SQL =>
+  filter === 'none' ? isNull(items.locationId) : inArray(items.locationId, listSubtreeIds(db, filter))
+
 const buildWhere = (db: DrizzleDb, filters: RelationalFilters, searchPredicate?: SQL): SQL | undefined => {
   const conds: SQL[] = [eq(items.published, true), isNull(items.trashedAt)] // neither drafts nor trash leak into the catalog or facets
   if (searchPredicate) conds.push(searchPredicate)
-  if (filters.locationId != null) conds.push(eq(items.locationId, filters.locationId))
+  if (filters.locationId != null) conds.push(locationPredicate(db, filters.locationId))
   if (filters.itemTypeId != null) conds.push(eq(items.itemTypeId, filters.itemTypeId))
   if (filters.tagIds?.length) {
     conds.push(inArray(items.id, db.select({ id: itemTags.itemId }).from(itemTags).where(inArray(itemTags.tagId, filters.tagIds))))
@@ -171,38 +204,120 @@ const plainCtx: SearchCtx = { predicate: undefined, join: sql`` }
 
 const isSqliteError = (e: unknown): boolean => e instanceof Error && (e as { code?: unknown }).code === 'SQLITE_ERROR'
 
-// The current-level nodes for the location facet: children of the selected
-// location, or root locations when no location is selected.
-const getLevelNodes = (db: DrizzleDb, locationId?: number): LevelNode[] => {
-  if (locationId != null) {
-    return db.select({ id: locations.id, name: locations.name }).from(locations).where(eq(locations.parentId, locationId)).all()
-  }
-  return db.select({ id: locations.id, name: locations.name }).from(locations).where(isNull(locations.parentId)).all()
+// Siblings by how much is in them, then by name — the rule the flat facet used,
+// now applied at every level.
+const sortLevel = (nodes: LocationFacet[]): LocationFacet[] => {
+  for (const node of nodes) if (node.children) sortLevel(node.children)
+  return nodes.sort((a, b) => b.subtreeCount - a.subtreeCount || a.name.localeCompare(b.name))
 }
 
-const computeLocationFacet = (db: DrizzleDb, filters: RelationalFilters, ctx: SearchCtx): FacetCount[] => {
+// The whole location tree with both counts per node, in ONE query.
+//
+// Every location seeds itself as the root of its own subtree closure, so grouping
+// by `root_id` gives a node's subtree total and the row where `id = root_id` gives
+// the items sitting directly in it.
+//
+// The filters go in the `WHERE`, not in the LEFT JOIN's `ON` clause. Putting them
+// in the join would keep a zero-count node's row, which reads better, but SQLite
+// refuses FTS5's `MATCH` anywhere but a `WHERE` ("unable to use function MATCH in
+// the requested context") — and the failure is invisible here, because the FTS
+// path catches its own errors and silently degrades to a name-only `LIKE` search.
+// So the join is left plain and the counts are looked up per node with a default:
+// a node whose items were all filtered out simply has no row, and reads as zero.
+//
+// The old shape ran one recursive count per node for a single level. The tree can
+// reveal any branch, so every node needs a count, and one pass over the whole
+// closure is fewer queries than one level used to take.
+const computeLocationFacet = (db: DrizzleDb, filters: RelationalFilters, ctx: SearchCtx): LocationFacet[] => {
   // Omit `locationId` from the count's WHERE (keep search + type + tags).
   const whereNoLocation = buildWhere(db, { itemTypeId: filters.itemTypeId, tagIds: filters.tagIds }, ctx.predicate)
-  return getLevelNodes(db, filters.locationId)
-    .map((node): FacetCount => {
-      // Subtree count: node + all descendants, via a cycle-safe recursive CTE.
-      // `UNION` (distinct) — not `UNION ALL` — so a cyclic `parent_id` chain
-      // terminates (the data model permits cycles).
-      const whereFrags: SQL[] = [sql`items.location_id IN (SELECT id FROM sub)`]
-      if (whereNoLocation) whereFrags.push(whereNoLocation)
-      const count = db.get<{ count: number }>(sql`
-        WITH RECURSIVE sub(id) AS (
-          SELECT ${node.id}
-          UNION
-          SELECT l.id FROM locations l JOIN sub ON l.parent_id = sub.id
-        )
-        SELECT COUNT(*) AS count FROM items
-        ${ctx.join}
-        WHERE ${and(...whereFrags)}
-      `)?.count ?? 0
-      return { id: node.id, name: node.name, count }
-    })
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+
+  const rows = db.all<{ rootId: number; id: number; count: number }>(sql`
+    WITH RECURSIVE tree(root_id, id) AS (
+      SELECT id, id FROM locations
+      UNION
+      SELECT tree.root_id, l.id FROM locations l JOIN tree ON l.parent_id = tree.id
+    )
+    SELECT tree.root_id AS rootId, tree.id AS id, COUNT(items.id) AS count
+    FROM tree
+    LEFT JOIN items ON items.location_id = tree.id
+    ${ctx.join}
+    ${whereNoLocation ? sql`WHERE ${whereNoLocation}` : sql``}
+    GROUP BY tree.root_id, tree.id
+  `)
+
+  const counts = new Map<number, { own: number; subtree: number }>()
+  for (const row of rows) {
+    const entry = counts.get(row.rootId) ?? { own: 0, subtree: 0 }
+    entry.subtree += row.count
+    if (row.id === row.rootId) entry.own = row.count
+    counts.set(row.rootId, entry)
+  }
+
+  const all = db.select({ id: locations.id, name: locations.name, parentId: locations.parentId }).from(locations).all()
+  const nodes = new Map<number, LocationFacet>(
+    all.map((loc) => {
+      const count = counts.get(loc.id) ?? { own: 0, subtree: 0 }
+      return [
+        loc.id,
+        {
+          id: loc.id,
+          name: loc.name,
+          parentId: loc.parentId,
+          ownCount: count.own,
+          subtreeCount: count.subtree,
+        },
+      ]
+    }),
+  )
+
+  // The parent to attach a node under, or `null` to surface it as a root. A node
+  // whose ancestry loops is a root: its parent is one of its own descendants, so
+  // attaching it would build a circular object graph. Location CRUD refuses to
+  // create that shape, but the read path has to survive whatever is in the table.
+  const attachTo = (id: number): number | null => {
+    const own = nodes.get(id)
+    if (!own || own.parentId == null) return null
+    const seen = new Set<number>([id])
+    let parentId: number | null = own.parentId
+    while (parentId != null) {
+      if (seen.has(parentId)) return null
+      seen.add(parentId)
+      parentId = nodes.get(parentId)?.parentId ?? null
+    }
+    return own.parentId
+  }
+
+  const roots: LocationFacet[] = []
+  for (const loc of all) {
+    const node = nodes.get(loc.id)!
+    const parentId = attachTo(loc.id)
+    const parent = parentId != null ? nodes.get(parentId) : undefined
+    // An orphan — a parent id that names nothing — is surfaced rather than
+    // dropped, the same way `locations.list` treats one.
+    if (parent) (parent.children ??= []).push(node)
+    else roots.push(node)
+  }
+
+  // The items with no location. Own and subtree are the same number, because
+  // nothing lives *under* having no location. It makes the tree account for the
+  // whole catalog: without it the roots' subtree counts simply do not add up.
+  const unlocatedConds: SQL[] = [isNull(items.locationId)]
+  if (whereNoLocation) unlocatedConds.push(whereNoLocation)
+  const unlocatedCount =
+    db.get<{ count: number }>(sql`
+      SELECT COUNT(*) AS count FROM items ${ctx.join} WHERE ${and(...unlocatedConds)}
+    `)?.count ?? 0
+  roots.push({
+    id: 'none',
+    name: 'Unlocated',
+    parentId: null,
+    ownCount: unlocatedCount,
+    subtreeCount: unlocatedCount,
+    unlocated: true,
+  })
+
+  return sortLevel(roots)
 }
 
 const computeFacets = (db: DrizzleDb, filters: RelationalFilters, ctx: SearchCtx): SearchFacets => {

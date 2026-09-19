@@ -1,12 +1,13 @@
 import { TRPCError } from '@trpc/server'
 import type { DrizzleDb } from '@homebox/db'
+import type { ItemSort } from '@homebox/shared'
 import * as repo from './repo.js'
-import type { CustomFieldValueRow, FacetCount, ImageRow, ItemRow, LocationRefRow, SearchFacets, TagFacet, TagRow, TypeRefRow } from './repo.js'
+import type { CustomFieldValueRow, FacetCount, ImageRow, ItemRow, LocationFacet, LocationFilter, LocationRefRow, SearchFacets, TagFacet, TagRow, TypeRefRow } from './repo.js'
 import { reindexItem } from './fts.js'
 
 // Facet shapes are defined once in `repo.ts` (surfaced by `repo.searchItems`);
 // re-export here so callers have a single import site for the DTO facets.
-export type { FacetCount, SearchFacets, TagFacet }
+export type { FacetCount, LocationFacet, SearchFacets, TagFacet }
 
 // ---------------------------------------------------------------------------
 // DTO shapes (see task-9 brief HYDRATION bullet).
@@ -48,7 +49,15 @@ export type CreateItemInput = {
   fieldValues: { fieldId: number; value: string }[]
 }
 export type UpdateItemInput = Partial<Omit<CreateItemInput, 'fieldValues'>> & { id: number; fieldValues?: { fieldId: number; value: string }[] }
-export type ListItemsInput = { page?: number; pageSize?: number; search?: string; locationId?: number; itemTypeId?: number; tagIds?: number[] }
+export type ListItemsInput = {
+  page?: number
+  pageSize?: number
+  search?: string
+  locationId?: LocationFilter
+  itemTypeId?: number
+  tagIds?: number[]
+  sort?: ItemSort
+}
 
 const toDto = (
   row: ItemRow,
