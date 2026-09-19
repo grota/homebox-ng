@@ -49,7 +49,7 @@ export function LoginPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3 max-w-[30rem] my-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 max-w-[30rem] mx-auto my-4">
       <h1>Sign in</h1>
 
       <Field label="Email" htmlFor="email">

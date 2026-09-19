@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, SyntheticEvent } from 'react'
 import { Button, Input, Modal } from '../../ui'
 import { initialView, overflows, panBy, zoomAt, type Point, type Transform } from '../../ui/zoom'
-import { boxFromCorners, isDrawable, moveBox, resizeBox, toImagePoint, toPixelBox, type Box, type Handle, type Size } from './geometry'
+import { boxFromCorners, isDrawable, moveBox, regionFit, resizeBox, toImagePoint, toPixelBox, type Box, type Handle, type Size } from './geometry'
 
 /** What the caller sends: a rectangle in the source image's own pixels, and the
  *  name typed for it. */
@@ -579,21 +579,32 @@ export function ManualUnpackModal({ src, onSubmit, onClose }: ManualUnpackModalP
             <ul className="space-y-2">
               {regions.map((r, i) => {
                 const box = drawn(r)
+                // A CSS crop of the same source, so the row shows what the box
+                // frames without the server having cropped anything yet. The fit is
+                // computed once and spread over the inner element below.
+                const fit = natural ? regionFit(box, natural) : null
                 return (
                   <li key={r.id} className="flex items-center gap-3">
                     <span className="w-5 text-right text-sm" style={{ color: colourOf(r) }}>{i + 1}</span>
-                    {natural && (
-                      // A CSS crop of the same source, so the row shows what the box
-                      // frames without the server having cropped anything yet.
+                    {fit && (
+                      // Two elements, and the split is the point: the outer is the
+                      // frame and its `bg-black` is the mat, the inner is exactly
+                      // the region's box and holds the source's pixels for it. A
+                      // single element cannot do both — a background sized to the
+                      // whole source paints the photo's other pixels around the
+                      // region, which is what put a thin box's neighbours on
+                      // screen. See `regionFit`.
+                      //
+                      // `ring` rather than `border`: a border would be laid out
+                      // inside the frame and shrink the box the fit is measured
+                      // against, so the region would be clipped by a pixel on
+                      // every side. A ring is painted outside and consumes none.
                       <span
                         aria-hidden
-                        className="h-12 w-16 shrink-0 rounded border border-border bg-no-repeat"
-                        style={{
-                          backgroundImage: `url(${src})`,
-                          backgroundSize: `${(natural.width / box.width) * 64}px ${(natural.height / box.height) * 48}px`,
-                          backgroundPosition: `${-(box.x / box.width) * 64}px ${-(box.y / box.height) * 48}px`,
-                        }}
-                      />
+                        className="relative h-12 w-16 shrink-0 overflow-hidden rounded bg-black ring-1 ring-border"
+                      >
+                        <span className="absolute bg-no-repeat" style={{ ...fit, backgroundImage: `url(${src})` }} />
+                      </span>
                     )}
                     <Input
                       data-region-name={r.id}

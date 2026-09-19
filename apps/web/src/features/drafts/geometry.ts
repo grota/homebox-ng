@@ -124,3 +124,64 @@ export const resizeBox = (start: Box, handle: Handle, dx: number, dy: number, na
 
   return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 }
 }
+
+/** The drawn-region previews in the modal's row list: Tailwind `w-16 h-12`. Keep
+ *  in step with that class — it is the only other place these numbers appear. */
+export const PREVIEW_FRAME: Size = { width: 64, height: 48 }
+
+/**
+ * Where a drawn region goes in a fixed preview box, and how to fill it from the
+ * source photo.
+ *
+ * The row previews crop the *source* rather than a generated file, so the crop is
+ * a CSS background. Two things have to hold, and the second is the easy one to
+ * miss:
+ *
+ * 1. The region is shown **whole, at its own shape, centred**. Scaling its two
+ *    axes to the frame's two axes independently — the obvious form, and the one
+ *    this replaces — stretches every region that is not the frame's exact shape,
+ *    which is why the previews read as "stretched" rather than as the rectangle
+ *    that was drawn. One scale factor for both axes, chosen so the region *fits*
+ *    inside the frame (`min`).
+ *
+ * 2. **Only the region is painted.** A background sized to the whole source spills
+ *    the photo's *other* pixels into the frame wherever the region does not reach,
+ *    so a thin upright box came back with its neighbours visible either side of it
+ *    — content the crop will not contain. The returned `left`/`top`/`width`/
+ *    `height` therefore describe a box **exactly the region's size**, and
+ *    `background-position` puts the region's own origin at that box's origin, so
+ *    the box holds the region and nothing beside it. The caller paints the frame
+ *    behind it black, and the slack between box and frame reads as a mat.
+ *
+ * This is `object-contain` for a live CSS crop of a region, where a generated
+ * thumbnail can just use `object-contain` directly.
+ */
+export const regionFit = (
+  box: Box,
+  natural: Size,
+  frame: Size = PREVIEW_FRAME,
+): {
+  left: number
+  top: number
+  width: number
+  height: number
+  backgroundSize: string
+  backgroundPosition: string
+} => {
+  // `isDrawable` keeps degenerate boxes out of the list, but a stray zero would
+  // make this Infinity and blank the preview rather than throw, so it is handled.
+  const scale = box.width > 0 && box.height > 0
+    ? Math.min(frame.width / box.width, frame.height / box.height)
+    : 1
+  return {
+    // Centred, so the mat is even on both sides.
+    left: (frame.width - box.width * scale) / 2,
+    top: (frame.height - box.height * scale) / 2,
+    width: box.width * scale,
+    height: box.height * scale,
+    backgroundSize: `${natural.width * scale}px ${natural.height * scale}px`,
+    // The region's origin at the box's origin: what the box covers is the region,
+    // and the source's own pixels never reach outside it.
+    backgroundPosition: `${-box.x * scale}px ${-box.y * scale}px`,
+  }
+}

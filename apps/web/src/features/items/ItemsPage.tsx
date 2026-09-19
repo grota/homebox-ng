@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { hexColor } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
@@ -59,6 +59,7 @@ export function ItemsPage() {
 
   // The search box is bound to `q` but keeps its own draft value so typing feels
   // immediate; the draft is written back to `q` (debounced ~300ms).
+  const searchRef = useRef<HTMLInputElement>(null)
   const [searchInput, setSearchInput] = useState(q)
 
   // Keep the box in sync when `q` changes externally (clear, back/forward).
@@ -137,6 +138,9 @@ export function ItemsPage() {
 
   const clearFilters = () => {
     setSearchInput('')
+    // Focus follows the action: the point of clearing is to type something else,
+    // and the button that did the clearing is now the wrong place to be.
+    searchRef.current?.focus()
     setSearchParams(() => {
       const next = new URLSearchParams()
       next.set('page', '1')
@@ -205,6 +209,7 @@ export function ItemsPage() {
           }
         >
           <Input
+            ref={searchRef}
             id="item-search"
             type="search"
             value={searchInput}
@@ -356,7 +361,7 @@ export function ItemsPage() {
         {isLoading ? (
           <p>Loading…</p>
         ) : (
-          <div className="flex-1 min-w-0 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex-1 min-w-0 grid gap-4 grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
             {/* One click target, and the whole card is it. The photo and the name
                 used to be two — the image opened the lightbox, the name opened
                 the item — because there were two places to go. There is one now,
@@ -379,10 +384,16 @@ export function ItemsPage() {
                   <Link to={`/items/${item.id}`} aria-label={item.name} className="block p-3 no-underline text-inherit">
                     {photo?.thumbPath ? (
                       <div className="relative mb-3">
+                        {/* `aspect-square` rather than a fixed `h-32`: a fixed
+                            height is a 4:1 strip at one column and a 1:1 box at
+                            six, so the photo was cropped by a different amount
+                            at every width. A square is the same shape everywhere,
+                            and `object-contain` shows the whole photo inside it
+                            with the mat filling what is left. */}
                         <img
                           src={'/file/' + photo.thumbPath}
                           alt=""
-                          className="w-full h-32 object-cover rounded-md"
+                          className="w-full aspect-square object-contain rounded-md bg-black"
                         />
                         {/* How many photos there are to look at, only when there is
                             more than one. It reads "1/" because a card shows the

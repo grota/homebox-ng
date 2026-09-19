@@ -18,7 +18,7 @@ export function AdminPage() {
     { id: 'system', label: t('admin.tabs.system') },
   ]
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-[64rem] mx-auto">
       <PageHeader title={t('admin.title')} />
       <Tabs
         value={tab}

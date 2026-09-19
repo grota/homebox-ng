@@ -78,43 +78,53 @@ export function TrashPage() {
         <p>{t('trash.empty')}</p>
       ) : (
         <>
-          <ul className="space-y-3">
+          {/* The drafts page's grid, for the same reason: a row spent the page
+              width on a 64px thumbnail. */}
+          <ul className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
             {rows.map((item) => {
               const photo = item.images.find((i) => i.isPrimary) ?? item.images[0]
               return (
                 <li key={item.id}>
-                  <Card className="flex items-center gap-3">
+                  <Card className="flex h-full flex-col gap-3">
                     {photo ? (
                       <button
                         type="button"
                         aria-label={item.name}
                         onClick={() => setPeekId(item.id)}
-                        className="shrink-0 cursor-zoom-in"
+                        className="block w-full cursor-zoom-in"
                       >
-                        <img src={`/file/${photo.thumbPath}`} className="h-16 w-16 shrink-0 rounded object-cover" alt="" />
+                        <img
+                          src={`/file/${photo.thumbPath}`}
+                          alt=""
+                          className="w-full aspect-square object-contain rounded bg-black"
+                        />
                       </button>
                     ) : (
-                      <span className="h-16 w-16 shrink-0 rounded bg-surface-raised" aria-hidden />
+                      <span className="w-full aspect-square rounded bg-surface-raised" aria-hidden />
                     )}
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0">
                       <p className="truncate text-text">{item.name}</p>
                       <p className="text-sm text-text-muted">
                         {item.published ? t('trash.kindItem') : t('trash.kindDraft')}
                         {item.trashedAt ? ` · ${t('trash.trashedWhen', { when: ago(new Date(item.trashedAt), i18n.language) })}` : ''}
                       </p>
                     </div>
-                    <Button disabled={busy} onClick={() => void run(() => restore.mutateAsync({ id: item.id }))}>
-                      {t('trash.restore')}
-                    </Button>
-                    <Button
-                      variant="danger"
-                      disabled={busy}
-                      onClick={() => {
-                        if (window.confirm(t('trash.purgeOneConfirm', { name: item.name }))) void run(() => purge.mutateAsync({ id: item.id }))
-                      }}
-                    >
-                      {t('trash.purgeOne')}
-                    </Button>
+                    {/* Same as the drafts card: wrap rather than overflow, and sit
+                        on the floor of the card. */}
+                    <div className="mt-auto flex flex-wrap items-center gap-2">
+                      <Button disabled={busy} onClick={() => void run(() => restore.mutateAsync({ id: item.id }))}>
+                        {t('trash.restore')}
+                      </Button>
+                      <Button
+                        variant="danger"
+                        disabled={busy}
+                        onClick={() => {
+                          if (window.confirm(t('trash.purgeOneConfirm', { name: item.name }))) void run(() => purge.mutateAsync({ id: item.id }))
+                        }}
+                      >
+                        {t('trash.purgeOne')}
+                      </Button>
+                    </div>
                   </Card>
                 </li>
               )

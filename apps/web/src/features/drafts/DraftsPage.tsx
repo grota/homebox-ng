@@ -168,38 +168,52 @@ export function DraftsPage() {
         </Button>
       </div>
 
-      <ul className="space-y-3">
+      {/* A card per draft rather than a row each. A row spent the whole page width
+          on one 64px thumbnail and handed all the slack to the name field; a card
+          shows the photo at a size you can actually recognise and then gets out of
+          the way. The grid is the catalog's, so an item card and a draft card are
+          the same size and shape. */}
+      <ul className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
         {rows.map((d) => {
           // The `<li>` stays the list item — `Card` renders a `<div>`, and a
-          // `<div>` child of `<ul>` would drop the rows' list semantics.
+          // `<div>` child of `<ul>` would drop the list semantics. The grid lives
+          // on the `<ul>`, so the `<li>`s are its cells.
           //
-          // Picked once per row so the thumbnail and the full-size rendition the
+          // Picked once per card so the thumbnail and the full-size rendition the
           // viewer opens cannot disagree about which image they describe.
           const photo = d.images.find((i) => i.isPrimary) ?? d.images[0]
           return (
             <li key={d.id}>
-              <Card className="flex items-center gap-3">
-                <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />
+              <Card className="flex h-full flex-col gap-3">
                 {/* The thumbnail opens the draft's own surface, the same one the
                     catalog's cards open. Opening a lightbox here instead would
                     leave the drafts page with a second, poorer photo experience
                     — no per-photo actions and no way to publish from it. */}
-                {photo && (
-                  <Link
-                    to={`/items/${d.id}`}
-                    aria-label={`Open ${d.name}`}
-                    className="shrink-0"
-                  >
-                    <img src={`/file/${photo.thumbPath}`} className="w-16 h-16 object-cover rounded" alt="" />
+                {photo ? (
+                  <Link to={`/items/${d.id}`} aria-label={`Open ${d.name}`} className="block">
+                    <img
+                      src={`/file/${photo.thumbPath}`}
+                      alt=""
+                      className="w-full aspect-square object-contain rounded bg-black"
+                    />
                   </Link>
+                ) : (
+                  <span className="w-full aspect-square rounded bg-surface-raised" aria-hidden />
                 )}
                 <Input
-                  className="flex-1"
                   defaultValue={d.name}
                   onBlur={(e) => { if (e.target.value.trim() && e.target.value !== d.name) void update.mutateAsync({ id: d.id, name: e.target.value.trim() }) }}
                 />
-                <Button onClick={() => void publish.mutateAsync({ id: d.id })}>{t('drafts.publish')}</Button>
-                <Button variant="danger" onClick={() => void trashOne.mutateAsync({ id: d.id })}>{t('drafts.trash')}</Button>
+                {/* `flex-wrap` rather than a hard one-line row: a card this narrow
+                    cannot always fit a checkbox and two labels side by side, and
+                    stacking reads better than overflowing. `mt-auto` keeps the
+                    controls on the floor of every card in the row, so a long name
+                    does not leave them floating at different heights. */}
+                <div className="mt-auto flex flex-wrap items-center gap-2">
+                  <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />
+                  <Button onClick={() => void publish.mutateAsync({ id: d.id })}>{t('drafts.publish')}</Button>
+                  <Button variant="danger" onClick={() => void trashOne.mutateAsync({ id: d.id })}>{t('drafts.trash')}</Button>
+                </div>
               </Card>
             </li>
           )

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import sharp, { type Metadata } from 'sharp'
+import { renderThumbnail } from '../images/thumbnail.js'
 import type { DrizzleDb } from '@homebox/db'
 import type { DetectionProviderImpl } from '../detection/provider.js'
 import { UnpackError } from './errors.js'
@@ -22,7 +23,7 @@ const saveCrop = async (buffer: Buffer, box: { x: number; y: number; width: numb
   const thumbRel = `uploads/thumbs/${uuid}.jpg`
   const base = sharp(buffer).extract({ left: box.x, top: box.y, width: box.width, height: box.height })
   const original = await base.clone().jpeg({ quality: 90 }).toBuffer()
-  const thumb = await base.clone().resize({ width: 400 }).jpeg({ quality: 80 }).toBuffer()
+  const thumb = await renderThumbnail(base.clone())
   const meta = await sharp(original).metadata()
   await mkdir(dirname(join(dataDir, originalRel)), { recursive: true })
   await writeFile(join(dataDir, originalRel), original)

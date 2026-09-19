@@ -18,7 +18,7 @@ export function SettingsPage() {
   const setDark = (value: string) => updateSettings({ darkThemeId: value })
 
   return (
-    <section className="flex flex-col gap-4 max-w-[32rem]">
+    <section className="flex flex-col gap-4 max-w-[32rem] mx-auto">
       <h1>{t('settings.title')}</h1>
 
       <Field label={t('settings.language')} htmlFor="settings-language">

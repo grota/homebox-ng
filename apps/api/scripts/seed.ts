@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { eq } from 'drizzle-orm'
 import sharp from 'sharp'
+import { renderThumbnail } from '../src/modules/images/thumbnail.js'
 import {
   createDb,
   runMigrations,
@@ -242,7 +243,7 @@ const attachImages = async (db: DrizzleDb, itemIds: number[]): Promise<number> =
     const originalRel = `uploads/originals/${name}.${ext}`
     const thumbRel = `uploads/thumbs/${name}.jpg`
 
-    const thumb = await sharp(buffer).resize({ width: 400 }).jpeg({ quality: 80 }).toBuffer()
+    const thumb = await renderThumbnail(buffer)
     await mkdir(dirname(join(dataDir, originalRel)), { recursive: true })
     await mkdir(dirname(join(dataDir, thumbRel)), { recursive: true })
     await writeFile(join(dataDir, originalRel), buffer)

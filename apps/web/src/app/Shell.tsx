@@ -66,9 +66,13 @@ export function Shell() {
         )}
       </header>
 
-      {/* Centered content column. Without a max-width the item grid stretches
-          edge to edge on wide displays while forms stay pinned narrow. */}
-      <main className="mx-auto w-full max-w-6xl px-4 py-6" data-testid="content">
+      {/* Full width, and **each page declares its own measure**. A catalogue grid
+          and a location tree want the room that a 1152px column threw away — on a
+          1880px window that was ~730px of empty margin — while a form wants a
+          readable line length. So the measure lives on the page that needs it
+          (`max-w-[30rem] mx-auto` and friends), not here, where one number applied
+          to everything and could only ever be wrong for most of it. */}
+      <main className="w-full px-4 py-6" data-testid="content">
         <Outlet />
       </main>
     </div>

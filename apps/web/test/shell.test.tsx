@@ -48,13 +48,20 @@ describe('Shell', () => {
     expect(screen.queryByRole('link', { name: 'nav.admin' })).not.toBeInTheDocument()
   })
 
-  // Named for what it actually checks. This render has no route, so `<Outlet/>`
-  // renders nothing and no content assertion is possible here — the class list
-  // IS the subject. `w-full` is included because it is what makes `mx-auto`
-  // centre the container rather than a shrink-wrapped box.
-  it('gives the content container the centred max-width shell classes', () => {
+  // The inverse of the assertion this test used to make, and deliberately so. The
+  // shell used to cap every page at `max-w-6xl`, which on a 1880px window threw
+  // away ~730px of margin — measured — and pinned the catalog to four columns
+  // because the grid could not get any wider. A catalogue grid and a location tree
+  // want that room; a form wants a readable measure. So the measure moved onto the
+  // pages that need it and the shell states nothing.
+  //
+  // This is the test that has to fail if someone puts a global cap back, which is
+  // why it asserts the absence as well as the presence.
+  it('leaves the content container uncapped, so each page declares its own measure', () => {
     render(<MemoryRouter><Shell /></MemoryRouter>)
     const content = screen.getByTestId('content')
-    expect(content).toHaveClass('mx-auto', 'max-w-6xl', 'px-4', 'w-full', 'py-6')
+    expect(content).toHaveClass('px-4', 'w-full', 'py-6')
+    expect(content).not.toHaveClass('max-w-6xl')
+    expect(content).not.toHaveClass('mx-auto')
   })
 })

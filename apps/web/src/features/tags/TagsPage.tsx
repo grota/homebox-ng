@@ -81,7 +81,7 @@ export function TagsPage() {
     <section>
       <h1>Tags</h1>
 
-      <form className="flex flex-col gap-3 max-w-[30rem] my-4" onSubmit={handleSubmit}>
+      <form className="flex flex-col gap-3 max-w-[30rem] mx-auto my-4" onSubmit={handleSubmit}>
         <Field label="Name" htmlFor="tag-name">
           <Input id="tag-name" value={name} onChange={(e) => setName(e.target.value)} required />
         </Field>

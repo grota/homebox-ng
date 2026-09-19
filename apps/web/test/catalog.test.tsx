@@ -172,4 +172,32 @@ describe('catalog pages', () => {
     // single photo, which is most of them.
     expect(within(link).queryByText(/^\d+\/\d+$/)).not.toBeInTheDocument()
   })
+
+  // The rule the owner chose after asking "why only four columns?" — and the answer
+  // was that Phase 4 had added a `1 / 2 / 4` ladder while migrating plain-CSS
+  // classes, with no recorded reason. Auto-fill sizes the grid by a minimum card
+  // width instead, so it adapts to the window and to the facet sidebar without a
+  // breakpoint per step. jsdom has no layout, so the class list IS the subject:
+  // this is what has to fail if a ladder comes back.
+  it('sizes the catalog grid by a minimum card width, not a breakpoint ladder', () => {
+    render(<AppProviders><ItemsPage /></AppProviders>)
+    const grid = screen.getByRole('link', { name: 'Lamp' }).closest('.grid')!
+    expect(grid.className).toContain('auto-fill')
+    expect(grid.className).not.toMatch(/grid-cols-\d/)
+  })
+
+  // Clearing the filters empties the search box, so focus belongs in the box that
+  // is now empty — the button that did the clearing is the wrong place to be, and
+  // the whole point of clearing is to type something else.
+  it('moves focus to the search field when the filters are cleared', () => {
+    render(<AppProviders><ItemsPage /></AppProviders>)
+    const search = screen.getByLabelText('Search')
+    const clear = screen.getByRole('button', { name: /clear filters/i })
+
+    clear.focus()
+    expect(clear).toHaveFocus()
+
+    fireEvent.click(clear)
+    expect(search).toHaveFocus()
+  })
 })

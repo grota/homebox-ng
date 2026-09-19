@@ -160,7 +160,7 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3 max-w-[30rem] my-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 max-w-[30rem] mx-auto my-4">
       <h2>{item ? 'Edit item' : 'New item'}</h2>
 
       <Field label="Name" htmlFor="item-name">

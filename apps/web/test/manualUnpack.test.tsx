@@ -5,6 +5,7 @@ import {
   isDrawable,
   moveBox,
   resizeBox,
+  regionFit,
   toImagePoint,
   toPixelBox,
   MIN_SIZE,
@@ -142,6 +143,131 @@ describe('toPixelBox', () => {
   })
 })
 
+// The row previews crop the *source* photo with CSS, so the geometry of that crop
+// is here rather than in the component. Two bugs are pinned, and they pull in
+// opposite directions:
+//
+//   - scaling the region's two axes to the frame's two axes independently, which
+//     stretches every region that is not exactly the frame's shape — the previews
+//     read as "stretched" rather than as the rectangle that was drawn;
+//   - sizing the background to the whole source, which spills the photo's *other*
+//     pixels into the frame around the region, so a thin upright box came back
+//     with its neighbours visible either side of it.
+describe('regionFit', () => {
+  const natural = { width: 1000, height: 500 }
+  const frame = { width: 64, height: 48 }
+
+  // Where the region lands in the frame, and — read back out of the CSS the way a
+  // browser would — which part of the *source* the element painting it draws from.
+  // The two together are the whole contract: the box is the region's shape, and
+  // what fills it is the region and nothing beside it.
+  const rendered = (box: { x: number; y: number; width: number; height: number }) => {
+    const fit = regionFit(box, natural, frame)
+    const [bgW, bgH] = fit.backgroundSize.split(' ').map(parseFloat)
+    const [posX, posY] = fit.backgroundPosition.split(' ').map(parseFloat)
+    const scale = bgW / natural.width
+    expect(bgH / natural.height).toBeCloseTo(scale) // one factor, both axes
+    // Source coordinates at the filled box's two corners: `background-position`
+    // puts the source pixel at the box's top-left, and the box is `width` wide.
+    return {
+      x: fit.left,
+      y: fit.top,
+      width: fit.width,
+      height: fit.height,
+      from: { x: -posX / scale, y: -posY / scale },
+      to: { x: (-posX + fit.width) / scale, y: (-posY + fit.height) / scale },
+    }
+  }
+
+  it('keeps the region\'s shape instead of stretching it to the frame', () => {
+    const box = { x: 100, y: 50, width: 200, height: 100 } // 2:1 — the case that was squashed
+    const r = rendered(box)
+
+    expect(r.width / r.height).toBeCloseTo(box.width / box.height)
+    expect(r.width).toBeCloseTo(64) // limited by the frame's width…
+    expect(r.height).toBeCloseTo(32) // …so it is 32 tall, not the full 48
+  })
+
+  it('centres the slack, so the mat is even on both sides', () => {
+    const r = rendered({ x: 100, y: 50, width: 200, height: 100 })
+    expect(r.x).toBeCloseTo(0) // fills the width
+    expect(r.y).toBeCloseTo((frame.height - r.height) / 2) // 8 above and below
+  })
+
+  it('letterboxes a tall region on the sides', () => {
+    const box = { x: 0, y: 0, width: 100, height: 200 } // 1:2
+    const r = rendered(box)
+
+    expect(r.width / r.height).toBeCloseTo(0.5)
+    expect(r.height).toBeCloseTo(48) // limited by the frame's height this time
+    expect(r.x).toBeCloseTo((frame.width - r.width) / 2) // 20 either side
+    expect(r.y).toBeCloseTo(0)
+  })
+
+  it('fills the frame exactly when the region is already the frame\'s shape', () => {
+    const r = rendered({ x: 0, y: 0, width: 400, height: 300 }) // 4:3
+    expect(r).toMatchObject({ x: 0, y: 0 })
+    expect(r.width).toBeCloseTo(64)
+    expect(r.height).toBeCloseTo(48)
+  })
+
+  // The reported defect. A thin upright box in a landscape photo: the frame is
+  // filled by the region's own pixels, so the photo either side of it — which is
+  // not in the crop — has nowhere to appear. A background sized to the whole
+  // source drew those neighbours, because the frame clipped them, not the region.
+  it('paints the drawn region alone, never the source around it', () => {
+    const box = { x: 600, y: 100, width: 40, height: 300 } // upright sliver
+    const r = rendered(box)
+
+    expect(r.from.x).toBeCloseTo(box.x)
+    expect(r.from.y).toBeCloseTo(box.y)
+    expect(r.to.x).toBeCloseTo(box.x + box.width)
+    expect(r.to.y).toBeCloseTo(box.y + box.height)
+
+    // And that box is *inside* the frame, so what shows around it is the mat.
+    expect(r.width).toBeLessThan(frame.width)
+    expect(r.height).toBeCloseTo(frame.height)
+    expect(r.x).toBeCloseTo((frame.width - r.width) / 2)
+    expect(r.y).toBeCloseTo(0)
+  })
+
+  it('never lets the source reach past the drawn region, at any shape', () => {
+    for (const box of [
+      { x: 0, y: 0, width: 900, height: 10 },
+      { x: 0, y: 0, width: 10, height: 490 },
+      { x: 300, y: 250, width: 7, height: 249 }, // thinner than the frame is wide
+    ]) {
+      const r = rendered(box)
+      expect(r.from.x).toBeCloseTo(box.x)
+      expect(r.from.y).toBeCloseTo(box.y)
+      expect(r.to.x).toBeCloseTo(box.x + box.width)
+      expect(r.to.y).toBeCloseTo(box.y + box.height)
+    }
+  })
+
+  it('never lets the region spill out of the frame', () => {
+    for (const box of [{ x: 0, y: 0, width: 900, height: 10 }, { x: 0, y: 0, width: 10, height: 490 }]) {
+      const r = rendered(box)
+      expect(r.width).toBeLessThanOrEqual(frame.width + 0.001)
+      expect(r.height).toBeLessThanOrEqual(frame.height + 0.001)
+      expect(r.x).toBeGreaterThanOrEqual(-0.001)
+      expect(r.y).toBeGreaterThanOrEqual(-0.001)
+    }
+  })
+
+  // `isDrawable` keeps these out of the list, so it is a backstop: Infinity here
+  // would blank the preview rather than throw, which is worse than a soft edge.
+  it('survives a degenerate box', () => {
+    const fit = regionFit({ x: 0, y: 0, width: 0, height: 0 }, natural)
+    for (const value of [fit.backgroundSize, fit.backgroundPosition]) {
+      expect(value).not.toMatch(/NaN|Infinity/)
+    }
+    for (const value of [fit.left, fit.top, fit.width, fit.height]) {
+      expect(Number.isFinite(value)).toBe(true)
+    }
+  })
+})
+
 // ── The component ─────────────────────────────────────────────────────────────
 
 // jsdom lays nothing out and never loads an image, so the two facts the modal
@@ -198,6 +324,41 @@ describe('ManualUnpackModal', () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     expect(onSubmit).toHaveBeenCalledWith([{ name: 'Mug', box: { x: 200, y: 200, width: 200, height: 200 } }])
+  })
+
+  // `regionFit` is pinned on its own above; what this pins is the wiring. Both of
+  // its arguments are a `Size`, so handing it the source where the box goes — or
+  // the two in the other order — typechecks and silently sizes every preview by
+  // the wrong pair of numbers. Comparing against `regionFit` called here with the
+  // box the drag actually drew is what catches that; the same drag, and the same
+  // 200x200 box, as the test above.
+  it('draws a row preview with the box that was drawn, over the mat', async () => {
+    const { canvas } = open()
+    drag(canvas, { x: 130, y: 112 }, { x: 230, y: 212 })
+
+    const row = (await screen.findByPlaceholderText('Item name')).closest('li')!
+    const filled = row.querySelector<HTMLElement>('span[style*="background-image"]')!
+    const box = { x: 200, y: 200, width: 200, height: 200 }
+    const fit = regionFit(box, NATURAL)
+
+    expect(filled.style.backgroundSize).toBe(fit.backgroundSize)
+    expect(filled.style.backgroundPosition).toBe(fit.backgroundPosition)
+    // The element the source is painted into is placed and sized by the fit, so it
+    // is exactly the region's box — the source cannot show outside it.
+    expect(filled.style.left).toBe(`${fit.left}px`)
+    expect(filled.style.top).toBe(`${fit.top}px`)
+    expect(filled.style.width).toBe(`${fit.width}px`)
+    expect(filled.style.height).toBe(`${fit.height}px`)
+
+    // …and the box it sits in is the black mat the slack shows through. The frame
+    // must stay the full 64x48 the fit is measured against: a `border` is laid out
+    // *inside* it and would clip a pixel off every side of the region, so the
+    // outline is a `ring`, which paints outside and consumes none. jsdom computes
+    // no layout, so the class list is the subject here.
+    const mat = filled.parentElement!
+    expect(mat.className).toContain('bg-black')
+    expect(mat.className.split(' ').filter((c) => c.startsWith('border'))).toEqual([])
+    expect(mat.querySelectorAll('span')).toHaveLength(1)
   })
 
   // The case the test above cannot see, and the one a real user always hits: a

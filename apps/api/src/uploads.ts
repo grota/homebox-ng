@@ -5,6 +5,7 @@ import { dirname, extname, join, resolve, sep } from 'node:path'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import multipart from '@fastify/multipart'
 import sharp from 'sharp'
+import { renderThumbnail } from './modules/images/thumbnail.js'
 import { eq, max } from 'drizzle-orm'
 import { images, items, type DrizzleDb } from '@homebox/db'
 import { parseSessionCookie } from './context.js'
@@ -133,7 +134,7 @@ export const registerUploadRoutes = (app: FastifyInstance, { dbHolder, dataDir }
     await mkdir(dirname(originalAbs), { recursive: true })
     await writeFile(originalAbs, upload.buffer)
 
-    const thumb = await sharp(upload.buffer).resize({ width: 400 }).jpeg({ quality: 80 }).toBuffer()
+    const thumb = await renderThumbnail(upload.buffer)
     await mkdir(dirname(thumbAbs), { recursive: true })
     await writeFile(thumbAbs, thumb)
 
@@ -187,7 +188,7 @@ export const registerUploadRoutes = (app: FastifyInstance, { dbHolder, dataDir }
       const metadata = await sharp(upload.buffer).metadata()
       width = metadata.width ?? null
       height = metadata.height ?? null
-      thumb = await sharp(upload.buffer).resize({ width: 400 }).jpeg({ quality: 80 }).toBuffer()
+      thumb = await renderThumbnail(upload.buffer)
     } catch {
       return reply.code(400).send({ error: 'not a decodable image' })
     }

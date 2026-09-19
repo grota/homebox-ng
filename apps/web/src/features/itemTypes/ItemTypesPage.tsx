@@ -128,7 +128,7 @@ export function ItemTypesPage() {
       <h1>Item types</h1>
 
       {isAdmin ? (
-        <form className="flex flex-col gap-3 max-w-[30rem] my-4" onSubmit={handleSubmit}>
+        <form className="flex flex-col gap-3 max-w-[30rem] mx-auto my-4" onSubmit={handleSubmit}>
           <Field label="Name" htmlFor="type-name">
             <Input
               id="type-name"
@@ -207,7 +207,7 @@ export function ItemTypesPage() {
       )}
 
       {editing && (
-        <div className="max-w-[30rem] my-4">
+        <div className="max-w-[30rem] mx-auto my-4">
           {/* `key` matters: every row's Edit button is reachable while a type is
               already open, and without it the editor keeps its tree position and
               so its seeded rows, showing the previous type's fields under this
