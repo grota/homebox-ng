@@ -190,6 +190,22 @@ Each row states its own effect: **"changes 9 of 12"**. That number is the count 
 current value differs from the new one, computed from the distribution rather than a second query —
 and it is exactly the number §7 pins.
 
+**Refinement, from building it: the panel does not compute that number — it displays the one the
+server returns.** `selectionSummary` takes the *pending* edit alongside the ids and returns
+`changes`, keyed per property (`location`, `tags.add`, `tags.remove`, `field:<id>`), so the panel's
+live count is a server read keyed on what the user has composed rather than arithmetic duplicated in
+the component. Two reasons it is not client-side:
+
+- **A tag count is not derivable from the distributions.** Adding two tags to a selection where one
+  item already carries both is *not* the sum of the per-tag marginals, so the number the panel would
+  have had to compute is the one number the distributions do not contain.
+- **The count on the button and the count the pin checks must be one implementation.** If the panel
+  derived its own and the server re-derived a different one, the pin would fire on every edit —
+  a guard that always refuses is worse than no guard, because it would be switched off.
+
+The cost is a round trip as the user composes the edit (a tag toggled, a location chosen), which is
+one request per discrete gesture and not per keystroke.
+
 ### 6. Applying is one transaction
 
 ```ts
