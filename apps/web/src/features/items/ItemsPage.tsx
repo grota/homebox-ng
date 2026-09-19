@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { hexColor } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
-import { Badge, Button, Card, cn, Field, hoverScrim, Input, PageHeader, Pagination, Tooltip } from '../../ui'
+import { Button, cn, Field, hoverScrim, Input, PageHeader, Pagination, Tooltip } from '../../ui'
+import { ItemCard } from './ItemCard'
 import { ItemForm } from './ItemForm'
+// The tree walk the card's location path and the sidebar breadcrumb share, so
+// the two cannot disagree about the separator or about a broken chain.
+import { flattenLocations, locationPath, type FlatLocation } from './locationPath'
 
 // Sent explicitly rather than left to the server's default, so the request that
 // produced `total` and the Next guard that reads it cannot disagree about the
@@ -31,16 +35,6 @@ const parseTagIds = (params: URLSearchParams): number[] => {
   }
   return [...seen]
 }
-
-// `locations.list` returns a nested tree (each node carries `children?`). Flatten
-// it so the breadcrumb can walk the `parentId` chain up from the selected
-// location (or to the root), which the location facet says we need for the drill.
-type FlatLocation = { id: number; name: string; parentId: number | null }
-const flattenLocations = (nodes: any[]): FlatLocation[] =>
-  nodes.flatMap((n) => [
-    { id: n.id, name: n.name, parentId: (n.parentId as number | null) ?? null },
-    ...(n.children ? flattenLocations(n.children) : []),
-  ])
 
 // Paginated catalog listing with FTS search + faceted filters. URL params are the
 // single source of truth: `q`, `typeId`, `locationId`, `tagIds[]`, `page`.
@@ -95,15 +89,11 @@ export function ItemsPage() {
   const items = data?.items ?? []
   const facets = data?.facets
 
-  // Breadcrumb for the selected location (walk the `parentId` chain to root).
+  // The location tree, as a lookup. Both the breadcrumb below and the card's
+  // location path are walks up `parentId` from here.
   const locationsQuery = trpc.locations.list.useQuery()
   const locationById = new Map(flattenLocations(locationsQuery.data ?? []).map((l) => [l.id, l]))
-  const breadcrumb: FlatLocation[] = []
-  let cursor = locationId != null ? locationById.get(locationId) : undefined
-  while (cursor) {
-    breadcrumb.unshift(cursor)
-    cursor = cursor.parentId != null ? locationById.get(cursor.parentId) : undefined
-  }
+  const breadcrumb: FlatLocation[] = locationId != null ? locationPath(locationId, locationById) : []
 
   // Every filter change resets `page` to 1.
   const applyAndResetPage = (mutate: (params: URLSearchParams) => void) => {
@@ -369,56 +359,9 @@ export function ItemsPage() {
                 stays a heading inside the link (the catalog tests query it by
                 role) and the link keeps the item name as its accessible name via
                 `aria-label`; the wrapped text would otherwise become the name. */}
-            {items.map((item) => {
-              // The card shows the PRIMARY photo — marking one primary is exactly
-              // what that is for (2026-09-04 design: "one marked primary (used as
-              // the card image)"), and it is what the drafts and trash rows do.
-              // This card was the last place still taking `images[0]`, which had
-              // no relationship to the primary at all: the primary became
-              // settable in `ac33300` (item detail only, and this page is not in
-              // that commit), so the card has been showing a photo the user never
-              // chose ever since.
-              const photo = item.images?.find((image) => image.isPrimary) ?? item.images?.[0]
-              return (
-                <Card key={item.id} padding="none" className="overflow-hidden hover:border-text-muted">
-                  <Link to={`/items/${item.id}`} aria-label={item.name} className="block p-3 no-underline text-inherit">
-                    {photo?.thumbPath ? (
-                      <div className="relative mb-3">
-                        {/* `aspect-square` rather than a fixed `h-32`: a fixed
-                            height is a 4:1 strip at one column and a 1:1 box at
-                            six, so the photo was cropped by a different amount
-                            at every width. A square is the same shape everywhere,
-                            and `object-contain` shows the whole photo inside it
-                            with the mat filling what is left. */}
-                        <img
-                          src={'/file/' + photo.thumbPath}
-                          alt=""
-                          className="w-full aspect-square object-contain rounded-md bg-black"
-                        />
-                        {/* How many photos there are to look at, only when there is
-                            more than one. It reads "1/" because a card shows the
-                            primary, and the primary is position 1 of the order the
-                            surface uses — so this is the number you land on when
-                            you open the card. */}
-                        {(item.images?.length ?? 0) > 1 && (
-                          <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white tabular-nums">
-                            1/{item.images.length}
-                          </span>
-                        )}
-                      </div>
-                    ) : null}
-                    <h2 className="mt-0">{item.name}</h2>
-                    <p>{item.location?.name}</p>
-                    {item.tags.map((tag) => (
-                      <Badge key={tag.id} color={tag.color} className="mr-1">{tag.name}</Badge>
-                    ))}
-                    {q.trim() && item.snippet ? (
-                      <p className="mt-2 text-text-muted text-sm" data-testid="item-snippet">{item.snippet}</p>
-                    ) : null}
-                  </Link>
-                </Card>
-              )
-            })}
+            {items.map((item) => (
+              <ItemCard key={item.id} item={item} locationById={locationById} searchTerm={q} />
+            ))}
             {items.length === 0 && <p>No items yet.</p>}
           </div>
         )}
