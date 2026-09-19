@@ -6,6 +6,7 @@ import { Button, cn, Field, hoverScrim, Input, PageHeader, Pagination, Popover, 
 import { ITEM_SORT_LABELS } from '../../lib/itemSort'
 import { useUserSettings } from '../../lib/settings/useUserSettings'
 import { ItemCard } from './ItemCard'
+import { BulkEditPanel } from './BulkEditPanel'
 import { ItemForm } from './ItemForm'
 import { LocationFacetTree, type LocationFacetId } from './LocationFacetTree'
 import { SelectionCriteria } from './SelectionCriteria'
@@ -120,7 +121,7 @@ export function ItemsPage() {
   // ---------------------------------------------------------------------------
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [onlySelected, setOnlySelected] = useState(false)
-  const [criteria, setCriteria] = useState<'add' | 'remove' | null>(null)
+  const [criteria, setCriteria] = useState<'add' | 'remove' | 'apply' | null>(null)
 
   const toggleSelected = (id: number, next: boolean) =>
     setSelected((prev) => {
@@ -349,14 +350,32 @@ export function ItemsPage() {
           />
         </Popover>
         {selected.size > 0 && (
-          <Button
-            size="sm"
-            variant={onlySelected ? 'primary' : 'ghost'}
-            aria-pressed={onlySelected}
-            onClick={() => setOnlySelected((on) => !on)}
-          >
-            Selected only
-          </Button>
+          <>
+            <Popover
+              open={criteria === 'apply'}
+              onOpenChange={(open) => setCriteria(open ? 'apply' : null)}
+              title="Apply to the selection"
+              trigger={<Button size="sm">Apply to selection</Button>}
+            >
+              <BulkEditPanel
+                ids={[...selected]}
+                locations={locationsQuery.data ?? []}
+                onApplied={() => {
+                  clearSelection()
+                  setCriteria(null)
+                  utils.items.list.invalidate()
+                }}
+              />
+            </Popover>
+            <Button
+              size="sm"
+              variant={onlySelected ? 'primary' : 'ghost'}
+              aria-pressed={onlySelected}
+              onClick={() => setOnlySelected((on) => !on)}
+            >
+              Selected only
+            </Button>
+          </>
         )}
       </div>
 
