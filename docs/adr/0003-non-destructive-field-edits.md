@@ -105,9 +105,19 @@ and the server re-checks that acknowledgment against the live data immediately b
 
 ### When to revisit
 
-If a third destructive field operation appears, or values become editable in bulk, stop adding
-per-operation acknowledgment flags and generalise the mechanism — one shape for "here is what
-will be destroyed, confirm it", reused. Two flags is a pattern; three wants a design.
+**Named trigger fired, 2026-09-19.** This clause listed two triggers, and the second has been
+reached: custom-field values became editable **in bulk**, across a whole catalog **selection**. The
+mechanism was generalised as instructed rather than duplicated — `acknowledgedValueCount` became the
+**count pin**, carried by `items.bulkUpdate` for the target size and for each property's overwrite
+count (ADR-0010, `0010-catalog-selection-and-count-pinned-bulk-edit.md`).
+
+**This ADR's own two flags are unchanged and stay where they are.** The pin covers them; it does not
+replace them. Retyping a field and deleting a field are still guarded here, at the point where one
+field's values are stranded by a change to the type that owns them.
+
+Still open, and untouched by the above: if a **third** destructive field operation appears, or if
+undo is ever wanted, the answer is a change log rather than another flag — see ADR-0010's *when to
+revisit*.
 
 ## Related
 

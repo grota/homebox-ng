@@ -19,6 +19,9 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   **trashed** item is on neither. `(packages/db/src/schema.ts:57)`
 - **location** — a place where items live, hierarchical through `parentId` (a room can be
   under a building). `(packages/db/src/schema.ts:30)`
+- **unlocated item** — an item with no **location**, a legitimate state rather than a defect. The
+  **location facet** carries an **Unlocated** node so these items are reachable, and a location's
+  **subtree count** never includes them.
 - **item type** — a category an item belongs to, chosen at creation. Each item type owns its
   own set of custom fields. `(packages/db/src/schema.ts:38)`
 - **item type field** — a typed attribute *definition* on an item type; its per-item *value*
@@ -128,6 +131,42 @@ rows and simply end up with no location.
   state. The catalog's `published=true` guard keeps drafts out of every result and count, and
   the trash guard keeps trashed items out of both the catalog and the drafts list.
   `(packages/db/src/schema.ts:137)` `(apps/api/src/modules/items/repo.ts:96)`
+- **location facet** — the location dimension of **facet search**, laid out as a tree: children nest
+  inside their parents and the roots stack vertically. Which branches are open is view state;
+  clicking a name filters, clicking the chevron beside it only opens or closes that branch. A
+  root-level leaf-facet beside the roots, **Unlocated**, holds the **unlocated items**.
+  `(apps/api/src/modules/items/repo.ts:181)`
+- **own count** / **subtree count** — the two numbers a **location facet** node can carry: items
+  located directly in it, and that node plus every descendant. Both are shown when they differ —
+  `home 4 (12)` — and one alone when they are equal.
+- **subtree-inclusive filter** — selecting a **location** in the **location facet** matches its
+  whole subtree rather than the node alone, so a facet's count and the results it yields agree.
+  Selecting **Unlocated** is the exception: it matches the items with no location.
+  `(apps/api/src/modules/locations/repo.ts:54)`
+- **relevance** — the FTS rank order, which is what a search term is ordered by until the user picks
+  another order. It is a consequence of searching rather than a preference: it is never stored, and
+  clearing the term returns the list to the stored order.
+
+## Batch edit
+
+- **selection** — a set of catalog **item** ids chosen on the items page, independent of the view
+  that produced it: it survives a change of search term, filter or page, and is lost on reload.
+  **Select all** means everything the current search and filters match — never the twenty rows on
+  screen — and an empty selection is refused rather than read as "everything".
+  `(docs/adr/0010-catalog-selection-and-count-pinned-bulk-edit.md)`
+- **criteria clause** — a tag, **location** or creation-date condition that adds items to, or
+  removes them from, a **selection**. Its parts are AND-ed, its values are drawn only from data that
+  exists, and tags and locations are unions within their own dimension, matching the **facet
+  search** rules.
+- **bulk edit** — one write applied to every item in a **selection**: its **location**, its **tags**
+  (added or removed, never replaced wholesale) and its **item type field** values. The item's **item
+  type** is deliberately not editable in bulk: changing it strands the values of the fields the old
+  type owned.
+- **count pin** — the counts a **bulk edit**'s owner was shown, carried by the request so the server
+  can re-derive them immediately before writing and refuse if either moved. An edit therefore cannot
+  land on a **selection** that changed while the user was reading it. Generalised from **item type
+  field** retyping, where it began as `acknowledgedValueCount`.
+  `(docs/adr/0003-non-destructive-field-edits.md)`
 
 ## Auth & provisioning
 
