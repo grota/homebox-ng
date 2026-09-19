@@ -309,27 +309,24 @@ export function ItemsPage() {
           selection *starts* — a bar that only appeared once something was
           selected could never be used to select anything. */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        {selected.size > 0 && (
-          <span className="text-sm text-text-muted" aria-live="polite">
-            {selected.size} selected
-          </span>
-        )}
+        {/* These are actions, so they use the bordered variant. `ghost` is for the
+            facet chips, where an unselected chip *should* sit quietly — here it
+            made a row of controls read as body text. */}
         <Button
           size="sm"
-          variant="ghost"
           disabled={(data?.total ?? 0) === 0}
           onClick={() => void selectAllMatching()}
         >
           Select all {data?.total ?? 0} matching
         </Button>
-        <Button size="sm" variant="ghost" disabled={selected.size === 0} onClick={clearSelection}>
+        <Button size="sm" disabled={selected.size === 0} onClick={clearSelection}>
           Deselect all
         </Button>
         <Popover
           open={criteria === 'add'}
           onOpenChange={(open) => setCriteria(open ? 'add' : null)}
           title="Add to selection criteria"
-          trigger={<Button size="sm" variant="ghost">Add to selection</Button>}
+          trigger={<Button size="sm">Add to selection</Button>}
         >
           <SelectionCriteria
             mode="add"
@@ -341,7 +338,7 @@ export function ItemsPage() {
           open={criteria === 'remove'}
           onOpenChange={(open) => setCriteria(open ? 'remove' : null)}
           title="Remove from selection criteria"
-          trigger={<Button size="sm" variant="ghost">Remove from selection</Button>}
+          trigger={<Button size="sm">Remove from selection</Button>}
         >
           <SelectionCriteria
             mode="remove"
@@ -367,15 +364,27 @@ export function ItemsPage() {
                 }}
               />
             </Popover>
+            {/* A toggle, so it says which state it is in with the accent — but
+                bordered rather than ghost when off, for the same reason as the
+                rest of the row. */}
             <Button
               size="sm"
-              variant={onlySelected ? 'primary' : 'ghost'}
+              variant={onlySelected ? 'primary' : 'secondary'}
               aria-pressed={onlySelected}
               onClick={() => setOnlySelected((on) => !on)}
             >
               Selected only
             </Button>
           </>
+        )}
+        {/* Last, and pushed to the far edge with `ml-auto`: it comes and goes with
+            the selection, and anywhere to the left of the controls would shove
+            them sideways the moment the first item was picked. `aria-live` because
+            it is the only confirmation that a pick registered. */}
+        {selected.size > 0 && (
+          <span className="ml-auto text-sm text-text-muted" aria-live="polite">
+            {selected.size} selected
+          </span>
         )}
       </div>
 

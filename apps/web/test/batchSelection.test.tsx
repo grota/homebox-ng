@@ -184,6 +184,34 @@ describe('selecting items on the catalog', () => {
     expect(screen.getByRole('button', { name: 'Add 0 items' })).toBeDisabled()
   })
 
+  // The row's controls must not shove each other sideways when a selection starts.
+  // The count is the last child and pushed to the far edge, so everything before it
+  // keeps its place — it used to be first, which moved the whole row.
+  it('keeps the controls in place when the count appears', () => {
+    renderCatalog()
+    const bar = screen.getByRole('button', { name: /Select all 2 matching/ }).parentElement!
+    const before = within(bar).getAllByRole('button').map((b) => b.textContent)
+
+    fireEvent.click(box('Select Brass Lamp'))
+
+    const after = within(bar).getAllByRole('button').map((b) => b.textContent)
+    expect(after.slice(0, before.length)).toEqual(before)
+    const count = screen.getByText('1 selected')
+    expect(count).toHaveClass('ml-auto')
+    expect(bar.lastElementChild).toBe(count)
+  })
+
+  // They are controls, not body text: `ghost` (a transparent border, no fill) is
+  // what made them read as labels, and it belongs to the facet chips, where an
+  // unselected chip *should* sit quietly.
+  it('renders the selection controls as bordered buttons', () => {
+    renderCatalog()
+
+    for (const name of ['Select all 2 matching', 'Deselect all', 'Add to selection', 'Remove from selection']) {
+      expect(screen.getByRole('button', { name })).toHaveClass('border-border')
+    }
+  })
+
   // A selection can outlive the view that made it, so it must be findable. With
   // the facets hidden, because their counts describe the catalog under the filters
   // while the grid now describes the selection.
