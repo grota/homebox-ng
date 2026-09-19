@@ -10,10 +10,11 @@ export type LocationTreeItem = {
   id: number
   name: string
   parentId: number | null
+  depth: number
   children?: LocationTreeItem[]
 }
 
-export type FlatLocation = { id: number; name: string; parentId: number | null }
+export type FlatLocation = { id: number; name: string; parentId: number | null; depth: number }
 
 // The separator between the names of a path, and between the sidebar's
 // breadcrumb chips. One constant, because a reader comparing the card against
@@ -21,12 +22,18 @@ export type FlatLocation = { id: number; name: string; parentId: number | null }
 export const LOCATION_PATH_SEPARATOR = ' › '
 
 // Flatten the nested tree into a list, so a lookup by id does not recurse the
-// tree once per item on the page.
+// tree once per item on the page — and so a `<select>` can be built from it.
 export const flattenLocations = (nodes: LocationTreeItem[]): FlatLocation[] =>
   nodes.flatMap((node) => [
-    { id: node.id, name: node.name, parentId: node.parentId ?? null },
+    { id: node.id, name: node.name, parentId: node.parentId ?? null, depth: node.depth },
     ...(node.children ? flattenLocations(node.children) : []),
   ])
+
+// The label for one location in a flat list. `— ` per level, the convention the
+// locations page's parent selector has always used: a `<select>` cannot nest, and
+// a list of bare names would not say which `shelf A` is which.
+export const locationOptionLabel = (location: Pick<FlatLocation, 'name' | 'depth'>): string =>
+  `${'— '.repeat(Math.max(0, location.depth - 1))}${location.name}`
 
 // The chain from the root down to `locationId`, root first. Empty when the
 // location is unknown — which is the honest answer while `locations.list` is

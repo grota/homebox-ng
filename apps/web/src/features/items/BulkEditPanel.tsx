@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { trpc } from '../../api/trpc'
 import { Button, Field, Input, Select } from '../../ui'
+import { flattenLocations, locationOptionLabel, type LocationTreeItem } from '../../lib/locationPath'
 
 // One edit, applied to a whole selection. Every property shows what the selection
 // currently holds — the distribution, not a "Mixed" label — and the count of items
@@ -12,7 +13,10 @@ import { Button, Field, Input, Select } from '../../ui'
 // would be a disagreement rather than a guard.
 type Props = {
   ids: number[]
-  locations: { id: number; name: string; depth: number }[]
+  // The location tree as `locations.list` returns it, nested — flattened here, for
+  // the same reason the item form flattens it: a `<select>` over the tree mapped
+  // flat offers only the roots.
+  locations: LocationTreeItem[]
   onApplied: () => void
 }
 
@@ -84,9 +88,9 @@ export function BulkEditPanel({ ids, locations, onApplied }: Props) {
           <Select id="bulk-location" value={locationSet} onChange={(e) => setLocationSet(e.target.value)}>
             <option value={LEAVE}>Leave as is</option>
             <option value="none">No location</option>
-            {locations.map((loc) => (
+            {flattenLocations(locations).map((loc) => (
               <option key={loc.id} value={String(loc.id)}>
-                {loc.name}
+                {locationOptionLabel(loc)}
               </option>
             ))}
           </Select>

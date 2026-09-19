@@ -115,6 +115,16 @@ describe('selecting items on the catalog', () => {
     expect(screen.queryByText('1 selected')).not.toBeInTheDocument()
   })
 
+  // The box is 13px; the footer row is the target, so a mis-aimed click still
+  // works. A label wrapping the control is what forwards the click.
+  it('toggles from anywhere in the card footer, not just the box', () => {
+    renderCatalog()
+
+    fireEvent.click(box('Select Brass Lamp').closest('label')!)
+
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+  })
+
   // The label carries the count because "all" does not mean "this page".
   it('selects everything the view matches, not just the page', async () => {
     state.resolved = { ids: [1, 2], total: 2 }

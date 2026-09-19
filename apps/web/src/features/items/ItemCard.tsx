@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Badge, Card } from '../../ui'
-import { locationPathLabel, type FlatLocation } from './locationPath'
+import { locationPathLabel, type FlatLocation } from '../../lib/locationPath'
 
 // The fields a card reads, mirroring the server's `ItemDto` — the same
 // hand-written-mirror convention the locations feature uses for
@@ -96,7 +96,10 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
           inside an anchor is interactive content inside interactive content —
           invalid, and different in every browser. The drafts card puts its own
           checkbox here for the same reason. */}
-      <div className="flex items-center border-t border-border px-3 py-2">
+      {/* A `<label>` wraps the box, so the whole footer row is the hit target
+          rather than a 13px square — clicking a label activates the control it
+          contains, and the `aria-label` below still gives it its name. */}
+      <label className="flex cursor-pointer items-center border-t border-border px-3 py-2">
         <input
           type="checkbox"
           checked={selected}
@@ -105,7 +108,7 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
           // this, so the accessible name is stated outright.
           aria-label={`Select ${item.name}`}
         />
-      </div>
+      </label>
     </Card>
   )
 }

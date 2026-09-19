@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
 import { uploadImage } from '../upload/PhotoUpload'
 import { Button, Field, Input, Select, Textarea } from '../../ui'
+import { flattenLocations, locationOptionLabel } from '../../lib/locationPath'
 
 // The subset of an item DTO needed to prefill edit mode. Structurally compatible
 // with the hydrated `ItemDto` returned by `items.get`/`items.list`.
@@ -245,11 +246,14 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
           onChange={(e) => setLocationId(e.target.value === '' ? '' : Number(e.target.value))}
         >
           <option value="">No location</option>
-          {(locations.data ?? []).map((loc) => (
-            <option key={loc.id} value={loc.id}>
-              {loc.name}
-            </option>
-          ))}
+          {/* `locations.list` is a tree, so it is flattened before it becomes
+              options — the tree mapped flat is why only the roots used to appear. */}
+          {(locations.data ?? []).length > 0 &&
+            flattenLocations(locations.data ?? []).map((loc) => (
+              <option key={loc.id} value={loc.id}>
+                {locationOptionLabel(loc)}
+              </option>
+            ))}
         </Select>
       </Field>
 

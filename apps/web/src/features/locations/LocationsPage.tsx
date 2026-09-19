@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { trpc } from '../../api/trpc'
 import { Button, Field, Input, Select } from '../../ui'
+import { flattenLocations, locationOptionLabel } from '../../lib/locationPath'
 import { LocationTree } from './LocationTree'
 import type { LocationTreeItem } from './LocationTree'
 
@@ -13,14 +14,6 @@ const findNode = (nodes: LocationTreeItem[], id: number): LocationTreeItem | nul
   }
   return null
 }
-
-// The tree flattened into `<select>` options, each label indented by depth so
-// the hierarchy still reads in a flat list.
-const toOptions = (nodes: LocationTreeItem[]): { id: number; label: string }[] =>
-  nodes.flatMap((node) => [
-    { id: node.id, label: `${'— '.repeat(node.depth - 1)}${node.name}` },
-    ...toOptions(node.children ?? []),
-  ])
 
 // A node plus everything beneath it — the ids a location may not be moved under
 // (that would be a cycle, which the API rejects with CONFLICT).
@@ -47,7 +40,11 @@ export function LocationsPage() {
   const tree = data ?? []
   const editing = editingId == null ? null : findNode(tree, editingId)
   const blocked = new Set(editing ? subtreeIds(editing) : [])
-  const options = toOptions(tree).filter((option) => !blocked.has(option.id))
+  // The tree flattened into `<select>` options, indented by depth — the shared
+  // helper, so this selector and the item form's cannot drift apart.
+  const options = flattenLocations(tree)
+    .map((loc) => ({ id: loc.id, label: locationOptionLabel(loc) }))
+    .filter((option) => !blocked.has(option.id))
   const busy = create.isPending || update.isPending || remove.isPending
 
   const reset = () => {

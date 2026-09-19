@@ -11,7 +11,7 @@ import { ItemForm } from './ItemForm'
 import { LocationFacetTree, type LocationFacetId } from './LocationFacetTree'
 import { SelectionCriteria } from './SelectionCriteria'
 // Flattening the location tree, so a card's location path can walk up it.
-import { flattenLocations } from './locationPath'
+import { flattenLocations } from '../../lib/locationPath'
 
 // Sent explicitly rather than left to the server's default, so the request that
 // produced `total` and the Next guard that reads it cannot disagree about the
