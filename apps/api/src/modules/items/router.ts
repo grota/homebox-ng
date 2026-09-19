@@ -36,6 +36,23 @@ const listInput = z.object({
   // Omitted means the default ordering (`createdAt:desc`) — and, while a search
   // term is present, relevance, which is what this call has always done.
   sort: z.enum(ITEM_SORTS).optional(),
+  // "Show me just these" — the selection has no other route onto the page, because
+  // it outlives the view that made it.
+  ids: z.array(z.number().int().positive()).optional(),
+})
+
+// A **criteria clause**: what adds items to, or removes them from, a selection.
+// Every field is optional, they are AND-ed, and the values are drawn only from
+// data that exists. Several locations, where the sidebar takes one — a clause is a
+// query, not a filter.
+const dayInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+const selectionClauseInput = z.object({
+  search: z.string().optional(),
+  itemTypeId: z.number().int().positive().optional(),
+  tagIds: z.array(z.number().int().positive()).optional(),
+  locationIds: z.array(z.union([z.literal('none'), z.number().int().positive()])).optional(),
+  createdFrom: dayInput.optional(),
+  createdTo: dayInput.optional(),
 })
 
 export const itemsRouter = t.router({
@@ -48,4 +65,9 @@ export const itemsRouter = t.router({
   trash: protectedProcedure.input(idInput).mutation(({ ctx, input }) => trashService.trashItem(ctx.db, input.id)),
   get: protectedProcedure.input(idInput).query(({ ctx, input }) => service.getItem(ctx.db, input.id)),
   list: protectedProcedure.input(listInput).query(({ ctx, input }) => service.listItems(ctx.db, input)),
+  // Backs all three selection gestures: "select all N matching", and both criteria
+  // modes. One read, so they cannot resolve differently.
+  resolveSelection: protectedProcedure.input(selectionClauseInput).query(({ ctx, input }) => service.resolveSelection(ctx.db, input)),
+  // The catalog's real creation-date span, so the date clause can be bounded by it.
+  createdAtRange: protectedProcedure.query(({ ctx }) => service.createdAtRange(ctx.db)),
 })

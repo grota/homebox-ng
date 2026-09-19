@@ -16,12 +16,6 @@ export type LocationFacetNode = {
 // `'none'` is the **Unlocated** bucket, a legal `locationId` filter value.
 export type LocationFacetId = number | 'none'
 
-type Props = {
-  nodes: LocationFacetNode[]
-  selected: LocationFacetId | undefined
-  onSelect: (id: LocationFacetId | undefined) => void
-}
-
 // The ids from the root down to the selection, so the branch leading to the
 // grid's filter is always open. Otherwise you can select `garage`, collapse
 // `home`, and end up filtering the list by something that is not on screen.
@@ -50,14 +44,28 @@ const label = (node: LocationFacetNode): string =>
     ? `${node.name} (${node.subtreeCount})`
     : `${node.name} ${node.ownCount} (${node.subtreeCount})`
 
+// One tree, two jobs. The sidebar **filters** by one location, so its rows are
+// buttons and the branch leading to the selection is forced open. A **criteria
+// clause** selects several, so its rows are checkboxes and nothing is forced —
+// both are the same hierarchy with the same counts, and a second tree would be a
+// second place to get the nesting wrong.
+type Props = { nodes: LocationFacetNode[] } & (
+  | {
+      multi?: false
+      selected: LocationFacetId | undefined
+      onSelect: (id: LocationFacetId | undefined) => void
+    }
+  | { multi: true; selected: LocationFacetId[]; onSelect: (ids: LocationFacetId[]) => void }
+)
+
 // The location facet as the tree it is (ADR-0009). Two gestures on one row, and
 // they mean different things: the **name** filters the grid, the **chevron** only
 // opens the branch — so looking inside a location does not require filtering by it.
-export function LocationFacetTree({ nodes, selected, onSelect }: Props) {
+export function LocationFacetTree({ nodes, ...selection }: Props) {
   // Which branches are open. View state, deliberately not in the URL: it is not a
   // link, and it is fine for it to reset on reload.
   const [open, setOpen] = useState<Set<LocationFacetId>>(new Set())
-  const forced = pathToSelection(nodes, selected)
+  const forced = selection.multi ? new Set<LocationFacetId>() : pathToSelection(nodes, selection.selected)
 
   const toggle = (id: LocationFacetId) =>
     setOpen((prev) => {
@@ -78,6 +86,14 @@ export function LocationFacetTree({ nodes, selected, onSelect }: Props) {
         // click is recorded but `forced` keeps it open. Its own children can be
         // closed as usual.
         const expanded = open.has(node.id) || forced.has(node.id)
+        const isOn = selection.multi ? selection.selected.includes(node.id) : selection.selected === node.id
+        const press = () => {
+          if (selection.multi) {
+            selection.onSelect(isOn ? selection.selected.filter((id) => id !== node.id) : [...selection.selected, node.id])
+          } else {
+            selection.onSelect(isOn ? undefined : node.id)
+          }
+        }
         return (
           <li key={String(node.id)}>
             <div className="flex items-center gap-1" style={{ paddingLeft: depth * 12 }}>
@@ -94,16 +110,23 @@ export function LocationFacetTree({ nodes, selected, onSelect }: Props) {
               ) : (
                 <span aria-hidden className="w-4" />
               )}
-              <Button
-                size="sm"
-                variant={selected === node.id ? 'primary' : 'ghost'}
-                aria-pressed={selected === node.id}
-                // Clicking what is already selected clears it, so the one control
-                // both narrows and widens.
-                onClick={() => onSelect(selected === node.id ? undefined : node.id)}
-              >
-                {label(node)}
-              </Button>
+              {selection.multi ? (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={isOn} onChange={press} />
+                  <span>{label(node)}</span>
+                </label>
+              ) : (
+                <Button
+                  size="sm"
+                  variant={isOn ? 'primary' : 'ghost'}
+                  aria-pressed={isOn}
+                  // Clicking what is already selected clears it, so the one control
+                  // both narrows and widens.
+                  onClick={press}
+                >
+                  {label(node)}
+                </Button>
+              )}
             </div>
             {children.length > 0 && expanded ? level(children, depth + 1) : null}
           </li>

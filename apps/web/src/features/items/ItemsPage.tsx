@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { hexColor, ITEM_SORT_PREFERENCES, type ItemSort } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
-import { Button, cn, Field, hoverScrim, Input, PageHeader, Pagination, Select, Tooltip } from '../../ui'
+import { Button, cn, Field, hoverScrim, Input, PageHeader, Pagination, Popover, Select, Tooltip } from '../../ui'
 import { ITEM_SORT_LABELS } from '../../lib/itemSort'
 import { useUserSettings } from '../../lib/settings/useUserSettings'
 import { ItemCard } from './ItemCard'
 import { ItemForm } from './ItemForm'
 import { LocationFacetTree, type LocationFacetId } from './LocationFacetTree'
+import { SelectionCriteria } from './SelectionCriteria'
 // Flattening the location tree, so a card's location path can walk up it.
 import { flattenLocations } from './locationPath'
 
@@ -108,6 +109,48 @@ export function ItemsPage() {
     if (value !== 'relevance') void updateSettings({ itemsSort: value })
   }
 
+  // ---------------------------------------------------------------------------
+  // Selection (ADR-0010). A set of catalog item ids that is independent of the
+  // view: changing the search, a filter or the page does not touch it, and it is
+  // lost on reload. "Select all" resolves what the *view* matches, so the server is
+  // asked rather than the page's twenty rows being assumed to be all of it.
+  //
+  // Declared above the query below, because the query carries the selection when
+  // "Selected only" is on.
+  // ---------------------------------------------------------------------------
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [onlySelected, setOnlySelected] = useState(false)
+  const [criteria, setCriteria] = useState<'add' | 'remove' | null>(null)
+
+  const toggleSelected = (id: number, next: boolean) =>
+    setSelected((prev) => {
+      const set = new Set(prev)
+      if (next) set.add(id)
+      else set.delete(id)
+      return set
+    })
+
+  const clearSelection = () => {
+    setSelected(new Set())
+    // A view showing nothing but the selection has nothing left to show.
+    setOnlySelected(false)
+  }
+
+  const selectAllMatching = async () => {
+    const { ids } = await utils.items.resolveSelection.fetch({
+      search: q.trim() || undefined,
+      itemTypeId,
+      tagIds: tagIds.length ? tagIds : undefined,
+      locationIds: locationId != null ? [locationId] : undefined,
+    })
+    setSelected((prev) => new Set([...prev, ...ids]))
+  }
+
+  const resolveInto = (ids: number[], mode: 'add' | 'remove') => {
+    setSelected((prev) => (mode === 'add' ? new Set([...prev, ...ids]) : new Set([...prev].filter((id) => !ids.includes(id)))))
+    setCriteria(null)
+  }
+
   const { data, isLoading } = trpc.items.list.useQuery({
     page,
     pageSize: PAGE_SIZE,
@@ -116,6 +159,9 @@ export function ItemsPage() {
     itemTypeId,
     tagIds: tagIds.length ? tagIds : undefined,
     sort,
+    // "Selected only": the selection outlives the view that made it, so showing
+    // just it is an ordinary filter.
+    ids: onlySelected ? [...selected] : undefined,
   })
   const items = data?.items ?? []
   const facets = data?.facets
@@ -258,8 +304,68 @@ export function ItemsPage() {
 
       {showForm && <ItemForm onSaved={handleSaved} onCancel={() => setShowForm(false)} />}
 
+      {/* The selection bar. Always present, because "select all" is how a
+          selection *starts* — a bar that only appeared once something was
+          selected could never be used to select anything. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {selected.size > 0 && (
+          <span className="text-sm text-text-muted" aria-live="polite">
+            {selected.size} selected
+          </span>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={(data?.total ?? 0) === 0}
+          onClick={() => void selectAllMatching()}
+        >
+          Select all {data?.total ?? 0} matching
+        </Button>
+        <Button size="sm" variant="ghost" disabled={selected.size === 0} onClick={clearSelection}>
+          Deselect all
+        </Button>
+        <Popover
+          open={criteria === 'add'}
+          onOpenChange={(open) => setCriteria(open ? 'add' : null)}
+          title="Add to selection criteria"
+          trigger={<Button size="sm" variant="ghost">Add to selection</Button>}
+        >
+          <SelectionCriteria
+            mode="add"
+            locations={facets?.locations ?? []}
+            onApply={(ids) => resolveInto(ids, 'add')}
+          />
+        </Popover>
+        <Popover
+          open={criteria === 'remove'}
+          onOpenChange={(open) => setCriteria(open ? 'remove' : null)}
+          title="Remove from selection criteria"
+          trigger={<Button size="sm" variant="ghost">Remove from selection</Button>}
+        >
+          <SelectionCriteria
+            mode="remove"
+            locations={facets?.locations ?? []}
+            onApply={(ids) => resolveInto(ids, 'remove')}
+          />
+        </Popover>
+        {selected.size > 0 && (
+          <Button
+            size="sm"
+            variant={onlySelected ? 'primary' : 'ghost'}
+            aria-pressed={onlySelected}
+            onClick={() => setOnlySelected((on) => !on)}
+          >
+            Selected only
+          </Button>
+        )}
+      </div>
+
       <div className="flex gap-4 items-start">
-        {facets && (
+        {/* Hidden while "Selected only" is on: the facet counts describe the
+            catalog under the current filters, and the grid would be describing the
+            selection. Two panels disagreeing about the same list is worse than one
+            panel missing. */}
+        {facets && !onlySelected && (
           <>
             <Button
               size="sm"
@@ -385,7 +491,14 @@ export function ItemsPage() {
                 role) and the link keeps the item name as its accessible name via
                 `aria-label`; the wrapped text would otherwise become the name. */}
             {items.map((item) => (
-              <ItemCard key={item.id} item={item} locationById={locationById} searchTerm={q} />
+              <ItemCard
+                key={item.id}
+                item={item}
+                locationById={locationById}
+                searchTerm={q}
+                selected={selected.has(item.id)}
+                onSelect={toggleSelected}
+              />
             ))}
             {items.length === 0 && <p>No items yet.</p>}
           </div>

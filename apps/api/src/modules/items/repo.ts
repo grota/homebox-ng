@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from 'drizzle-orm'
 import { items, itemCustomFieldValues, itemTypeFields, itemTypes, locations, itemTags, tags, images } from '@homebox/db'
 import type { DrizzleDb } from '@homebox/db'
 import { DEFAULT_ITEM_SORT, type ItemSort, type ItemSortPreference } from '@homebox/shared'
@@ -103,13 +103,27 @@ export type SearchItemsOptions = {
   itemTypeId?: number
   tagIds?: number[]
   sort?: ItemSort
+  ids?: number[]
 }
 
 // A location filter is either a location id — matching that location's whole
 // subtree — or `'none'`, the items that have no location at all.
 export type LocationFilter = number | 'none'
 
-type RelationalFilters = { locationId?: LocationFilter; itemTypeId?: number; tagIds?: number[] }
+// What narrows the catalog: the sidebar's filters, and the same shape widened for
+// a **criteria clause** (several locations, a creation-date range). One type, so a
+// clause and a filter cannot come to mean different things.
+type RelationalFilters = {
+  locationId?: LocationFilter | LocationFilter[]
+  itemTypeId?: number
+  tagIds?: number[]
+  // Inclusive bounds, as whole UTC days (`YYYY-MM-DD`).
+  createdFrom?: string
+  createdTo?: string
+  // The selection, which has no other way onto the page: a selection outlives the
+  // view that made it, so "show me just these" is a filter like any other.
+  ids?: number[]
+}
 
 // `buildWhere` composes the relational filters (and an optional search predicate)
 // into a single AND'd fragment. Two base predicates are always present — the item
@@ -118,26 +132,46 @@ type RelationalFilters = { locationId?: LocationFilter; itemTypeId?: number; tag
 // which compose their WHERE through here. The `tagIds` predicate is
 // OR-within-dimension: an item matches if it carries AT LEAST ONE of the selected
 // tags (membership in the subselect of `item_tags` ids).
-// A location filter matches the whole **subtree** — the node and every descendant
-// — so that a facet's count and the results it yields are the same number
-// (ADR-0009). The subtree is resolved by the same cycle-safe recursion the
-// locations module uses for its own deletes; locations are counted in dozens and
-// depth is capped at 8, so the set is small enough to materialise rather than
-// express as a correlated subquery, which is far harder to read.
+// One location selects its whole **subtree** (ADR-0009), so that a facet's count
+// and the results it yields are the same number; several select the union of their
+// subtrees, which is what a **criteria clause** needs. The subtree is resolved by
+// the same cycle-safe recursion the locations module uses for its own deletes;
+// locations are counted in dozens and depth is capped at 8, so the set is small
+// enough to materialise rather than express as a correlated subquery, which is far
+// harder to read.
 //
-// `'none'` is the Unlocated bucket, which is not a subtree of anything: an item
-// with no location needs a filter of its own rather than a wider one.
-const locationPredicate = (db: DrizzleDb, filter: LocationFilter): SQL =>
-  filter === 'none' ? isNull(items.locationId) : inArray(items.locationId, listSubtreeIds(db, filter))
+// `'none'` is the Unlocated bucket — items in no subtree at all, so it is a
+// separate disjunct rather than a wider one.
+const locationPredicate = (db: DrizzleDb, filters: LocationFilter[]): SQL => {
+  const subtreeIds = filters.filter((id): id is number => id !== 'none').flatMap((id) => listSubtreeIds(db, id))
+  const frags: SQL[] = []
+  if (subtreeIds.length) frags.push(inArray(items.locationId, subtreeIds))
+  if (filters.includes('none')) frags.push(isNull(items.locationId))
+  return or(...frags)!
+}
+
+// A clause's date bound is the calendar day the user picked, so `from` is the
+// start of that day and `to` is the **end** of it — otherwise a single-day range
+// selects nothing. Days are UTC: the server has no user timezone, and a stored
+// timestamp has no calendar day of its own.
+const startOfDay = (day: string): Date => new Date(`${day}T00:00:00.000Z`)
+const endOfDay = (day: string): Date => new Date(`${day}T23:59:59.999Z`)
 
 const buildWhere = (db: DrizzleDb, filters: RelationalFilters, searchPredicate?: SQL): SQL | undefined => {
   const conds: SQL[] = [eq(items.published, true), isNull(items.trashedAt)] // neither drafts nor trash leak into the catalog or facets
   if (searchPredicate) conds.push(searchPredicate)
-  if (filters.locationId != null) conds.push(locationPredicate(db, filters.locationId))
+
+  const locationIds =
+    filters.locationId == null ? [] : Array.isArray(filters.locationId) ? filters.locationId : [filters.locationId]
+  if (locationIds.length) conds.push(locationPredicate(db, locationIds))
+
   if (filters.itemTypeId != null) conds.push(eq(items.itemTypeId, filters.itemTypeId))
   if (filters.tagIds?.length) {
     conds.push(inArray(items.id, db.select({ id: itemTags.itemId }).from(itemTags).where(inArray(itemTags.tagId, filters.tagIds))))
   }
+  if (filters.createdFrom) conds.push(gte(items.createdAt, startOfDay(filters.createdFrom)))
+  if (filters.createdTo) conds.push(lte(items.createdAt, endOfDay(filters.createdTo)))
+  if (filters.ids?.length) conds.push(inArray(items.id, filters.ids))
   return conds.length ? and(...conds) : undefined
 }
 
@@ -397,9 +431,12 @@ const orderFor = (sort: ItemSort | undefined, ranked: boolean): SQL => {
   return ITEM_SORT_SQL[sort != null && sort !== 'relevance' ? sort : DEFAULT_ITEM_SORT]
 }
 
-const runFtsSearch = (db: DrizzleDb, opts: SearchItemsOptions, term: string, pageSize: number, offset: number) => {
-  const ctx = ftsCtx(term)
-  const where = buildWhere(db, { locationId: opts.locationId, itemTypeId: opts.itemTypeId, tagIds: opts.tagIds }, ctx.predicate)
+const runFtsSearch = (db: DrizzleDb, opts: SearchItemsOptions, ctx: SearchCtx, pageSize: number, offset: number) => {
+  // One filter object for the WHERE and the facet counts. The counts pass their own
+  // sub-objects (each omits its own dimension), so `ids` narrows the rows without
+  // narrowing the facets — which describe the catalog, not the selection.
+  const filters = { locationId: opts.locationId, itemTypeId: opts.itemTypeId, tagIds: opts.tagIds, ids: opts.ids }
+  const where = buildWhere(db, filters, ctx.predicate)
 
   // Step 1: ids in rank order (with a snippet). `rank` is FTS5's bm25 — lower is
   // better. `snippet(..., -1, ...)` snips across ALL indexed columns (index `-1`),
@@ -426,7 +463,7 @@ const runFtsSearch = (db: DrizzleDb, opts: SearchItemsOptions, term: string, pag
 // The two non-ranked paths (no term, and the LIKE fallback for a MATCH FTS5
 // rejects) differ only in their search context, so they share one body.
 const runPlainSearch = (db: DrizzleDb, opts: SearchItemsOptions, ctx: SearchCtx, pageSize: number, offset: number) => {
-  const filters = { locationId: opts.locationId, itemTypeId: opts.itemTypeId, tagIds: opts.tagIds }
+  const filters = { locationId: opts.locationId, itemTypeId: opts.itemTypeId, tagIds: opts.tagIds, ids: opts.ids }
   const where = buildWhere(db, filters, ctx.predicate)
   const total = db.select({ c: count() }).from(items).where(where).get()?.c ?? 0
   const rows = db.select(ITEM_FIELDS).from(items).where(where).orderBy(orderFor(opts.sort, false)).limit(pageSize).offset(offset).all()
@@ -435,46 +472,98 @@ const runPlainSearch = (db: DrizzleDb, opts: SearchItemsOptions, ctx: SearchCtx,
 
 // Ranked FTS search (or plain filter when no term) with live facet counts and a
 // per-row `snippet`. Returns `{ rows, total, facets }`.
+// Runs `attempt` with each search context a term can need, in the order the list
+// uses it: FTS, then the quoted retry for a term FTS5 reads as *syntax*, then the
+// literal `LIKE` floor. `searchItems` and `resolveSelectionIds` must not disagree
+// about what a term matches — otherwise "select all N matching" selects a set the
+// list never showed — so the chain lives here, once.
+const withSearchContext = <T>(
+  term: string | undefined,
+  attempt: (ctx: SearchCtx, ranked: boolean) => T,
+): T => {
+  if (!term) return attempt(plainCtx, false)
+  try {
+    return attempt(ftsCtx(term), true)
+  } catch (e) {
+    // FTS5 throws a `SQLITE_ERROR` when it reads the text as *syntax* and the
+    // syntax is wrong. Two ways that happens, and both are ordinary typing:
+    // a hyphen or a colon is FTS5's column filter (`wd-40` parses as "column
+    // wd, term 40"), and an odd number of quotes is an unterminated string.
+    //
+    // The fix is FTS5's own escaping rule applied to the whole input: wrap it in
+    // double quotes, and double any quotes inside it. That is valid for *any*
+    // input, so the retry cannot fail on syntax — and it is still a real FTS5
+    // search, so results stay ranked, cover every column and carry snippets,
+    // unlike the name-only `LIKE` below. The tokenizer then splits `wd-40` into
+    // `wd` and `40` on the query side exactly as it did on the document side, so
+    // the phrase matches the item that has "wd 40" in it.
+    //
+    // The trailing `*` sits outside the quotes to keep the last token a prefix;
+    // `prefixTerm` leaves the result alone because it already ends in `*`.
+    if (isSqliteError(e)) {
+      const quoted = `"${term.replace(/"/g, '""')}"*`
+      try {
+        return attempt(ftsCtx(quoted), true)
+      } catch {
+        // Quoting is total, so this is unreachable — kept as the floor because
+        // a literal `LIKE` is the one path that cannot fail on anything.
+        return attempt(likeCtx(term), false)
+      }
+    }
+    throw e
+  }
+}
+
 export const searchItems = (db: DrizzleDb, opts: SearchItemsOptions): { rows: SearchRow[]; total: number; facets: SearchFacets } => {
-  const term = opts.search?.trim()
   const page = opts.page ?? 1
   const pageSize = opts.pageSize ?? 20
   const offset = (page - 1) * pageSize
 
-  if (term) {
-    try {
-      return runFtsSearch(db, opts, term, pageSize, offset)
-    } catch (e) {
-      // FTS5 throws a `SQLITE_ERROR` when it reads the text as *syntax* and the
-      // syntax is wrong. Two ways that happens, and both are ordinary typing:
-      // a hyphen or a colon is FTS5's column filter (`wd-40` parses as "column
-      // wd, term 40"), and an odd number of quotes is an unterminated string.
-      //
-      // The fix is FTS5's own escaping rule applied to the whole input: wrap it in
-      // double quotes, and double any quotes inside it. That is valid for *any*
-      // input, so the retry cannot fail on syntax — and it is still a real FTS5
-      // search, so results stay ranked, cover every column and carry snippets,
-      // unlike the name-only `LIKE` below. The tokenizer then splits `wd-40` into
-      // `wd` and `40` on the query side exactly as it did on the document side, so
-      // the phrase matches the item that has "wd 40" in it.
-      //
-      // The trailing `*` sits outside the quotes to keep the last token a prefix;
-      // `prefixTerm` leaves the result alone because it already ends in `*`.
-      if (isSqliteError(e)) {
-        const quoted = `"${term.replace(/"/g, '""')}"*`
-        try {
-          return runFtsSearch(db, opts, quoted, pageSize, offset)
-        } catch {
-          // Quoting is total, so this is unreachable — kept as the floor because
-          // a literal `LIKE` is the one path that cannot fail on anything.
-          return runPlainSearch(db, opts, likeCtx(term), pageSize, offset)
-        }
-      }
-      throw e
-    }
-  }
+  return withSearchContext(opts.search?.trim(), (ctx, ranked) =>
+    ranked ? runFtsSearch(db, opts, ctx, pageSize, offset) : runPlainSearch(db, opts, ctx, pageSize, offset),
+  )
+}
 
-  return runPlainSearch(db, opts, plainCtx, pageSize, offset)
+// A **criteria clause**: what adds items to, or removes them from, a selection.
+// Every field is optional and they are AND-ed. It differs from the sidebar's
+// `RelationalFilters` in one way that matters — it takes *several* locations, where
+// the sidebar filters by one — and in no other, so the predicate they compose is
+// the same one.
+export type SelectionClause = Omit<RelationalFilters, 'locationId'> & {
+  search?: string
+  locationIds?: LocationFilter[]
+}
+
+// Every catalog item id a clause resolves to. The count and the ids are the same
+// number from the same query — `total` is `ids.length` — so the two can never
+// disagree, and a resolved id is never a draft and never trashed because the
+// predicate is `buildWhere`'s.
+export const resolveSelectionIds = (db: DrizzleDb, clause: SelectionClause): number[] =>
+  withSearchContext(clause.search?.trim(), (ctx, ranked) => {
+    // The wire names it `locationIds` — a clause selects several — while the filter
+    // shape carries one field that takes either, so a clause and the sidebar's
+    // single selection compose through the same predicate instead of two.
+    const { locationIds, search: _search, ...rest } = clause
+    const where = buildWhere(db, { ...rest, locationId: locationIds }, ctx.predicate)
+    if (!where) return []
+    const rows = ranked
+      ? db.all<{ id: number }>(sql`SELECT items.id FROM items ${ctx.join} WHERE ${where}`)
+      : db.select({ id: items.id }).from(items).where(where).all()
+    return rows.map((row) => row.id)
+  })
+
+// The catalog's real creation-date span, as whole days, so a date clause can be
+// bounded by data that exists rather than offering a range that matches nothing.
+// `null` when the catalog is empty (there is no honest span to report).
+export const createdAtRange = (db: DrizzleDb): { min: string; max: string } | null => {
+  const row = db.get<{ min: number | null; max: number | null }>(sql`
+    SELECT MIN(items.created_at) AS min, MAX(items.created_at) AS max
+    FROM items
+    WHERE items.published = 1 AND items.trashed_at IS NULL
+  `)
+  if (row?.min == null || row?.max == null) return null
+  const day = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+  return { min: day(row.min), max: day(row.max) }
 }
 
 export type CreateFieldValueData = { fieldId: number; value: string | null }

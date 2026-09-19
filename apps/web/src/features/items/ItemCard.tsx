@@ -24,9 +24,11 @@ type Props = {
   locationById: Map<number, FlatLocation>
   // The search term, which decides whether the FTS snippet is shown at all.
   searchTerm: string
+  selected: boolean
+  onSelect: (id: number, next: boolean) => void
 }
 
-export function ItemCard({ item, locationById, searchTerm }: Props) {
+export function ItemCard({ item, locationById, searchTerm, selected, onSelect }: Props) {
   // The card shows the PRIMARY photo — marking one primary is exactly what that
   // is for (2026-09-04 design: "one marked primary (used as the card image)"),
   // and it is what the drafts and trash rows do. This card was the last place
@@ -89,6 +91,21 @@ export function ItemCard({ item, locationById, searchTerm }: Props) {
           </p>
         ) : null}
       </Link>
+      {/* The checkbox lives **outside** the link, in the card's footer, and that is
+          not cosmetic: the whole card above is one `<a>`, and a checkbox nested
+          inside an anchor is interactive content inside interactive content —
+          invalid, and different in every browser. The drafts card puts its own
+          checkbox here for the same reason. */}
+      <div className="flex items-center border-t border-border px-3 py-2">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={(event) => onSelect(item.id, event.target.checked)}
+          // The card's visible name is inside the link and is not a `<label>` for
+          // this, so the accessible name is stated outright.
+          aria-label={`Select ${item.name}`}
+        />
+      </div>
     </Card>
   )
 }

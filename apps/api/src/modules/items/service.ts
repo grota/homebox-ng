@@ -57,6 +57,7 @@ export type ListItemsInput = {
   itemTypeId?: number
   tagIds?: number[]
   sort?: ItemSort
+  ids?: number[]
 }
 
 const toDto = (
@@ -194,3 +195,23 @@ export const listItems = (db: DrizzleDb, input: ListItemsInput): { items: ItemDt
   })
   return { items, total, facets }
 }
+
+// A criteria clause, as the wire takes it (see the router's schema). Several
+// locations because a clause is a query rather than the sidebar's single filter.
+export type SelectionClauseInput = {
+  search?: string
+  itemTypeId?: number
+  tagIds?: number[]
+  locationIds?: LocationFilter[]
+  createdFrom?: string
+  createdTo?: string
+}
+
+// The ids a clause resolves to, plus their count. `total` is `ids.length` — one
+// query, so a modal's "adds 12 items" and the twelve it adds cannot disagree.
+export const resolveSelection = (db: DrizzleDb, input: SelectionClauseInput): { ids: number[]; total: number } => {
+  const ids = repo.resolveSelectionIds(db, input)
+  return { ids, total: ids.length }
+}
+
+export const createdAtRange = (db: DrizzleDb): { min: string; max: string } | null => repo.createdAtRange(db)
