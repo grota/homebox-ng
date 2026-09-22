@@ -25,6 +25,19 @@ runMigrations(db)
 
 const app = buildApp({ db, dataDir: env.DATA_DIR, dbPath: env.DATABASE_PATH })
 
+// In the image this process is PID 1, and Node with no `SIGTERM` listener ignores
+// the signal there: `docker stop` then waits out its 10s timeout and SIGKILLs the
+// container (exit 137, no shutdown output). Registering the listener is the whole
+// fix, and `app.close()` is what makes it worth doing — in-flight requests finish
+// and the SQLite handle closes. Registered before `listen` so a signal that lands
+// while the detection providers are still loading is caught too.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    console.log(`${signal} received, shutting down`)
+    app.close().catch(() => {}).then(() => process.exit(0))
+  })
+}
+
 // Serve the built SPA. `@fastify/static` registers a `GET /*` wildcard, but
 // find-my-way prioritises the more-specific `/trpc/:path`, `/upload/image`, and
 // `/file/*` routes already registered by `buildApp`, so none are shadowed.
