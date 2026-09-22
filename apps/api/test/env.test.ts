@@ -49,3 +49,23 @@ describe('env data paths', () => {
     expect(env.DATABASE_PATH).toBe('/srv/homebox/custom.db')
   })
 })
+
+describe('env log level', () => {
+  // `info` rather than silence: an unset level has to be the one that produces
+  // logs, or the default installs are the ones with nothing to read.
+  it('defaults to info, and takes an explicit level as given', () => {
+    expect(loadEnv({ SESSION_SECRET: 'secret' }).LOG_LEVEL).toBe('info')
+    expect(loadEnv({ SESSION_SECRET: 'secret', LOG_LEVEL: 'debug' }).LOG_LEVEL).toBe('debug')
+    // Empty is what `-e LOG_LEVEL="$UNSET"` and compose's `${LOG_LEVEL}` produce;
+    // it has to fall back rather than refuse to boot an optional var.
+    expect(loadEnv({ SESSION_SECRET: 'secret', LOG_LEVEL: '' }).LOG_LEVEL).toBe('info')
+  })
+
+  // Without this the typo reaches pino and throws from inside Fastify's own
+  // construction, where the message does not name the levels that would work.
+  it('rejects an unknown level, naming the real ones', () => {
+    expect(() => loadEnv({ SESSION_SECRET: 'secret', LOG_LEVEL: 'verbose' })).toThrowError(
+      /Unknown LOG_LEVEL "verbose"\. Use one of: fatal, error, warn, info, debug, trace, silent\./,
+    )
+  })
+})

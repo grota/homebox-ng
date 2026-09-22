@@ -202,9 +202,44 @@ use those providers.
 | `PORT` | `3000` |
 | `DATA_DIR` | `/data` |
 | `DATABASE_PATH` | `/data/homebox.db` |
+| `LOG_LEVEL` | `info` |
 
 `GEMINI_API_KEY`, `OPENAI_API_KEY`, `MAX_UPLOAD_MB` and `DETECTION_MODEL` behave as in
 [Environment variables](#environment-variables).
+
+### Logs
+
+The server logs through pino at `LOG_LEVEL`, defaulting to `info`: one line per request in, one per
+request out, plus a startup banner. The output is JSON, so `jq` works on it as well as your eyes.
+
+```bash
+docker logs -f homebox-ng                        # follow
+docker logs --timestamps --since 10m homebox-ng  # the last ten minutes, with times
+```
+
+| `LOG_LEVEL` | What appears |
+|---|---|
+| `info` *(default)* | Request lines + the banner |
+| `warn` | Neither — warnings and errors only |
+| `error` | Errors only |
+| `debug` | `info`, plus Fastify's own internals |
+| `silent` | Nothing at all — what this image did before it had a logger |
+
+An unknown value fails the boot and names the real ones (`Unknown LOG_LEVEL "verbose". Use one of:
+fatal, error, warn, info, debug, trace, silent.`), and an empty one counts as unset, so a compose
+file's `LOG_LEVEL: ${LOG_LEVEL}` with nothing behind it still starts.
+
+Two things that surprise people:
+
+- **The `HEALTHCHECK` is two of those lines every 30 seconds** — `incoming request` and `request
+  completed` for `/health`, about 5,800 a day and all identical. That is the healthcheck working.
+  `LOG_LEVEL=warn` turns it off.
+- **The detection model's download is not wired to the logger.** The first detection after a fresh
+  `/data` fetches the model with no output while it does, so silence there means a download in
+  progress rather than a hang.
+
+Nothing secret reaches the log: request lines carry method, URL, host and peer address but never
+headers — verified at `debug` with a `Cookie` and an `Authorization` header on the wire.
 
 ### Pulling the image
 
@@ -246,6 +281,7 @@ curl -s localhost:3000/health     # {"ok":true,"version":"v1.2.3"}
 |---|---|---|
 | `SESSION_SECRET` | **required** | Signs session cookies |
 | `PORT` | `3000` | API/SPA listen port |
+| `LOG_LEVEL` | `info` | pino level — `fatal`/`error`/`warn`/`info`/`debug`/`trace`/`silent` |
 | `DATABASE_PATH` | `./data/homebox.db` | SQLite file |
 | `DATA_DIR` | `./data` (repo root) | Uploads, stored backups (`backups/`) + model cache root |
 | `DETECTION_MOCK` | (unset) | `1` registers the deterministic mock detection provider |

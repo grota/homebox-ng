@@ -48,6 +48,10 @@ export default defineConfig({
       // Register the deterministic mock detection provider so the unpack e2e spec
       // produces fixed boxes (chair + table) without a real model download.
       DETECTION_MOCK: '1',
+      // At the server's default `info` this is a log line per request, and a run
+      // makes hundreds — enough to bury the assertion failures this output exists
+      // to show. Warnings and errors still come through.
+      LOG_LEVEL: 'warn',
     },
   },
 })

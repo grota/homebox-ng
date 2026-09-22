@@ -7,7 +7,7 @@ import { registerUploadRoutes } from './uploads.js'
 import { registerBackupRoutes } from './modules/backup/backupRoutes.js'
 import { registerUnpackRoute } from './modules/unpack/route.js'
 import { getSettings } from './modules/instanceSettings/service.js'
-import { DEFAULT_DATA_DIR } from './env.js'
+import { DEFAULT_DATA_DIR, type LogLevel } from './env.js'
 import { registerDetectionProviders } from './modules/detection/register.js'
 
 export type BuildAppOptions = {
@@ -16,6 +16,13 @@ export type BuildAppOptions = {
   dbPath?: string
   /** Reported by `/health`. The release image bakes the git tag in as `APP_VERSION`. */
   version?: string
+  /**
+   * pino level for Fastify's logger. Omitting it means no logger at all, which is
+   * what the tests want — `buildApp` never reads env, and defaulting to `info`
+   * here would bury a failing assertion under a request line per HTTP call.
+   * `index.ts` is the only caller that passes one, from `LOG_LEVEL`.
+   */
+  logLevel?: LogLevel
 }
 
 // Build a Fastify instance with `/health`, tRPC mounted under `/trpc`, and the
@@ -28,8 +35,11 @@ export const buildApp = ({
   dataDir = DEFAULT_DATA_DIR,
   dbPath,
   version = process.env.APP_VERSION ?? 'dev',
+  logLevel,
 }: BuildAppOptions) => {
-  const app = Fastify()
+  // `false` rather than no argument, because that is the same thing and the
+  // explicit form is what says the silence is deliberate.
+  const app = Fastify({ logger: logLevel === undefined ? false : { level: logLevel } })
   // The live DB is held behind a holder so a restore can swap it in place. Both
   // tRPC and the upload/backup routes read `dbHolder.current` per request, so
   // they keep working after a restore (instead of holding a closed old handle).

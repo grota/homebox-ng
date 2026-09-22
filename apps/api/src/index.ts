@@ -23,7 +23,12 @@ assertWritableDataDir(env.DATA_DIR, env.DATABASE_PATH)
 const db = createDb(env.DATABASE_PATH)
 runMigrations(db)
 
-const app = buildApp({ db, dataDir: env.DATA_DIR, dbPath: env.DATABASE_PATH })
+const app = buildApp({
+  db,
+  dataDir: env.DATA_DIR,
+  dbPath: env.DATABASE_PATH,
+  logLevel: env.LOG_LEVEL,
+})
 
 // In the image this process is PID 1, and Node with no `SIGTERM` listener ignores
 // the signal there: `docker stop` then waits out its 10s timeout and SIGKILLs the
@@ -33,7 +38,7 @@ const app = buildApp({ db, dataDir: env.DATA_DIR, dbPath: env.DATABASE_PATH })
 // while the detection providers are still loading is caught too.
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
-    console.log(`${signal} received, shutting down`)
+    app.log.info(`${signal} received, shutting down`)
     app.close().catch(() => {}).then(() => process.exit(0))
   })
 }
@@ -56,3 +61,12 @@ app.setNotFoundHandler(async (req, reply) => {
 })
 
 await app.listen({ port: env.PORT, host: '0.0.0.0' })
+
+// One line naming the values that are only knowable from outside the process, the
+// log level among them — so `LOG_LEVEL=debug` proves it took effect instead of
+// being taken on trust. Fastify logs its own "Server listening at …" above this;
+// both are `info`, so both vanish at `warn` and `silent`.
+app.log.info(
+  { dataDir: env.DATA_DIR, dbPath: env.DATABASE_PATH, logLevel: env.LOG_LEVEL },
+  'homebox-ng ready',
+)

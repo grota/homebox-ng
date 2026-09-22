@@ -23,7 +23,15 @@ export type Env = {
   DATABASE_PATH: string
   DATA_DIR: string
   SESSION_SECRET: string
+  LOG_LEVEL: LogLevel
 }
+
+// pino's levels, which is what Fastify's `logger.level` takes — `silent` is the
+// off switch, and `info` (one line per request, plus startup) is the default
+// because a container whose logs are empty is the failure mode this exists to
+// avoid. `LOG_LEVEL=silent` restores the pre-logger silence exactly.
+export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const
+export type LogLevel = (typeof LOG_LEVELS)[number]
 
 // This module sits at `<root>/apps/api/{src,dist}`, so three `..` land on the
 // workspace root — the same walk the `.env` lookup above makes.
@@ -44,6 +52,7 @@ const DEFAULTS = {
   PORT: '3000',
   DATABASE_PATH: './data/homebox.db',
   DATA_DIR: './data',
+  LOG_LEVEL: 'info',
 } as const
 
 // The data paths used when the corresponding var is unset — and the fallback for
@@ -68,6 +77,18 @@ export const loadEnv = (env: NodeJS.ProcessEnv = process.env): Env => {
       `Missing required env var(s): ${missing.join(', ')}. Add them to your .env (see .env.example).`,
     )
   }
+  // A typo is a boot failure either way — an unknown level makes pino throw from
+  // inside Fastify — so it is caught here, where the message can name the
+  // accepted values instead of leaving `verbose` to be decoded from a stack.
+  //
+  // `||` rather than `??` so that empty counts as unset: `-e LOG_LEVEL="$UNSET"`
+  // and a compose file's `${LOG_LEVEL}` both interpolate to `""`, and an optional
+  // var must not be able to stop the container. (The `missing` check above reads
+  // truthiness for the same reason.)
+  const logLevel = env.LOG_LEVEL || DEFAULTS.LOG_LEVEL
+  if (!(LOG_LEVELS as readonly string[]).includes(logLevel)) {
+    throw new Error(`Unknown LOG_LEVEL "${logLevel}". Use one of: ${LOG_LEVELS.join(', ')}.`)
+  }
   return {
     PORT: Number(env.PORT ?? DEFAULTS.PORT),
     // Both absolute by the time they leave here, so every consumer (index.ts's
@@ -76,5 +97,6 @@ export const loadEnv = (env: NodeJS.ProcessEnv = process.env): Env => {
     DATABASE_PATH: resolveDataPath(env.DATABASE_PATH ?? DEFAULTS.DATABASE_PATH),
     DATA_DIR: resolveDataPath(env.DATA_DIR ?? DEFAULTS.DATA_DIR),
     SESSION_SECRET: env.SESSION_SECRET as string,
+    LOG_LEVEL: logLevel as LogLevel,
   }
 }
