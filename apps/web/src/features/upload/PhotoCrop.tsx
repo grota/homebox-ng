@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor'
 import { Modal } from '../../ui'
 import { toBlob, type SaveImageData } from './PhotoEditor'
@@ -14,9 +14,16 @@ const CROP_TABS = [TABS.ADJUST]
 type PhotoCropProps = { file: File; onSave: (blob: Blob) => void; onClose: () => void }
 
 export function PhotoCrop({ file, onSave, onClose }: PhotoCropProps) {
-  // The editor takes a URL. This one is local and dies with the component.
-  const src = useMemo(() => URL.createObjectURL(file), [file])
-  useEffect(() => () => URL.revokeObjectURL(src), [src])
+  // The URL is created in the effect, not during render: React discards one of
+  // StrictMode's two renders, so a URL created while rendering can be revoked while the
+  // mounted editor is still pointing at it. Created here, the live URL is always the one
+  // the last setup made, and the one it revoked is one nothing ever saw.
+  const [src, setSrc] = useState<string | null>(null)
+  useEffect(() => {
+    const url = URL.createObjectURL(file)
+    setSrc(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
 
   const [error, setError] = useState<string | null>(null)
 
@@ -29,6 +36,10 @@ export function PhotoCrop({ file, onSave, onClose }: PhotoCropProps) {
     }
     onSave(blob)
   }
+
+  // The URL does not exist until the effect has run, so the dialog opens one empty
+  // frame late — the cost of getting the lifetime above right.
+  if (!src) return null
 
   return (
     <Modal open onOpenChange={(next) => { if (!next) onClose() }} title="Crop photo">
