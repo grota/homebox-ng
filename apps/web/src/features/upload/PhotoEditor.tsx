@@ -8,7 +8,7 @@ import { Modal } from '../../ui'
 // original. Saving always writes a NEW `editedPath`, so either way the original
 // on disk is never overwritten.
 type PhotoEditorProps = { image: { id: number; path: string }; itemId: number; open: boolean; onClose: () => void }
-type SaveImageData = { imageCanvas?: HTMLCanvasElement; imageBase64?: string; mimeType?: string }
+export type SaveImageData = { imageCanvas?: HTMLCanvasElement; imageBase64?: string; mimeType?: string }
 
 // The tabs this app wants, in the order it wants them. Filerobot shows only what is
 // listed here, in this order — `[]` is not "none", it is "everything", so the set has
@@ -24,8 +24,10 @@ const TABS_IDS = [TABS.ANNOTATE, TABS.ADJUST, TABS.RESIZE, TABS.FINETUNE]
 const TEXT_DEFAULTS = { text: 'X', fontSize: 120 }
 
 // Derive a Blob from filerobot's `imageData`. Prefer the canvas (accurate size),
-// fall back to decoding the base64 data URL.
-const toBlob = (imageData: SaveImageData): Promise<Blob | null> => {
+// fall back to decoding the base64 data URL. Exported because the crop step needs the
+// same conversion with a destination of its own: `PhotoEditor` posts its blob against
+// an `imageId`, and `PhotoCrop` has no id to post against yet.
+export const toBlob = (imageData: SaveImageData): Promise<Blob | null> => {
   if (imageData.imageCanvas) {
     return new Promise((resolve) => imageData.imageCanvas!.toBlob((b) => resolve(b), imageData.mimeType ?? 'image/png'))
   }
