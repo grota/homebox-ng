@@ -35,6 +35,10 @@ export function AppRoutes() {
         }
       >
         <Route path="/items/:id" element={<ItemDetail />} />
+        {/* The same component at its own URL: the item surface is where an item is
+            edited, and `/edit` on the end is what makes a refresh land in the form and
+            Back leave it (ADR-0011). */}
+        <Route path="/items/:id/edit" element={<ItemDetail />} />
       </Route>
 
       {/* Every other authenticated, first-run-gated route renders inside the shared Shell. */}

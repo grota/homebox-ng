@@ -30,10 +30,12 @@ const mocks = vi.hoisted(() => ({
   // `beforeEach`, since the other cases assert on the success path.
   unpackError: null as { message: string } | null,
   navigate: vi.fn(),
-  // `MemoryRouter` gives the initial entry `key: 'default'`, which is exactly the
-  // cold-deep-link case. Stubbed so both branches of the close rule are reachable
-  // from a test rather than one of them being unreachable by accident.
-  locationKey: 'abc',
+  // `null` means "whatever the router really says", so navigation in this file is
+  // real and `ItemDetail`'s own route (`/items/:id/edit`) can be reached by
+  // clicking. Set it to a key to stand in for how the surface was *arrived at*
+  // without travelling: `'default'` is a cold deep link, anything else is an
+  // in-app arrival with somewhere to go back to.
+  locationKey: null as string | null,
   // Read per render by the `items.get` mock, so a test can reshape the item —
   // replace the photos, or flip a catalog item into a draft.
   overrides: {} as Record<string, unknown>,
@@ -50,8 +52,26 @@ vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>()
   return {
     ...actual,
-    useNavigate: () => mocks.navigate,
-    useLocation: () => ({ key: mocks.locationKey, pathname: '/items/3', search: '', hash: '', state: null }),
+    // `navigate` stays a spy — it is how this file asserts navigation — but it also
+    // performs the real navigation: the edit form is a route, so a click that changes
+    // the URL has to actually change it for the form to come up.
+    useNavigate: () => {
+      const real = actual.useNavigate()
+      return (to: unknown, options?: unknown) => {
+        // Never called with a trailing `undefined`: the existing assertions in this file
+        // are `toHaveBeenCalledWith(-1)`, which would not match `(-1, undefined)`.
+        if (options === undefined) mocks.navigate(to)
+        else mocks.navigate(to, options)
+        return (real as (t: unknown, o?: unknown) => unknown)(to, options)
+      }
+    },
+    // The real location, so tests that navigate for real see the path change. `key` is
+    // overridable (`null` means "use the real one") so a test can say "as if this
+    // surface had been reached from the catalog" without being there.
+    useLocation: () => {
+      const real = actual.useLocation()
+      return { ...real, key: mocks.locationKey ?? real.key }
+    },
   }
 })
 
@@ -151,7 +171,14 @@ import { ItemDetail } from '../src/features/items/ItemDetail'
 const renderDetail = () =>
   render(
     <MemoryRouter initialEntries={['/items/3']}>
-      <Routes><Route path="/items/:id" element={<ItemDetail />} /></Routes>
+      <Routes>
+        <Route path="/items/:id" element={<ItemDetail />} />
+        {/* The edit form is this same component at its own URL (ADR-0011). */}
+        <Route path="/items/:id/edit" element={<ItemDetail />} />
+        {/* A probe, so "it left for the catalog" is observable: the same shape
+            `catalogCard.test.tsx` uses for its `/items/:id` stub. */}
+        <Route path="/items" element={<div data-testid="catalog" />} />
+      </Routes>
     </MemoryRouter>,
   )
 
@@ -166,7 +193,7 @@ describe('item surface', () => {
     vi.clearAllMocks()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     mocks.unpackError = null
-    mocks.locationKey = 'abc'
+    mocks.locationKey = null
     mocks.overrides = {}
   })
 
@@ -239,6 +266,9 @@ describe('item surface', () => {
   })
 
   it('closes on Escape', () => {
+    // A key that is not the initial entry's, i.e. this surface was reached from
+    // inside the app and Back is the right way out.
+    mocks.locationKey = 'reached-from-the-catalog'
     renderDetail()
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(mocks.navigate).toHaveBeenCalledWith(-1)
@@ -251,6 +281,20 @@ describe('item surface', () => {
     renderDetail()
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(mocks.navigate).toHaveBeenCalledWith('/items')
+  })
+
+  // Whether this is a cold deep link is a question about *arrival*, and entering and
+  // leaving the edit form rewrites the URL — so a check that reads `location.key` at
+  // close time gets a key that says nothing about how the surface was reached, and a
+  // deep link takes `navigate(-1)` out of the app. The answer is captured at mount.
+  it('still leaves for the catalog when the surface was deep-linked, even after an edit', () => {
+    renderDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' })) // the form's Close
+    fireEvent.click(screen.getByRole('button', { name: 'Close' })) // the surface's Close
+
+    expect(mocks.navigate).toHaveBeenLastCalledWith('/items')
+    expect(mocks.navigate).not.toHaveBeenCalledWith(-1)
   })
 
   // The edit form replaces the surface, so Escape while it is up has to close the
@@ -266,8 +310,11 @@ describe('item surface', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
 
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
-    expect(mocks.navigate).not.toHaveBeenCalled()
-    // Still the same item: the surface came back rather than being navigated away.
+    // Escape does what the form's Close does: back to the item's own URL. What it
+    // must never do is take the surface's own exit — that was the bug this test
+    // was written for.
+    expect(mocks.navigate).toHaveBeenCalledWith('/items/3', { replace: true })
+    expect(mocks.navigate).not.toHaveBeenCalledWith(-1)
     expect(screen.getByTestId('photo-viewer')).toBeInTheDocument()
   })
 
@@ -345,6 +392,7 @@ describe('item surface panel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mocks.locationKey = null
     mocks.overrides = {}
   })
 
@@ -412,7 +460,28 @@ describe('item surface editing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mocks.locationKey = null
     mocks.overrides = {}
+  })
+
+  it("sends Edit item to the item's own edit URL", () => {
+    renderDetail()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item' }))
+    expect(mocks.navigate).toHaveBeenCalledWith('/items/3/edit')
+  })
+
+  it('renders the edit form at the edit URL, so a refresh lands in it', () => {
+    render(
+      <MemoryRouter initialEntries={['/items/3/edit']}>
+        <Routes>
+          <Route path="/items/:id" element={<ItemDetail />} />
+          <Route path="/items/:id/edit" element={<ItemDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.getByLabelText('Name')).toBeInTheDocument()
+    // The surface is replaced, not covered: one thing is on screen, and it is the form.
+    expect(screen.queryByTestId('photo-viewer')).not.toBeInTheDocument()
   })
 
   it('reveals the edit form prefilled from the item', () => {
@@ -435,6 +504,9 @@ describe('item surface editing', () => {
     // present `fieldValues` key is a full replacement server-side, so it must be
     // absent or every custom-field value on the item would be wiped.
     expect(input).not.toHaveProperty('fieldValues')
+    // Saving is one of the form's four exits (ADR-0011), so it lands on the item's
+    // own URL — the same place its Close and its Escape go.
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/items/3', { replace: true }))
   })
 
   it('assigns the tags picked on the edit form to the item', async () => {

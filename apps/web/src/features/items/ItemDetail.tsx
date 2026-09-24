@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
 import { Badge, Button, buttonClasses, cn, PhotoViewer } from '../../ui'
@@ -26,6 +26,10 @@ export function ItemDetail() {
   const itemId = Number(id)
   const navigate = useNavigate()
   const location = useLocation()
+  // The edit form is this surface at its own URL (ADR-0011), so the route decides
+  // whether it is up — not component state. That is what makes a refresh land back in
+  // the form, and Back leave it.
+  const editing = location.pathname.endsWith('/edit')
   const utils = trpc.useUtils()
   const { data: item, isLoading } = trpc.items.get.useQuery({ id: itemId })
 
@@ -52,7 +56,6 @@ export function ItemDetail() {
   })
 
   const [panelOpen, setPanelOpen] = useState(false)
-  const [editingItem, setEditingItem] = useState(false)
   // `path` is the rendition the editor opens, so the two Edit actions differ only
   // in what they hand it.
   const [editingImage, setEditingImage] = useState<{ id: number; path: string } | null>(null)
@@ -70,14 +73,21 @@ export function ItemDetail() {
     itemId,
   )
 
+  // Captured once, deliberately: entering and leaving the edit form rewrites this URL,
+  // so from the moment it does, `location.key` says nothing about how the surface was
+  // reached — and a cold deep link would take `navigate(-1)` straight out of the app.
+  const arrivedCold = useRef(location.key === 'default')
+
   const close = useCallback(() => {
-    // Back when there is somewhere to go back to: the catalog keeps its search
-    // and facets in the URL, and a bare `/items` would silently reset a filtered
-    // view. `location.key === 'default'` is a cold deep link, where Back would
-    // leave the app instead.
-    if (location.key !== 'default') navigate(-1)
+    // Back when there is somewhere to go back to: the catalog keeps its search and
+    // facets in the URL, and a bare `/items` would silently reset a filtered view.
+    if (!arrivedCold.current) navigate(-1)
     else navigate('/items')
-  }, [location.key, navigate])
+  }, [navigate])
+
+  // The form's own exits — its Close, its Cancel, its Save, and Escape — all land back
+  // on the item's own URL. `replace`, so an abandoned edit leaves no history entry.
+  const leaveEdit = useCallback(() => navigate(`/items/${itemId}`, { replace: true }), [navigate, itemId])
 
   // The surface's own keys. The arrows belong to the stage (they pan), so the
   // split is by key and there is no ordering rule between two handlers.
@@ -99,8 +109,8 @@ export function ItemDetail() {
       // surface's Escape ran instead and took the user back to the catalog,
       // losing the item they were editing. The photo keys go quiet with it: there
       // is no photo on screen to move between.
-      if (editingItem) {
-        if (event.key === 'Escape') setEditingItem(false)
+      if (editing) {
+        if (event.key === 'Escape') leaveEdit()
         return
       }
       if (event.key === 'Escape') close()
@@ -109,7 +119,7 @@ export function ItemDetail() {
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [close, editingItem, index, canNext, canPrevious, setIndex])
+  }, [close, editing, index, canNext, canPrevious, setIndex, leaveEdit])
 
   // Moving to a photo that does not exist yet would set the index past the end,
   // and the clamp would land on nothing. Wait for the refetch that follows the
@@ -138,12 +148,12 @@ export function ItemDetail() {
   // Editing replaces the surface rather than covering it, as it did on the page
   // this replaces. The surface has no Shell above it any more, so the frame and
   // its way out come with it.
-  if (editingItem) {
+  if (editing) {
     return (
       <div className="flex h-dvh flex-col overflow-y-auto bg-bg text-text">
         <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
           <span className="truncate font-semibold lg:hidden">{item.name}</span>
-          <Button className="ml-auto" onClick={() => setEditingItem(false)}>
+          <Button className="ml-auto" onClick={leaveEdit}>
             Close
           </Button>
         </div>
@@ -151,10 +161,10 @@ export function ItemDetail() {
           <ItemForm
             item={item}
             onSaved={() => {
-              setEditingItem(false)
+              leaveEdit()
               refresh()
             }}
-            onCancel={() => setEditingItem(false)}
+            onCancel={leaveEdit}
           />
         </div>
       </div>
@@ -282,7 +292,7 @@ export function ItemDetail() {
           item={item}
           open={panelOpen}
           onClose={() => setPanelOpen(false)}
-          onEdit={() => setEditingItem(true)}
+          onEdit={() => navigate(`/items/${itemId}/edit`)}
           onTrash={() => {
             if (confirm(`Move "${item.name}" to the trash?`)) trashItem.mutate({ id: itemId })
           }}
