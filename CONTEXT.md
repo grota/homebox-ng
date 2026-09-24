@@ -42,7 +42,10 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   one rather than starting over; **Edit original photo**, offered only once an edit exists,
   restarts from the original. The **per-photo bar**'s **Open original** is the UI's only route
   to the unedited file, which is why the **photo viewer** is handed that path separately from
-  the one it displays.
+  the one it displays. The one exception is the crop the **item form** offers on a picked file
+  that has not been uploaded yet: it is applied to the file itself and *becomes* that photo's
+  `originalPath`, so there is no earlier frame to return to.
+  `(docs/adr/0012-a-photo-cropped-at-create-is-the-photo.md)`
 - **photo viewer** — the pane showing **one** photo of an **item surface**, in the same
   rendition as the grid (`editedPath` when one exists, else `originalPath`). Starts fit when
   the photo is larger than the pane and at natural size when it is not; clicking the photo
@@ -56,7 +59,11 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
 - **item panel** — the read-only account of an item on an **item surface**: name, type,
   description, quantity, location, tags and custom-field values, plus the item-level actions
   and the control that adds a photo. Reading is the panel's job; **Edit item** hands off to the
-  form, which is the only place an item is edited.
+  **item form**, which is the only place an item is edited.
+- **item form** — the one component where an item is created or edited (the same form, in two
+  modes, decided by whether it was handed an item). It has a page in both modes: `/items/new`,
+  reached from the catalog and returning to it, and `/items/:id/edit`, which is the **item
+  surface**'s own route with `/edit` on the end. `(docs/adr/0011-create-and-edit-are-pages.md)`
 - **per-photo bar** — the **item surface**'s actions on the photo currently shown: edit, edit
   original, open original, set primary, auto unpack, manual unpack, delete.
 
