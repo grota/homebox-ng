@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor'
+import FilerobotImageEditor, { TABS, TOOLS } from 'react-filerobot-image-editor'
 import { trpc } from '../../api/trpc'
 import { Modal } from '../../ui'
 
@@ -10,10 +10,11 @@ import { Modal } from '../../ui'
 type PhotoEditorProps = { image: { id: number; path: string }; itemId: number; open: boolean; onClose: () => void }
 type SaveImageData = { imageCanvas?: HTMLCanvasElement; imageBase64?: string; mimeType?: string }
 
-// The tabs this app wants. Filerobot shows only what is listed here, in this
-// order — `[]` is not "none", it is "everything", so the set has to be spelled
-// out. Filters and Watermark are deliberately absent.
-const TABS_IDS = [TABS.FINETUNE, TABS.ADJUST, TABS.ANNOTATE, TABS.RESIZE]
+// The tabs this app wants, in the order it wants them. Filerobot shows only what is
+// listed here, in this order — `[]` is not "none", it is "everything", so the set has
+// to be spelled out. Filters and Watermark are deliberately absent. Annotate leads
+// because marking where a thing is on a photo is what these photos are for.
+const TABS_IDS = [TABS.ANNOTATE, TABS.ADJUST, TABS.RESIZE, TABS.FINETUNE]
 
 // What the Annotate tab's Text tool drops on the canvas. Filerobot's default is
 // a lorem-ipsum sentence at 14px; marking where a thing is on a photo wants one
@@ -80,6 +81,16 @@ export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) 
           onSave={handleSave}
           onClose={onClose}
           tabsIds={TABS_IDS}
+          // `TABS_IDS[0]` rather than a named tab: the array is the one place the order
+          // lives, so reordering it re-defaults the editor and the two cannot drift.
+          // Left alone, the library's own default is `Adjust`, which is why this opened
+          // on the second tab without the app ever asking for it.
+          defaultTabId={TABS_IDS[0]}
+          // Required, not decoration: the library's default tool is `Crop`, which the
+          // Annotate tab does not carry, so the tab would open with nothing highlighted
+          // and no options panel. `Text` is that tab's first tool and the one
+          // `TEXT_DEFAULTS` below already configures.
+          defaultToolId={TOOLS.TEXT}
           Text={TEXT_DEFAULTS}
           savingPixelRatio={4}
           previewPixelRatio={window.devicePixelRatio || 1}

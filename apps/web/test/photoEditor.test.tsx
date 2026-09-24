@@ -12,6 +12,9 @@ const { invalidateList, invalidateGet, editorProps } = vi.hoisted(() => ({
 
 vi.mock('react-filerobot-image-editor', () => ({
   TABS: { FINETUNE: 'Finetune', FILTERS: 'Filters', ADJUST: 'Adjust', WATERMARK: 'Watermark', ANNOTATE: 'Annotate', RESIZE: 'Resize' },
+  // Mirror the real named export: `defaultToolId`'s value comes from here
+  // (`TOOLS.TEXT === 'Text'` in the package's own types).
+  TOOLS: { TEXT: 'Text', PEN: 'Pen', CROP: 'Crop' },
   // The package exports the editor as its default export (plus `TABS`). On mount,
   // record the config — which rendition it was pointed at, which tabs it was
   // given — then invoke onSave with a fake edited image to exercise the submit path.
@@ -82,5 +85,21 @@ describe('PhotoEditor', () => {
     const { Text, tabsIds } = editorProps.at(-1)
     expect(Text).toEqual({ text: 'X', fontSize: 120 })
     expect(tabsIds).toContain('Annotate')
+  })
+
+  it('offers the tabs in the order the app wants, annotate first', () => {
+    render(<PhotoEditor image={{ id: 7, path: 'uploads/originals/x.png' }} itemId={3} open onClose={vi.fn()} />)
+    // Exactly four, in exactly this order: a `toContain` would not notice a reorder,
+    // which is how the order drifted in the first place.
+    expect(editorProps.at(-1).tabsIds).toEqual(['Annotate', 'Adjust', 'Resize', 'Finetune'])
+  })
+
+  it("opens on the first tab with that tab's own first tool armed", () => {
+    render(<PhotoEditor image={{ id: 7, path: 'uploads/originals/x.png' }} itemId={3} open onClose={vi.fn()} />)
+    const { defaultTabId, defaultToolId } = editorProps.at(-1)
+    expect(defaultTabId).toBe('Annotate')
+    // Not the library's own `Crop`: it is not in the Annotate tab's tool list, so the
+    // tab would open with no tool highlighted and no options panel.
+    expect(defaultToolId).toBe('Text')
   })
 })

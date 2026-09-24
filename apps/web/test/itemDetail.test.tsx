@@ -8,6 +8,9 @@ vi.mock('react-filerobot-image-editor', () => ({
   // rendition the editor opens is exactly what the two Edit actions differ on.
   default: ({ source }: { source: string }) => <div data-testid="fil-editor" data-source={source} />,
   TABS: { FINETUNE: 'Finetune', FILTERS: 'Filters', ADJUST: 'Adjust', WATERMARK: 'Watermark', ANNOTATE: 'Annotate', RESIZE: 'Resize' },
+  // `PhotoEditor` also reads `TOOLS.TEXT` to arm the Annotate tab's tool, so a mock
+  // without it throws as soon as the editor renders.
+  TOOLS: { TEXT: 'Text', PEN: 'Pen', CROP: 'Crop' },
 }))
 
 // Mutation spies live outside the factories so tests can assert on the calls.
