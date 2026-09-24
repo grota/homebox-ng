@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
 // The instance's item types, mutable so one test can render the state a fresh
 // install is in — none defined, where the form cannot be completed at all.
@@ -87,12 +87,30 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
   }
 })
 
+// The crop step opens on pick and saves only when the user says so, so this mock
+// records its props and waits to be driven, unlike `photoEditor.test.tsx`'s.
+const cropProps = vi.hoisted(() => [] as any[])
+
+vi.mock('react-filerobot-image-editor', () => ({
+  TABS: { FINETUNE: 'Finetune', FILTERS: 'Filters', ADJUST: 'Adjust', WATERMARK: 'Watermark', ANNOTATE: 'Annotate', RESIZE: 'Resize' },
+  TOOLS: { TEXT: 'Text', PEN: 'Pen', CROP: 'Crop' },
+  default: (props: any) => {
+    cropProps.push(props)
+    return null
+  },
+}))
+
 import { ItemsPage } from '../src/features/items/ItemsPage'
 import { ItemNewPage } from '../src/features/items/ItemNewPage'
 import { AppProviders } from '../src/app/AppProviders'
 
 describe('catalog pages', () => {
-  beforeEach(() => { mockItemTypes.types = mockItemTypes.seed })
+  beforeEach(() => {
+    mockItemTypes.types = mockItemTypes.seed
+    cropProps.length = 0
+    global.URL.createObjectURL = vi.fn(() => 'blob:picked') as any
+    global.URL.revokeObjectURL = vi.fn() as any
+  })
 
   // The create form is a page (ADR-0011), so there is no trigger to click here and no
   // toggle to open twice: reaching `/items/new` is what puts the form up. The catalog's
@@ -133,8 +151,19 @@ describe('catalog pages', () => {
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
       fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
       const file = new File(['x'], 'a.png', { type: 'image/png' })
-      // The picker only exists in create mode; the file is held until submit.
       fireEvent.change(screen.getByLabelText('Photo'), { target: { files: [file] } })
+
+      // Picking opens the crop on the picked file; it is not an upload.
+      expect(cropProps.at(-1).source).toBe('blob:picked')
+
+      // Save the crop. The cropped bytes are what the photo becomes (ADR-0012), so the
+      // POST must carry the crop — an object URL as its source is the proof it never
+      // touched the server first.
+      const cropped = new Blob(['cropped'], { type: 'image/jpeg' })
+      await act(async () => {
+        cropProps.at(-1).onSave({ imageCanvas: { toBlob: (cb: any) => cb(cropped) }, mimeType: 'image/jpeg' })
+      })
+
       fireEvent.click(screen.getByRole('button', { name: /create item/i }))
 
       await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
@@ -142,6 +171,33 @@ describe('catalog pages', () => {
       expect(url).toBe('/upload/image')
       const body = init?.body as FormData
       expect(body.get('itemId')).toBe('42')
+      const uploaded = body.get('file') as File
+      expect(uploaded.name).toBe('photo.jpg')
+      expect(uploaded.type).toBe('image/jpeg')
+      // Restored here rather than left to the next test: `vi.spyOn` on a property that
+      // is already a spy hands back the *same* mock, so an unrestored one carries this
+      // test's call into the next one and its `mock.calls[0]` is the wrong request.
+      fetchSpy.mockRestore()
+    })
+
+    it('uploads the file as picked when the crop is dismissed', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+      render(<AppProviders><ItemNewPage /></AppProviders>)
+
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
+      fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
+      const file = new File(['x'], 'a.png', { type: 'image/png' })
+      fireEvent.change(screen.getByLabelText('Photo'), { target: { files: [file] } })
+
+      // Closing the crop keeps the photo that was picked: the crop is a step the user
+      // may decline, not a gate on adding a photo.
+      await act(async () => {
+        cropProps.at(-1).onClose()
+      })
+      fireEvent.click(screen.getByRole('button', { name: /create item/i }))
+
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+      const body = fetchSpy.mock.calls[0][1]?.body as FormData
       expect(body.get('file')).toBe(file)
       fetchSpy.mockRestore()
     })

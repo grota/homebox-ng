@@ -3,6 +3,7 @@ import type { ChangeEvent, FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
 import { uploadImage } from '../upload/PhotoUpload'
+import { PhotoCrop } from '../upload/PhotoCrop'
 import { Button, Field, Input, Select, Textarea } from '../../ui'
 import { flattenLocations, locationOptionLabel } from '../../lib/locationPath'
 
@@ -25,6 +26,11 @@ type ItemFormProps = {
   onSaved?: (item: { id: number }) => void
   onCancel?: () => void
 }
+
+// The crop dialog hands back a Blob; the upload wants a File. The container is taken
+// from the blob rather than assumed, because a PNG stored under a `.jpg` name would be
+// saved with the wrong extension and served with the wrong content type.
+const asFile = (blob: Blob) => new File([blob], blob.type === 'image/png' ? 'photo.png' : 'photo.jpg', { type: blob.type })
 
 // Create/edit an item. Selecting an item type loads its custom-field
 // definitions (`fields`) and renders one input per field; those values are
@@ -58,6 +64,9 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>((item?.tags ?? []).map((t) => t.id))
   const [newTag, setNewTag] = useState('')
   const [photo, setPhoto] = useState<File | null>(null)
+  // The file the crop dialog is open on, if any. Separate from `photo` on purpose:
+  // closing the dialog without cropping keeps the file that was picked.
+  const [cropping, setCropping] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const allTypes = types.data ?? []
@@ -327,9 +336,25 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
           id="item-photo"
           type="file"
           accept="image/*"
-          onChange={(e: ChangeEvent<HTMLInputElement>) => setPhoto(e.target.files?.[0] ?? null)}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setCropping(e.target.files?.[0] ?? null)}
         />
       </Field>
+
+      {/* Removing the background before the item exists is the point of cropping here
+          (ADR-0012), so it is offered on pick rather than after the save. */}
+      {cropping && (
+        <PhotoCrop
+          file={cropping}
+          onSave={(blob) => {
+            setPhoto(asFile(blob))
+            setCropping(null)
+          }}
+          onClose={() => {
+            setPhoto(cropping)
+            setCropping(null)
+          }}
+        />
+      )}
 
       {error && <p role="alert" className="text-danger">{error}</p>}
 
