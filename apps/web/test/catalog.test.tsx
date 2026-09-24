@@ -180,6 +180,48 @@ describe('catalog pages', () => {
       fetchSpy.mockRestore()
     })
 
+    // The crop's saved type is whatever the dialog reports, not an assumed `.jpg`: the
+    // dialog offers jpeg, png and webp, and a blob named for the wrong container is
+    // stored with the wrong extension and served with the wrong content type. The test
+    // above drives the jpeg branch, so these two drive the other two containers.
+    //
+    // Pick, crop to `type`, submit, and hand back the file the POST carried. The spy is
+    // restored before the assertions so a failure here cannot leak it into the next test.
+    const uploadCroppedAs = async (type: string) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+      render(<AppProviders><ItemNewPage /></AppProviders>)
+
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
+      fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
+      fireEvent.change(screen.getByLabelText('Photo'), {
+        target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
+      })
+
+      await act(async () => {
+        cropProps.at(-1).onSave({ imageCanvas: { toBlob: (cb: any) => cb(new Blob(['c'], { type })) }, mimeType: type })
+      })
+      fireEvent.click(screen.getByRole('button', { name: /create item/i }))
+
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+      const body = fetchSpy.mock.calls[0][1]?.body as FormData
+      fetchSpy.mockRestore()
+      return body.get('file') as File
+    }
+
+    it('uploads a png crop as photo.png', async () => {
+      const uploaded = await uploadCroppedAs('image/png')
+      expect(uploaded.name).toBe('photo.png')
+      expect(uploaded.type).toBe('image/png')
+    })
+
+    // The type the old code fell through to `.jpg` for, so this is the case that names
+    // the mismatch: extension `.jpg` over `image/webp` content.
+    it('uploads a webp crop as photo.webp, not an assumed .jpg', async () => {
+      const uploaded = await uploadCroppedAs('image/webp')
+      expect(uploaded.name).toBe('photo.webp')
+      expect(uploaded.type).toBe('image/webp')
+    })
+
     it('uploads the file as picked when the crop is dismissed', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
       render(<AppProviders><ItemNewPage /></AppProviders>)
