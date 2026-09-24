@@ -48,6 +48,14 @@ captured at mount.
 **Refresh and Back work on both pages**, which is the point: `/items/42/edit` reloads into edit mode,
 and Back leaves it.
 
+**One Back press after leaving the form appears to do nothing.** Entry to the form is a
+`push` and every exit is a `replace`, so a user who came from the surface and then saves or
+cancels ends up with `[…, /items/:id, /items/:id]` in history: Back changes the key and the
+URL, and renders the same item. The "no entry left behind" claimed for `replace` above is
+therefore only half true. Left as it is, deliberately — the obvious alternative
+(`navigate(-1)` when the arrival was in-app) trades this for a different surprise, because
+the form's own "create one" link to `/types` would then become the form's exit target.
+
 ### Alternatives rejected
 
 - **A separate edit component on its own route.** It would need `items.get`, the loading state, "Item

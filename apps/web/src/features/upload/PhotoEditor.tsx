@@ -41,6 +41,19 @@ export const toBlob = (imageData: SaveImageData): Promise<Blob | null> => {
   return Promise.resolve(null)
 }
 
+// The filename extension for a blob's type. Filerobot's save-as menu offers jpeg, jpg, png
+// and webp, and its `mimeType` is `'image/' + the chosen extension` — so `image/jpg`, not
+// `image/jpeg`, is a real value here. The blob's own type is what the browser actually
+// produced (a canvas asked for an unknown type falls back to PNG), so it is the only
+// trustworthy source for the name.
+const EXT_FOR_TYPE: Record<string, string | undefined> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+}
+export const filenameForBlob = (blob: Blob, stem: string) => `${stem}.${EXT_FOR_TYPE[blob.type] ?? 'jpg'}`
+
 export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) {
   const utils = trpc.useUtils()
   const [saving, setSaving] = useState(false)
@@ -56,7 +69,7 @@ export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) 
       if (!blob) throw new Error('Editor produced no image')
       const form = new FormData()
       form.append('imageId', String(image.id))
-      form.append('file', blob, 'edited.png')
+      form.append('file', blob, filenameForBlob(blob, 'edited'))
       const res = await fetch('/upload/image/edit', { method: 'POST', body: form, credentials: 'include' })
       if (!res.ok) throw new Error(`Save failed: ${res.status}`)
       utils.items.list.invalidate()

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
 import { uploadImage } from '../upload/PhotoUpload'
 import { PhotoCrop } from '../upload/PhotoCrop'
+import { filenameForBlob } from '../upload/PhotoEditor'
 import { Button, Field, Input, Select, Textarea } from '../../ui'
 import { flattenLocations, locationOptionLabel } from '../../lib/locationPath'
 
@@ -31,8 +32,7 @@ type ItemFormProps = {
 // from the blob's own type — the dialog offers jpeg, png and webp — because a WebP
 // stored under a `.jpg` name is saved with the wrong extension and served with the
 // wrong content type.
-const EXT_FOR_TYPE: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
-const asFile = (blob: Blob) => new File([blob], `photo.${EXT_FOR_TYPE[blob.type] ?? 'jpg'}`, { type: blob.type })
+const asFile = (blob: Blob) => new File([blob], filenameForBlob(blob, 'photo'), { type: blob.type })
 
 // Create/edit an item. Selecting an item type loads its custom-field
 // definitions (`fields`) and renders one input per field; those values are
@@ -338,7 +338,14 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
           id="item-photo"
           type="file"
           accept="image/*"
-          onChange={(e: ChangeEvent<HTMLInputElement>) => setCropping(e.target.files?.[0] ?? null)}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            const picked = e.target.files?.[0] ?? null
+            // Clear the input once the file is in hand: a file input whose value has not
+            // changed fires no `change` event, so re-picking the same photo after closing
+            // the crop would do nothing — and the crop is the only way back into it.
+            e.target.value = ''
+            setCropping(picked)
+          }}
         />
       </Field>
 
