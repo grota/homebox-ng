@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { hexColor, ITEM_SORT_PREFERENCES, type ItemSort } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
-import { Button, cn, Field, hoverScrim, Input, PageHeader, Pagination, Popover, Select, Tooltip } from '../../ui'
+import { Button, buttonClasses, cn, Field, hoverScrim, Input, PageHeader, Pagination, Popover, Select, Tooltip } from '../../ui'
 import { ITEM_SORT_LABELS } from '../../lib/itemSort'
 import { useUserSettings } from '../../lib/settings/useUserSettings'
 import { ItemCard } from './ItemCard'
 import { BulkEditPanel } from './BulkEditPanel'
-import { ItemForm } from './ItemForm'
 import { LocationFacetTree, type LocationFacetId } from './LocationFacetTree'
 import { SelectionCriteria } from './SelectionCriteria'
 // Flattening the location tree, so a card's location path can walk up it.
@@ -42,10 +41,9 @@ const parseTagIds = (params: URLSearchParams): number[] => {
 
 // Paginated catalog listing with FTS search + faceted filters. URL params are the
 // single source of truth: `q`, `typeId`, `locationId`, `tagIds[]`, `page`.
-// "New item" toggles an inline create form; clicking a card navigates to the item.
+// "New item" links to the create page; clicking a card navigates to the item.
 export function ItemsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [showForm, setShowForm] = useState(false)
   const [facetsOpen, setFacetsOpen] = useState(false)
   const utils = trpc.useUtils()
 
@@ -222,16 +220,15 @@ export function ItemsPage() {
       return next
     })
 
-  const handleSaved = () => {
-    utils.items.list.invalidate()
-    setShowForm(false)
-  }
-
   return (
     <section>
       <PageHeader
         title="Items"
-        actions={<Button onClick={() => setShowForm((open) => !open)}>New item</Button>}
+        actions={
+          <Link to="/items/new" className={cn(buttonClasses(), 'no-underline')}>
+            New item
+          </Link>
+        }
       />
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -302,8 +299,6 @@ export function ItemsPage() {
         </Field>
         <Button onClick={clearFilters} className="self-end">Clear filters</Button>
       </div>
-
-      {showForm && <ItemForm onSaved={handleSaved} onCancel={() => setShowForm(false)} />}
 
       {/* The selection bar. Always present, because "select all" is how a
           selection *starts* — a bar that only appeared once something was

@@ -41,7 +41,10 @@ test('admin catalogs an item end to end', async ({ page }) => {
 
   // A full load at `/items` re-runs `auth.me` with the session cookie.
   await page.goto('/items')
-  await page.click('button:has-text("New item")')
+  await page.click('a:has-text("New item")')
+  // The form is a page now (ADR-0011). This URL is the proof, and the route ranking's
+  // regression test: a wrong match would land on the item surface instead.
+  await expect(page).toHaveURL(/\/items\/new$/)
 
   await page.fill('#item-name', 'Lamp')
   await page.selectOption('#item-type', { label: 'Default' })

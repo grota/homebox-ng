@@ -88,75 +88,85 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
 })
 
 import { ItemsPage } from '../src/features/items/ItemsPage'
+import { ItemNewPage } from '../src/features/items/ItemNewPage'
 import { AppProviders } from '../src/app/AppProviders'
 
 describe('catalog pages', () => {
   beforeEach(() => { mockItemTypes.types = mockItemTypes.seed })
 
-  // An install with no item types: the Type select holds nothing but its
-  // placeholder, so the form cannot be completed however much you type. The
-  // submit button was enabled and `handleSubmit` returned in silence, so clicking
-  // it did nothing and said nothing — the only way to learn why was to read the
-  // API's schema. It is now said twice: up front beside the control, and again if
-  // you submit anyway.
-  it('explains why an item cannot be created when the instance has no types', async () => {
-    mockItemTypes.types = []
-    render(<AppProviders><ItemsPage /></AppProviders>)
-    fireEvent.click(screen.getByRole('button', { name: /new item/i }))
+  // The create form is a page (ADR-0011), so there is no trigger to click here and no
+  // toggle to open twice: reaching `/items/new` is what puts the form up. The catalog's
+  // half of that contract — its link — is asserted in the test below.
+  describe('the create page', () => {
+    // An install with no item types: the Type select holds nothing but its
+    // placeholder, so the form cannot be completed however much you type. The
+    // submit button was enabled and `handleSubmit` returned in silence, so clicking
+    // it did nothing and said nothing — the only way to learn why was to read the
+    // API's schema. It is now said twice: up front beside the control, and again if
+    // you submit anyway.
+    it('explains why an item cannot be created when the instance has no types', async () => {
+      mockItemTypes.types = []
+      render(<AppProviders><ItemNewPage /></AppProviders>)
 
-    expect(screen.getByText(/No item types yet/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /create one/i })).toHaveAttribute('href', '/types')
-    // `required` on a select with no options is unsatisfiable, so the control is
-    // disabled instead — which is also why native validation lets the submit
-    // through to the guard that reports the real reason.
-    expect(screen.getByLabelText('Type')).toBeDisabled()
+      expect(screen.getByText(/No item types yet/)).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /create one/i })).toHaveAttribute('href', '/types')
+      // `required` on a select with no options is unsatisfiable, so the control is
+      // disabled instead — which is also why native validation lets the submit
+      // through to the guard that reports the real reason.
+      expect(screen.getByLabelText('Type')).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
-    fireEvent.click(screen.getByRole('button', { name: /create item/i }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/no item types yet/i)
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
+      fireEvent.click(screen.getByRole('button', { name: /create item/i }))
+      expect(await screen.findByRole('alert')).toHaveTextContent(/no item types yet/i)
+    })
+
+    it('renders the form', async () => {
+      render(<AppProviders><ItemNewPage /></AppProviders>)
+      expect(await screen.findByLabelText('Name')).toBeInTheDocument()
+      expect(screen.getByLabelText('Type')).toBeInTheDocument()
+    })
+
+    it('uploads the picked photo using the id returned by create', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+      render(<AppProviders><ItemNewPage /></AppProviders>)
+
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
+      fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
+      const file = new File(['x'], 'a.png', { type: 'image/png' })
+      // The picker only exists in create mode; the file is held until submit.
+      fireEvent.change(screen.getByLabelText('Photo'), { target: { files: [file] } })
+      fireEvent.click(screen.getByRole('button', { name: /create item/i }))
+
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+      const [url, init] = fetchSpy.mock.calls[0]
+      expect(url).toBe('/upload/image')
+      const body = init?.body as FormData
+      expect(body.get('itemId')).toBe('42')
+      expect(body.get('file')).toBe(file)
+      fetchSpy.mockRestore()
+    })
+
+    // A number input defaults to step=1, so a stored decimal like 120.50 raises
+    // stepMismatch and native constraint validation blocks the whole submit — the
+    // item is then unsaveable. `step="any"` is what matches `fitsFieldType`, which
+    // blesses any float for these two types. jsdom implements no stepMismatch, so
+    // only the attribute itself can be asserted here.
+    it('gives a numeric custom field step="any" so a decimal can be saved', async () => {
+      render(<AppProviders><ItemNewPage /></AppProviders>)
+      fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
+
+      const price = await screen.findByLabelText('Price')
+      expect(price).toHaveAttribute('type', 'number')
+      expect(price).toHaveAttribute('step', 'any')
+    })
   })
 
-  it('renders the item list and a create form', async () => {
+  it('links the catalog to the create page', async () => {
     render(<AppProviders><ItemsPage /></AppProviders>)
     expect(await screen.findByText(/Lamp/i)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /new item/i }))
-    expect(screen.getByLabelText('Name')).toBeInTheDocument()
-  })
-
-  it('uploads the picked photo using the id returned by create', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
-    render(<AppProviders><ItemsPage /></AppProviders>)
-
-    fireEvent.click(screen.getByRole('button', { name: /new item/i }))
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
-    fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
-    const file = new File(['x'], 'a.png', { type: 'image/png' })
-    // The picker only exists in create mode; the file is held until submit.
-    fireEvent.change(screen.getByLabelText('Photo'), { target: { files: [file] } })
-    fireEvent.click(screen.getByRole('button', { name: /create item/i }))
-
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
-    const [url, init] = fetchSpy.mock.calls[0]
-    expect(url).toBe('/upload/image')
-    const body = init?.body as FormData
-    expect(body.get('itemId')).toBe('42')
-    expect(body.get('file')).toBe(file)
-    fetchSpy.mockRestore()
-  })
-
-  // A number input defaults to step=1, so a stored decimal like 120.50 raises
-  // stepMismatch and native constraint validation blocks the whole submit — the
-  // item is then unsaveable. `step="any"` is what matches `fitsFieldType`, which
-  // blesses any float for these two types. jsdom implements no stepMismatch, so
-  // only the attribute itself can be asserted here.
-  it('gives a numeric custom field step="any" so a decimal can be saved', async () => {
-    render(<AppProviders><ItemsPage /></AppProviders>)
-    fireEvent.click(screen.getByRole('button', { name: /new item/i }))
-    fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
-
-    const price = await screen.findByLabelText('Price')
-    expect(price).toHaveAttribute('type', 'number')
-    expect(price).toHaveAttribute('step', 'any')
+    // A link, not a button that toggles something into view: the form is a page now,
+    // and two clicks on a toggle used to hide it under the cursor.
+    expect(screen.getByRole('link', { name: 'New item' })).toHaveAttribute('href', '/items/new')
   })
 
   // The card split into two targets while the photo opened a lightbox and the

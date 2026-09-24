@@ -121,7 +121,7 @@ describe('admin route', () => {
     // …and the user is dropped on the catalog instead: the guard sends them to
     // `/`, which redirects to `/items`. "New item" is a plain literal in
     // `ItemsPage`, so this holds whatever the i18n mock returns for a key.
-    expect(screen.getByRole('button', { name: 'New item' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'New item' })).toBeInTheDocument()
   })
 
   it('renders the reindexed item count as a number, not a placeholder', () => {

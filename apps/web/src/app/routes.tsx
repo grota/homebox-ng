@@ -8,6 +8,7 @@ import { LocationsPage } from '../features/locations/LocationsPage'
 import { ItemTypesPage } from '../features/itemTypes/ItemTypesPage'
 import { TagsPage } from '../features/tags/TagsPage'
 import { ItemsPage } from '../features/items/ItemsPage'
+import { ItemNewPage } from '../features/items/ItemNewPage'
 import { ItemDetail } from '../features/items/ItemDetail'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { DraftsPage } from '../features/drafts'
@@ -54,6 +55,11 @@ export function AppRoutes() {
         <Route path="/types" element={<ItemTypesPage />} />
         <Route path="/tags" element={<TagsPage />} />
         <Route path="/items" element={<ItemsPage />} />
+        {/* The create form is a page, not a toggle on the catalog (ADR-0011). It sits in
+            the Shell because it is entered from the catalog and returns to it. Static
+            segments outrank dynamic ones in the router's ranking, so this wins over
+            `/items/:id` in the other layout route. */}
+        <Route path="/items/new" element={<ItemNewPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/drafts" element={<DraftsPage />} />
     <Route path="/trash" element={<TrashPage />} />
