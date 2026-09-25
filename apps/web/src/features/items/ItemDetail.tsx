@@ -85,9 +85,15 @@ export function ItemDetail() {
     else navigate('/items')
   }, [navigate])
 
-  // The form's own exits — its Close, its Cancel, its Save, and Escape — all land back
-  // on the item's own URL. `replace`, so an abandoned edit leaves no history entry.
-  const leaveEdit = useCallback(() => navigate(`/items/${itemId}`, { replace: true }), [navigate, itemId])
+  // Back out the way we came in. The form's entry was pushed from the surface, so `-1`
+  // lands on the surface and the surface's own close then reaches the catalog in one
+  // press. A cold deep link has nothing to go back to, so that case replaces instead.
+  // Exiting with `replace` from an in-app arrival left the surface's entry underneath —
+  // the same item twice in history — and that is what made its Close take two presses.
+  const leaveEdit = useCallback(() => {
+    if (arrivedCold.current) navigate(`/items/${itemId}`, { replace: true })
+    else navigate(-1)
+  }, [itemId, navigate])
 
   // The surface's own keys. The arrows belong to the stage (they pan), so the
   // split is by key and there is no ordering rule between two handlers.

@@ -48,13 +48,13 @@ captured at mount.
 **Refresh and Back work on both pages**, which is the point: `/items/42/edit` reloads into edit mode,
 and Back leaves it.
 
-**One Back press after leaving the form appears to do nothing.** Entry to the form is a
-`push` and every exit is a `replace`, so a user who came from the surface and then saves or
-cancels ends up with `[…, /items/:id, /items/:id]` in history: Back changes the key and the
-URL, and renders the same item. The "no entry left behind" claimed for `replace` above is
-therefore only half true. Left as it is, deliberately — the obvious alternative
-(`navigate(-1)` when the arrival was in-app) trades this for a different surprise, because
-the form's own "create one" link to `/types` would then become the form's exit target.
+**Leaving the form goes back rather than replacing.** Entry is a `push` from the surface, so
+every exit is `navigate(-1)` when the surface was reached in-app, and a `replace` to
+`/items/:id` when it was a cold deep link (there is nothing to go back to). Without that,
+exiting with `replace` left the surface's own entry underneath and put `/items/:id` in
+history twice, so the surface's close took two presses to reach the catalog — a dead click,
+which is worse than a surprising one. The cost of going back is that the form's entry
+survives as a *forward* entry: Forward returns to the form, Back never does.
 
 ### Alternatives rejected
 

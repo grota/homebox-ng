@@ -12,6 +12,12 @@ const mockItemTypes = vi.hoisted(() => {
   return { types, seed: types }
 })
 
+// `items.create` resolves with an id, like the real one, so the photo upload has an
+// `itemId` to send. Hoisted (and shared) so a test can also assert that the item was
+// created at all — the Clear case below submits with no photo, and "the create still
+// happens" is the half of it that a missing upload request cannot show.
+const mockCreate = vi.hoisted(() => ({ mutateAsync: vi.fn(async () => ({ id: 42 })) }))
+
 // mock the tRPC module so hooks resolve deterministically without a backend.
 // `Provider` is a passthrough so <AppProviders> (which renders <trpc.Provider>)
 // doesn't blow up; `useUtils` supplies the invalidate helpers used by the pages;
@@ -60,7 +66,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         },
         // Resolves with an id, like the real `items.create`, so the photo
         // upload has an `itemId` to send.
-        create: { useMutation: () => ({ mutateAsync: vi.fn(async () => ({ id: 42 })), isPending: false, error: null }) },
+        create: { useMutation: () => ({ mutateAsync: mockCreate.mutateAsync, isPending: false, error: null }) },
         update: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
       },
       locations: { list: { useQuery: () => ({ data: [], isLoading: false }) } },
@@ -99,6 +105,7 @@ import { editorProps } from './filerobotMock'
 describe('catalog pages', () => {
   beforeEach(() => {
     mockItemTypes.types = mockItemTypes.seed
+    mockCreate.mutateAsync.mockClear()
     editorProps.length = 0
     global.URL.createObjectURL = vi.fn(() => 'blob:picked') as any
     global.URL.revokeObjectURL = vi.fn() as any
@@ -233,6 +240,62 @@ describe('catalog pages', () => {
       await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
       const body = fetchSpy.mock.calls[0][1]?.body as FormData
       expect(body.get('file')).toBe(file)
+      fetchSpy.mockRestore()
+    })
+
+    // The picker now keeps the file input's value, so the field shows the chosen file
+    // the way any other file input does — and beside it the form names the photo it is
+    // actually holding. The line is what tells the truth after a crop: the upload is
+    // `photo.jpg` while the input's own text still says the original's name.
+    it('names the photo it is holding, in place of an input that only shows the pick', async () => {
+      render(<AppProviders><ItemNewPage /></AppProviders>)
+
+      fireEvent.change(screen.getByLabelText('Photo'), {
+        target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
+      })
+      // Dismissed, so what is held is the file as picked.
+      await act(async () => {
+        editorProps.at(-1).onClose()
+      })
+
+      expect(screen.getByText('a.png')).toBeInTheDocument()
+    })
+
+    // The picker holds one photo until submit, so without this the only way to change
+    // your mind was to pick a different one. Clear empties the state *and* the input:
+    // a file input whose value has not changed fires no `change` event, so emptying it
+    // is also what makes the same file pickable again.
+    it('drops the pending photo when Clear is pressed, and still creates the item', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+      render(<AppProviders><ItemNewPage /></AppProviders>)
+
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
+      fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
+      fireEvent.change(screen.getByLabelText('Photo'), {
+        target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
+      })
+      // Dismissing the crop keeps the picked file as the photo being held.
+      await act(async () => {
+        editorProps.at(-1).onClose()
+      })
+      expect(screen.getByText('a.png')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+
+      // The pending photo is gone. The other half — that the input's own value is
+      // emptied too, which is what makes the same file pickable again — is not
+      // assertable here: jsdom reports `''` for a file input's `value` whether or not
+      // one was chosen, so the assertion would hold with or without the line in
+      // `clearPhoto`.
+      expect(screen.queryByText('a.png')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /create item/i }))
+
+      await waitFor(() => expect(mockCreate.mutateAsync).toHaveBeenCalled())
+      // The item is still created; the cleared photo goes up nowhere. "No file in the
+      // upload" is true here in its strongest form — with nothing pending there is no
+      // upload request at all.
+      expect(fetchSpy).not.toHaveBeenCalled()
       fetchSpy.mockRestore()
     })
 

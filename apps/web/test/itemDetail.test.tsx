@@ -164,9 +164,14 @@ import { behavior } from './filerobotMock'
 
 behavior.probeSource = true
 
-const renderDetail = () =>
+// `fromCatalog` puts the catalog *behind* the surface in the router's real history.
+// It is what the surface's own Close needs: a MemoryRouter's `navigate(-1)` clamps at
+// the start of its history, so with the surface as the only entry Back has nowhere to
+// go and the catalog can never be reached however many times Close is pressed. Only
+// the one-press test below needs the journey; every other test starts at the surface.
+const renderDetail = ({ fromCatalog = false } = {}) =>
   render(
-    <MemoryRouter initialEntries={['/items/3']}>
+    <MemoryRouter initialEntries={fromCatalog ? ['/items', '/items/3'] : ['/items/3']}>
       <Routes>
         <Route path="/items/:id" element={<ItemDetail />} />
         {/* The edit form is this same component at its own URL (ADR-0011). */}
@@ -293,12 +298,31 @@ describe('item surface', () => {
     expect(mocks.navigate).not.toHaveBeenCalledWith(-1)
   })
 
+  // The two-press bug a hand check found, end to end and against the router's real
+  // history. The form's exit used to `replace` its own entry, which left the surface's
+  // entry underneath and put `/items/:id` in history twice: the surface's Close then
+  // landed on the URL it was already showing, so the catalog took two presses — a dead
+  // click. The exit goes back now, so one press is enough.
+  it('reaches the catalog in one press from the surface after closing the form', async () => {
+    mocks.locationKey = 'reached-from-the-surface'
+    renderDetail({ fromCatalog: true })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' })) // the form's Close
+    expect(screen.getByTestId('photo-viewer')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' })) // the surface's Close
+    expect(await screen.findByTestId('catalog')).toBeInTheDocument()
+  })
+
   // The edit form replaces the surface, so Escape while it is up has to close the
   // *form* — the same thing its own Close button does. Before this, the surface's
   // Escape ran instead and took the user back to the catalog, losing the item they
   // were editing, which is exactly the asymmetry that made it a bug: the Close
   // button and Escape did different things.
   it('closes the edit form on Escape without leaving the surface', () => {
+    // In-app, so the form's exit is the one that goes back the way it came in.
+    mocks.locationKey = 'reached-from-the-surface'
     renderDetail()
     fireEvent.click(screen.getByRole('button', { name: 'Edit item' }))
     expect(screen.getByLabelText('Name')).toBeInTheDocument()
@@ -306,11 +330,11 @@ describe('item surface', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
 
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
-    // Escape does what the form's Close does: back to the item's own URL. What it
-    // must never do is take the surface's own exit — that was the bug this test
-    // was written for.
-    expect(mocks.navigate).toHaveBeenCalledWith('/items/3', { replace: true })
-    expect(mocks.navigate).not.toHaveBeenCalledWith(-1)
+    // Escape does what the form's Close does: back to the surface it was pushed from.
+    // What it must never do is take the surface's own exit to the catalog — that was the
+    // bug this test was written for.
+    expect(mocks.navigate).toHaveBeenCalledWith(-1)
+    expect(mocks.navigate).not.toHaveBeenCalledWith('/items')
     expect(screen.getByTestId('photo-viewer')).toBeInTheDocument()
   })
 

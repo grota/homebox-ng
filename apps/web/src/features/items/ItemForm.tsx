@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { trpc } from '../../api/trpc'
 import { uploadImage } from '../upload/PhotoUpload'
 import { PhotoCrop } from '../upload/PhotoCrop'
 import { filenameForBlob } from '../upload/PhotoEditor'
-import { Button, Field, Input, Select, Textarea } from '../../ui'
+import { Button, Field, Input, Select, Textarea, inputClass } from '../../ui'
 import { flattenLocations, locationOptionLabel } from '../../lib/locationPath'
 
 // The subset of an item DTO needed to prefill edit mode. Structurally compatible
@@ -65,6 +65,9 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
   )
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>((item?.tags ?? []).map((t) => t.id))
   const [newTag, setNewTag] = useState('')
+  // A raw `<input>` rather than the `Input` primitive, only because Clear has to reach
+  // the element itself to empty its value — `Input` takes no `ref`.
+  const photoInput = useRef<HTMLInputElement>(null)
   const [photo, setPhoto] = useState<File | null>(null)
   // The file the crop dialog is open on, if any. Separate from `photo` on purpose:
   // closing the dialog without cropping keeps the file that was picked.
@@ -101,6 +104,12 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create the tag')
     }
+  }
+
+  const clearPhoto = () => {
+    setPhoto(null)
+    setCropping(null)
+    if (photoInput.current) photoInput.current.value = ''
   }
 
   const handleTypeChange = (value: string) => {
@@ -334,19 +343,26 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
       </fieldset>
 
       <Field label={item ? 'Add photo' : 'Photo'} htmlFor="item-photo">
-        <Input
+        <input
+          ref={photoInput}
           id="item-photo"
           type="file"
           accept="image/*"
-          onChange={(e: ChangeEvent<HTMLInputElement>) => {
-            const picked = e.target.files?.[0] ?? null
-            // Clear the input once the file is in hand: a file input whose value has not
-            // changed fires no `change` event, so re-picking the same photo after closing
-            // the crop would do nothing — and the crop is the only way back into it.
-            e.target.value = ''
-            setCropping(picked)
-          }}
+          className={inputClass}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setCropping(e.target.files?.[0] ?? null)}
         />
+        {/* A photo is picked and held until submit, so the only way to change your mind was
+            to pick a different one. `Clear` empties the input as well as the state: the
+            input keeps its value otherwise, and a file input whose value has not changed
+            fires no `change` event, so the same file could never be picked again. */}
+        {photo && (
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-text-muted text-sm">{photo.name}</span>
+            <Button type="button" onClick={clearPhoto}>
+              Clear
+            </Button>
+          </div>
+        )}
       </Field>
 
       {/* Removing the background before the item exists is the point of cropping here
