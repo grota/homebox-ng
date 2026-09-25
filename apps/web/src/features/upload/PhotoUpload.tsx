@@ -60,8 +60,8 @@ export function PhotoUpload({ itemId, onUploaded }: PhotoUploadProps) {
 
   return (
     <div className="my-4">
-      {/* `inputClass` rather than the `Input` primitive: this needs a `ref` to the
-          element to clear its value after each pick, which `Input`'s props don't take. */}
+      {/* `inputClass` rather than the `Input` primitive: the `ref` is here to clear the
+          element's value after each pick. */}
       <input ref={inputRef} type="file" accept="image/*" aria-label="Upload photo" onChange={handleFile} className={inputClass} />
       {uploading && <p>Uploading…</p>}
       {error && <p role="alert">{error}</p>}

@@ -5,7 +5,7 @@ import { trpc } from '../../api/trpc'
 import { uploadImage } from '../upload/PhotoUpload'
 import { PhotoCrop } from '../upload/PhotoCrop'
 import { filenameForBlob } from '../upload/PhotoEditor'
-import { Button, Field, Input, Select, Textarea, inputClass } from '../../ui'
+import { Button, Field, Input, Select, Textarea } from '../../ui'
 import { flattenLocations, locationOptionLabel } from '../../lib/locationPath'
 
 // The subset of an item DTO needed to prefill edit mode. Structurally compatible
@@ -65,8 +65,7 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
   )
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>((item?.tags ?? []).map((t) => t.id))
   const [newTag, setNewTag] = useState('')
-  // A raw `<input>` rather than the `Input` primitive, only because Clear has to reach
-  // the element itself to empty its value — `Input` takes no `ref`.
+  // `Clear` reaches the element itself to empty its value, so this picker holds a ref.
   const photoInput = useRef<HTMLInputElement>(null)
   const [photo, setPhoto] = useState<File | null>(null)
   // The file the crop dialog is open on, if any. Separate from `photo` on purpose:
@@ -343,18 +342,16 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
       </fieldset>
 
       <Field label={item ? 'Add photo' : 'Photo'} htmlFor="item-photo">
-        <input
+        <Input
           ref={photoInput}
           id="item-photo"
           type="file"
           accept="image/*"
-          className={inputClass}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setCropping(e.target.files?.[0] ?? null)}
         />
-        {/* A photo is picked and held until submit, so the only way to change your mind was
-            to pick a different one. `Clear` empties the input as well as the state: the
-            input keeps its value otherwise, and a file input whose value has not changed
-            fires no `change` event, so the same file could never be picked again. */}
+        {/* A photo is picked and held until submit, so until `Clear` existed the only way to
+            change your mind was to pick a different one. It empties the input as well as the
+            state, so what the field shows and what will be uploaded are the same file. */}
         {photo && (
           <div className="mt-1 flex items-center gap-2">
             <span className="text-text-muted text-sm">{photo.name}</span>

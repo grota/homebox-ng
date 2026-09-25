@@ -28,7 +28,7 @@ future feature should pick on that basis."
 - **Edit is `/items/:id/edit`, in the same nav-less layout route as `/items/:id`** (`routes.tsx:27-37`)
   and rendered by **the same `ItemDetail` component**. "Am I editing" is derived from the path; the
   `editingItem` state is deleted. The surface's Edit button navigates there; Close, Cancel, Save and
-  Escape navigate back to `/items/:id` with `replace`, so an abandoned edit leaves no entry behind.
+  Escape all leave the form by the one rule the Consequences below describe.
 - **Neither is an overlay or a dialog**, by ADR-0005's rule: an overlay is for a peek, and a form is
   a task.
 - **Leaving create goes back where the user came from** — `navigate(-1)`, with `/items` as the
