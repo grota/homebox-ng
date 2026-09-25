@@ -2,16 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
-vi.mock('react-filerobot-image-editor', () => ({
-  // PhotoEditor imports the editor as its default export and `TABS` by name, so
-  // the mock needs both. `source` is surfaced as an attribute because which
-  // rendition the editor opens is exactly what the two Edit actions differ on.
-  default: ({ source }: { source: string }) => <div data-testid="fil-editor" data-source={source} />,
-  TABS: { FINETUNE: 'Finetune', FILTERS: 'Filters', ADJUST: 'Adjust', WATERMARK: 'Watermark', ANNOTATE: 'Annotate', RESIZE: 'Resize' },
-  // `PhotoEditor` also reads `TOOLS.TEXT` to arm the Annotate tab's tool, so a mock
-  // without it throws as soon as the editor renders.
-  TOOLS: { TEXT: 'Text', PEN: 'Pen', CROP: 'Crop' },
-}))
+// The editor renders the rendition as an attribute here: which rendition it opens is
+// exactly what the two Edit actions differ on.
+vi.mock('react-filerobot-image-editor', async () => await import('./filerobotMock'))
 
 // Mutation spies live outside the factories so tests can assert on the calls.
 // `vi.hoisted` is required: `vi.mock` factories are hoisted above plain consts.
@@ -167,6 +160,9 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
 afterEach(() => vi.unstubAllGlobals())
 
 import { ItemDetail } from '../src/features/items/ItemDetail'
+import { behavior } from './filerobotMock'
+
+behavior.probeSource = true
 
 const renderDetail = () =>
   render(

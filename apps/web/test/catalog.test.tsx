@@ -87,27 +87,19 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
   }
 })
 
-// The crop step opens on pick and saves only when the user says so, so this mock
+// The crop step opens on pick and saves only when the user says so, so the shared mock
 // records its props and waits to be driven, unlike `photoEditor.test.tsx`'s.
-const cropProps = vi.hoisted(() => [] as any[])
-
-vi.mock('react-filerobot-image-editor', () => ({
-  TABS: { FINETUNE: 'Finetune', FILTERS: 'Filters', ADJUST: 'Adjust', WATERMARK: 'Watermark', ANNOTATE: 'Annotate', RESIZE: 'Resize' },
-  TOOLS: { TEXT: 'Text', PEN: 'Pen', CROP: 'Crop' },
-  default: (props: any) => {
-    cropProps.push(props)
-    return null
-  },
-}))
+vi.mock('react-filerobot-image-editor', async () => await import('./filerobotMock'))
 
 import { ItemsPage } from '../src/features/items/ItemsPage'
 import { ItemNewPage } from '../src/features/items/ItemNewPage'
 import { AppProviders } from '../src/app/AppProviders'
+import { editorProps } from './filerobotMock'
 
 describe('catalog pages', () => {
   beforeEach(() => {
     mockItemTypes.types = mockItemTypes.seed
-    cropProps.length = 0
+    editorProps.length = 0
     global.URL.createObjectURL = vi.fn(() => 'blob:picked') as any
     global.URL.revokeObjectURL = vi.fn() as any
   })
@@ -154,14 +146,14 @@ describe('catalog pages', () => {
       fireEvent.change(screen.getByLabelText('Photo'), { target: { files: [file] } })
 
       // Picking opens the crop on the picked file; it is not an upload.
-      expect(cropProps.at(-1).source).toBe('blob:picked')
+      expect(editorProps.at(-1).source).toBe('blob:picked')
 
       // Save the crop. The cropped bytes are what the photo becomes (ADR-0012), so the
       // POST must carry the crop — an object URL as its source is the proof it never
       // touched the server first.
       const cropped = new Blob(['cropped'], { type: 'image/jpeg' })
       await act(async () => {
-        cropProps.at(-1).onSave({ imageCanvas: { toBlob: (cb: any) => cb(cropped) }, mimeType: 'image/jpeg' })
+        editorProps.at(-1).onSave({ imageCanvas: { toBlob: (cb: any) => cb(cropped) }, mimeType: 'image/jpeg' })
       })
 
       fireEvent.click(screen.getByRole('button', { name: /create item/i }))
@@ -198,7 +190,7 @@ describe('catalog pages', () => {
       })
 
       await act(async () => {
-        cropProps.at(-1).onSave({ imageCanvas: { toBlob: (cb: any) => cb(new Blob(['c'], { type })) }, mimeType: type })
+        editorProps.at(-1).onSave({ imageCanvas: { toBlob: (cb: any) => cb(new Blob(['c'], { type })) }, mimeType: type })
       })
       fireEvent.click(screen.getByRole('button', { name: /create item/i }))
 
@@ -234,7 +226,7 @@ describe('catalog pages', () => {
       // Closing the crop keeps the photo that was picked: the crop is a step the user
       // may decline, not a gate on adding a photo.
       await act(async () => {
-        cropProps.at(-1).onClose()
+        editorProps.at(-1).onClose()
       })
       fireEvent.click(screen.getByRole('button', { name: /create item/i }))
 

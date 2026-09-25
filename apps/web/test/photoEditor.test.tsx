@@ -4,26 +4,14 @@ import { render, waitFor } from '@testing-library/react'
 // `vi.hoisted` runs before the vi.mock factories, so the factory can reference
 // these without hitting the top-level-const temporal dead zone (vitest hoists
 // vi.mock calls above the imports/body).
-const { invalidateList, invalidateGet, editorProps } = vi.hoisted(() => ({
+const { invalidateList, invalidateGet } = vi.hoisted(() => ({
   invalidateList: vi.fn(),
   invalidateGet: vi.fn(),
-  editorProps: [] as any[],
 }))
 
-vi.mock('react-filerobot-image-editor', () => ({
-  TABS: { FINETUNE: 'Finetune', FILTERS: 'Filters', ADJUST: 'Adjust', WATERMARK: 'Watermark', ANNOTATE: 'Annotate', RESIZE: 'Resize' },
-  // Mirror the real named export: `defaultToolId`'s value comes from here
-  // (`TOOLS.TEXT === 'Text'` in the package's own types).
-  TOOLS: { TEXT: 'Text', PEN: 'Pen', CROP: 'Crop' },
-  // The package exports the editor as its default export (plus `TABS`). On mount,
-  // record the config — which rendition it was pointed at, which tabs it was
-  // given — then invoke onSave with a fake edited image to exercise the submit path.
-  default: (props: any) => {
-    editorProps.push(props)
-    props.onSave({ imageCanvas: { toBlob: (cb: any) => cb(new Blob(['x'], { type: 'image/png' })) }, mimeType: 'image/png' })
-    return null
-  },
-}))
+// The editor saves the moment it mounts here — the flow under test is what happens
+// after a save — with the recorded props coming from the shared mock.
+vi.mock('react-filerobot-image-editor', async () => await import('./filerobotMock'))
 
 vi.mock('../src/api/trpc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/api/trpc')>()
@@ -38,6 +26,10 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
 })
 
 import { PhotoEditor } from '../src/features/upload/PhotoEditor'
+import { editorProps, behavior } from './filerobotMock'
+
+behavior.save = (props) =>
+  props.onSave({ imageCanvas: { toBlob: (cb: any) => cb(new Blob(['x'], { type: 'image/png' })) }, mimeType: 'image/png' })
 
 describe('PhotoEditor', () => {
   beforeEach(() => {

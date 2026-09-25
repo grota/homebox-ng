@@ -1,26 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 
-// Same shape as `photoEditor.test.tsx`: record the config the component hands the
-// editor, and hand `onSave` a fake canvas. Filerobot's canvas is not driven here —
-// its interaction is too brittle for that, by the repo's own policy.
-const { cropProps } = vi.hoisted(() => ({ cropProps: [] as any[] }))
-
-vi.mock('react-filerobot-image-editor', () => ({
-  TABS: { FINETUNE: 'Finetune', FILTERS: 'Filters', ADJUST: 'Adjust', WATERMARK: 'Watermark', ANNOTATE: 'Annotate', RESIZE: 'Resize' },
-  TOOLS: { TEXT: 'Text', PEN: 'Pen', CROP: 'Crop' },
-  default: (props: any) => {
-    cropProps.push(props)
-    return null
-  },
-}))
+// The crop saves only when the user says so, so the shared mock records its props and
+// waits to be driven (`test/filerobotMock.tsx`), unlike `photoEditor.test.tsx`'s.
+vi.mock('react-filerobot-image-editor', async () => await import('./filerobotMock'))
 
 import { PhotoCrop } from '../src/features/upload/PhotoCrop'
+import { editorProps } from './filerobotMock'
 
 describe('the crop dialog', () => {
   beforeEach(() => {
-    cropProps.length = 0
+    editorProps.length = 0
     // jsdom does not implement these; the component builds an object URL from the
     // picked file, because the file has no server path yet.
     global.URL.createObjectURL = vi.fn(() => 'blob:fake-file') as any
@@ -31,7 +22,7 @@ describe('the crop dialog', () => {
 
   it('opens on the file itself, with crop and nothing else', () => {
     render(<PhotoCrop file={file()} onSave={vi.fn()} onClose={vi.fn()} />)
-    const props = cropProps.at(-1)
+    const props = editorProps.at(-1)
     expect(props.source).toBe('blob:fake-file')
     // One tab: crop, rotate, flip — the library renders no tab strip at all for a
     // single tab, and arms the crop tool by its own default.
@@ -40,7 +31,7 @@ describe('the crop dialog', () => {
 
   it('exports at the source pixels, as jpeg', () => {
     render(<PhotoCrop file={file()} onSave={vi.fn()} onClose={vi.fn()} />)
-    const props = cropProps.at(-1)
+    const props = editorProps.at(-1)
     // `savingPixelRatio` multiplies the OUTPUT canvas, so the edit flow's 4 would
     // store the crop at four times its pixel size — and this blob becomes the
     // photo's original (ADR-0012), not a rendition of one.
@@ -54,11 +45,23 @@ describe('the crop dialog', () => {
     render(<PhotoCrop file={file()} onSave={onSave} onClose={onClose} />)
     const cropped = new Blob(['cropped'], { type: 'image/jpeg' })
 
-    cropProps.at(-1).onSave({ imageCanvas: { toBlob: (cb: any) => cb(cropped) }, mimeType: 'image/jpeg' })
+    editorProps.at(-1).onSave({ imageCanvas: { toBlob: (cb: any) => cb(cropped) }, mimeType: 'image/jpeg' })
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(cropped))
 
-    cropProps.at(-1).onClose()
+    editorProps.at(-1).onClose()
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('reports a failed conversion instead of rejecting silently', async () => {
+    const onSave = vi.fn()
+    render(<PhotoCrop file={file()} onSave={onSave} onClose={vi.fn()} />)
+
+    // `atob` throws on this: the base64 fallback is the one path in `toBlob` that can
+    // reject, and without a catch it became an unhandled rejection and no message.
+    editorProps.at(-1).onSave({ imageBase64: 'not base64!', mimeType: 'image/png' })
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(onSave).not.toHaveBeenCalled()
   })
 
   // The constant stub above makes the live URL and the revoked URL the same string, which
@@ -85,7 +88,7 @@ describe('the crop dialog', () => {
       </StrictMode>,
     )
 
-    const shown = cropProps.map((p) => p.source)
+    const shown = editorProps.map((p) => p.source)
     expect(shown.length).toBeGreaterThan(0)
     for (const source of shown) expect(revoked).not.toContain(source)
   })
@@ -96,7 +99,7 @@ describe('the crop dialog', () => {
     const revoked = countingStub()
 
     const { unmount } = render(<PhotoCrop file={file()} onSave={vi.fn()} onClose={vi.fn()} />)
-    const shown = cropProps.at(-1).source
+    const shown = editorProps.at(-1).source
     expect(revoked).not.toContain(shown)
 
     unmount()

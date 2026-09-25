@@ -29,12 +29,16 @@ export function PhotoCrop({ file, onSave, onClose }: PhotoCropProps) {
 
   const handleSave = async (imageData: SaveImageData) => {
     setError(null)
-    const blob = await toBlob(imageData)
-    if (!blob) {
-      setError('The crop produced no image')
-      return
+    try {
+      const blob = await toBlob(imageData)
+      if (!blob) {
+        setError('The crop produced no image')
+        return
+      }
+      onSave(blob)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The crop failed')
     }
-    onSave(blob)
   }
 
   // The URL does not exist until the effect has run, so the dialog opens one empty

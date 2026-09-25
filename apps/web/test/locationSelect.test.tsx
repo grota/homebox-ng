@@ -29,11 +29,7 @@ const TREE = [
 // requires the optional `canvas` package, which jsdom has not got, so the import alone
 // fails the suite. This test never picks a file, so the editor is never rendered and the
 // mock only has to exist; `photoCrop.test.tsx` is where the crop itself is driven.
-vi.mock('react-filerobot-image-editor', () => ({
-  TABS: { FINETUNE: 'Finetune', FILTERS: 'Filters', ADJUST: 'Adjust', WATERMARK: 'Watermark', ANNOTATE: 'Annotate', RESIZE: 'Resize' },
-  TOOLS: { TEXT: 'Text', PEN: 'Pen', CROP: 'Crop' },
-  default: () => null,
-}))
+vi.mock('react-filerobot-image-editor', async () => await import('./filerobotMock'))
 
 vi.mock('../src/api/trpc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/api/trpc')>()

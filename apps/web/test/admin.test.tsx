@@ -23,14 +23,9 @@ vi.mock('react-i18next', () => ({
 
 // `AppRoutes` pulls in `ItemDetail` → `PhotoEditor`, which imports the real
 // `react-filerobot-image-editor`; its transitive `react-konva` dependency needs
-// the (absent) native `canvas` module, so stub the editor out (as
-// `photoEditor.test.tsx` does). The `/admin` route never renders a photo editor.
-vi.mock('react-filerobot-image-editor', () => ({
-  default: () => null,
-  // PhotoEditor reads `TABS` at module scope to build its `tabsIds`, so a mock
-  // without it throws on import rather than merely rendering nothing.
-  TABS: { FINETUNE: 'Finetune', FILTERS: 'Filters', ADJUST: 'Adjust', WATERMARK: 'Watermark', ANNOTATE: 'Annotate', RESIZE: 'Resize' },
-}))
+// the (absent) native `canvas` module, so stub the editor out. The `/admin` route
+// never renders a photo editor.
+vi.mock('react-filerobot-image-editor', async () => await import('./filerobotMock'))
 
 // The active user's role, mutable so each test can exercise admin vs non-admin.
 let mockRole: string = 'admin'
