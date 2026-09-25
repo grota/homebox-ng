@@ -39,6 +39,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
       useUtils: () => ({ items: { list: { invalidate: vi.fn() }, get: { invalidate: vi.fn() } } }),
       items: {
+        trashMany: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
         list: {
           useQuery: (input: any) => {
             state.lastInput = input

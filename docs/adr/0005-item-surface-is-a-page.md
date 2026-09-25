@@ -1,6 +1,7 @@
 # ADR-0005: The item surface is a nav-less page at `/items/:id`, not an overlay
 
-**Status:** Proposed (2026-09-13).
+**Status:** Proposed (2026-09-13). Amended 2026-09-25: its "the card is one target again"
+consequence is undone — see the amendment at the end.
 
 ## Context
 
@@ -80,3 +81,22 @@ stacking problem solved rather than avoided.
 - Specs: `docs/superpowers/specs/2026-09-11-photo-viewer-and-bulk-discard-design.md` (the rules
   this narrows), `2026-09-13-manual-unpack-pagination-trash-design.md` (the modal this leaves
   untouched).
+
+## Amendment (2026-09-25): the catalog card is two targets again
+
+The decision above stands — the item surface is a page. One consequence of it does not.
+
+ADR-0005 undid the card's image/name split *because there was one destination*. But the card
+gained a second job after this ADR: selection (ADR-0010). A 13px checkbox in the card's footer
+was then the only thing that could pick an item, and the smallest thing on the card.
+
+**The photo opens the item; the title toggles the checkbox.** The title is a `<label for>` the
+footer's checkbox, so the browser does the toggling — no click handler, no second focus stop,
+and the name is the hit target rather than the box. The location line, the tags and the search
+snippet go back to being plain text beside the link.
+
+The one exception is an item with **no photo**: nothing above the title would be clickable and
+the title toggles, so there the text block rides inside the link and the card stays reachable.
+
+This is the split ADR-0005 called an accident of two destinations, chosen deliberately for two
+*jobs* instead. It is worth revisiting if a third affordance lands on the card.

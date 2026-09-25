@@ -79,6 +79,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       // `Cannot read properties of undefined`.
       items: {
         list: { useQuery: () => ({ data: { items: [], total: 0 }, isLoading: false }) },
+        trashMany: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
       },
       locations: {
         list: { useQuery: () => ({ data: [], isLoading: false }) },

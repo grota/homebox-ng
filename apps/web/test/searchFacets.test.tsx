@@ -66,6 +66,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         items: { list: { invalidate: vi.fn() }, get: { invalidate: vi.fn() } },
       }),
       items: {
+        trashMany: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
         list: { useQuery },
         create: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
         update: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },

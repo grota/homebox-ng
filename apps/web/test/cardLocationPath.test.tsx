@@ -22,6 +22,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
       useUtils: () => ({ items: { list: { invalidate: vi.fn() }, get: { invalidate: vi.fn() } } }),
       items: {
+        trashMany: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
         list: {
           useQuery: () => ({
             data: {
@@ -165,9 +166,11 @@ describe('the catalog card shows its location as a path', () => {
     expect(locationLine()).toHaveTextContent('shelf A')
   })
 
-  // The card is one target (ADR-0005). A path that linked to the location would
-  // be a second destination nested inside an anchor — invalid HTML, and a
-  // keyboard trap.
+  // The path must never be a link of its own — that would be a nested anchor
+  // inside the card's, which is invalid HTML and a keyboard trap. This fixture's
+  // item has no photo, so the card's link falls back to the text and the path
+  // rides in it; with a photo the text sits beside the link instead
+  // (`catalogCard.test.tsx` is where that half is asserted).
   it('leaves the path as text inside the card link, not a nested link', () => {
     renderCatalog()
 

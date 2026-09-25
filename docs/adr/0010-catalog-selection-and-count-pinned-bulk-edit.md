@@ -1,6 +1,7 @@
 # ADR-0010: A catalog selection is an id set, and a bulk mutation is count-pinned
 
-**Status:** Accepted (2026-09-19).
+**Status:** Accepted (2026-09-19). Amended 2026-09-25: the selection gained a bulk trash, which is
+deliberately *not* count-pinned — see the amendment at the end.
 
 ## Context
 
@@ -112,3 +113,19 @@ destroyed*, confirm it" stops being sufficient and reversal has to be designed.
 - ADR-0008 (`0008-popover-primitive-for-anchored-panels.md`) — the panels these selections are made
   and applied in.
 - Design spec: `docs/superpowers/specs/2026-09-19-catalog-batch-edit-design.md`.
+
+## Amendment (2026-09-25): the selection can be trashed, and it is not count-pinned
+
+The selection bar gained a **Trash selected** action, beside "Apply to selection" — both act on the
+selection as a whole; the panel edits it, this ends it. It is one request for the whole set
+(`items.trashMany`), not one per id, and an empty selection is refused rather than read as
+"everything".
+
+It is the first bulk *write* on the selection that does **not** carry the acknowledgment this ADR
+builds, and the reason is ADR-0004: a trashed item is recoverable, so there is nothing to pin. The
+page still asks once — the same question the item page asks for one item — but the question is a
+`confirm`, not an `acknowledgedItemCount` the server re-derives. A bulk **purge** would need the
+count-pinned treatment; trashing does not.
+
+This is not the "third bulk-destructive operation" the revisit clause waits for. It is a bulk
+*recoverable* one, and the clause's answer — a change log — is what the trash already is.

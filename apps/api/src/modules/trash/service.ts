@@ -29,6 +29,18 @@ export const trashItem = (db: DrizzleDb, id: number): void => {
   reindexItem(db, id)
 }
 
+// Bulk trash, for the catalog's selection. A loop like `purgeAll`'s, and it skips
+// for the same reason: a row that is already in the trash is already the outcome
+// this wanted, and re-trashing it would restamp `trashedAt` and move it up the
+// trash page for nothing.
+export const trashItems = (db: DrizzleDb, ids: number[]): void => {
+  for (const id of ids) {
+    const row = itemsRepo.getItem(db, id)
+    if (!row || row.trashedAt != null) continue
+    trashItem(db, id)
+  }
+}
+
 // Restoring something that is not in the trash is a caller error rather than a
 // no-op: it would silently "succeed" while restoring a different item's intent.
 export const restoreItem = (db: DrizzleDb, id: number): ItemDto => {

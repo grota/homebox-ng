@@ -5,6 +5,9 @@
 #
 # Shut it down again with `pnpm stop`.
 #
+# `pnpm dev --no-seed` leaves the seed step out, for a database that is already
+# where you want it — or one you would rather not touch.
+#
 # The build is not optional: the API runs `node dist/index.js` and the web dev
 # server resolves `@homebox/shared` through its built `dist/`. A stale dist does
 # not fail to build — it fails at import time in the browser, naming a file that
@@ -13,6 +16,16 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+# Every argument is a flag, so an unknown one is a typo — and a typo that silently
+# seeded would be found only by noticing the fixtures changed. Refuse it instead.
+NO_SEED=false
+for arg in "$@"; do
+  case "$arg" in
+    --no-seed) NO_SEED=true ;;
+    *) echo "Unknown argument: $arg (dev.sh takes --no-seed)" >&2; exit 1 ;;
+  esac
+done
 
 RUN_DIR="$ROOT/.dev"
 STATE_FILE="$RUN_DIR/state"
@@ -74,8 +87,12 @@ fi
 echo "==> Building shared, db, api"
 pnpm exec turbo run build --filter=@homebox/api...
 
-echo "==> Seeding database"
-pnpm --filter @homebox/api seed
+if "$NO_SEED"; then
+  echo "==> Skipping seed (--no-seed)"
+else
+  echo "==> Seeding database"
+  pnpm --filter @homebox/api seed
+fi
 
 # `setsid` puts each server in its own process group, so `pnpm stop` can signal
 # the whole tree — `pnpm`, and the `node`/`vite` it spawns — at once. Without it

@@ -78,6 +78,12 @@ export const itemsRouter = t.router({
   // Recoverable since ADR-0004: this moves the item to the trash. Destroying it
   // is `trash.purge`, which is a different procedure with a different name.
   trash: protectedProcedure.input(idInput).mutation(({ ctx, input }) => trashService.trashItem(ctx.db, input.id)),
+  // The same move for a whole selection, in one request rather than one per id.
+  // `.min(1)` for `bulkUpdate`'s reason: an empty selection is a caller error, not
+  // "everything".
+  trashMany: protectedProcedure
+    .input(z.object({ ids: z.array(z.number().int().positive()).min(1) }))
+    .mutation(({ ctx, input }) => trashService.trashItems(ctx.db, input.ids)),
   get: protectedProcedure.input(idInput).query(({ ctx, input }) => service.getItem(ctx.db, input.id)),
   list: protectedProcedure.input(listInput).query(({ ctx, input }) => service.listItems(ctx.db, input)),
   // Backs all three selection gestures: "select all N matching", and both criteria

@@ -44,68 +44,95 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
   // while it is still loading.
   const locationLabel = locationPathLabel(item.locationId, item.location?.name, locationById)
 
+  // The card is two targets again: the photo opens the item, the title picks it.
+  // It was one (ADR-0005) while both halves led to the same page — the title took
+  // over the toggle because a 13px box in the footer was the only way to select.
+  const hasPhoto = Boolean(photo?.thumbPath)
+  // Where the title's `<label>` points. The footer's own label wraps its input and
+  // needs no `for`; this is the other end of that association.
+  const checkboxId = `select-item-${item.id}`
+
+  const text = (
+    <>
+      {/* Text, never a link: it is a path, and a nested anchor inside the card's
+          link would be invalid HTML and a keyboard trap. Truncated because a path
+          is unbounded in width and a card is ~200px; `title` keeps the whole of it
+          readable. */}
+      {item.location ? (
+        <p className="truncate" title={locationLabel} data-testid="item-location">
+          {locationLabel}
+        </p>
+      ) : null}
+      {item.tags.map((tag) => (
+        <Badge key={tag.id} color={tag.color} className="mr-1">
+          {tag.name}
+        </Badge>
+      ))}
+      {searchTerm.trim() && item.snippet ? (
+        <p className="mt-2 text-text-muted text-sm" data-testid="item-snippet">
+          {item.snippet}
+        </p>
+      ) : null}
+    </>
+  )
+
   return (
     <Card padding="none" className="overflow-hidden hover:border-text-muted">
-      <Link to={`/items/${item.id}`} aria-label={item.name} className="block p-3 no-underline text-inherit">
-        {photo?.thumbPath ? (
-          <div className="relative mb-3">
-            {/* `aspect-square` rather than a fixed `h-32`: a fixed height is a
-                4:1 strip at one column and a 1:1 box at six, so the photo was
-                cropped by a different amount at every width. A square is the
-                same shape everywhere, and `object-contain` shows the whole photo
-                inside it with the mat filling what is left. */}
-            <img
-              src={'/file/' + photo.thumbPath}
-              alt=""
-              className="w-full aspect-square object-contain rounded-md bg-black"
-            />
-            {/* How many photos there are to look at, only when there is more than
-                one. It reads "1/" because a card shows the primary, and the
-                primary is position 1 of the order the surface uses — so this is
-                the number you land on when you open the card. */}
-            {item.images.length > 1 && (
-              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white tabular-nums">
-                1/{item.images.length}
-              </span>
-            )}
-          </div>
-        ) : null}
-        <h2 className="mt-0">{item.name}</h2>
-        {/* Text, never a link: the card is one click target (ADR-0005), so a
-            nested anchor would be invalid HTML and a keyboard trap. Truncated
-            because a path is unbounded in width and a card is ~200px; `title`
-            keeps the whole of it readable. */}
-        {item.location ? (
-          <p className="truncate" title={locationLabel} data-testid="item-location">
-            {locationLabel}
-          </p>
-        ) : null}
-        {item.tags.map((tag) => (
-          <Badge key={tag.id} color={tag.color} className="mr-1">
-            {tag.name}
-          </Badge>
-        ))}
-        {searchTerm.trim() && item.snippet ? (
-          <p className="mt-2 text-text-muted text-sm" data-testid="item-snippet">
-            {item.snippet}
-          </p>
-        ) : null}
-      </Link>
-      {/* The checkbox lives **outside** the link, in the card's footer, and that is
-          not cosmetic: the whole card above is one `<a>`, and a checkbox nested
-          inside an anchor is interactive content inside interactive content —
-          invalid, and different in every browser. The drafts card puts its own
-          checkbox here for the same reason. */}
+      <div className="p-3">
+        <Link to={`/items/${item.id}`} aria-label={item.name} className="block no-underline text-inherit">
+          {hasPhoto ? (
+            <div className="relative mb-3">
+              {/* `aspect-square` rather than a fixed `h-32`: a fixed height is a
+                  4:1 strip at one column and a 1:1 box at six, so the photo was
+                  cropped by a different amount at every width. A square is the
+                  same shape everywhere, and `object-contain` shows the whole photo
+                  inside it with the mat filling what is left. */}
+              <img
+                src={'/file/' + photo.thumbPath}
+                alt=""
+                className="w-full aspect-square object-contain rounded-md bg-black"
+              />
+              {/* How many photos there are to look at, only when there is more than
+                  one. It reads "1/" because a card shows the primary, and the
+                  primary is position 1 of the order the surface uses — so this is
+                  the number you land on when you open the card. */}
+              {item.images.length > 1 && (
+                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white tabular-nums">
+                  1/{item.images.length}
+                </span>
+              )}
+            </div>
+          ) : null}
+          {/* An item with no photo has nothing above the title, and the title
+              toggles — so without this the card would have no way to open it. */}
+          {hasPhoto ? null : text}
+        </Link>
+        <h2 className="mt-0">
+          {/* A `<label>`, so the toggle is the browser's own: clicking the name
+              activates the checkbox in the footer. No click handler, no second
+              focus stop, and it works on a dark card at 200px wide. */}
+          <label htmlFor={checkboxId} className="cursor-pointer">
+            {item.name}
+          </label>
+        </h2>
+        {hasPhoto ? text : null}
+      </div>
+      {/* The checkbox lives **outside** the link, in the card's footer. The whole
+          photo above is an `<a>`, and a checkbox nested inside an anchor is
+          interactive content inside interactive content — invalid, and different
+          in every browser. The drafts card puts its own checkbox here for the same
+          reason. */}
       {/* A `<label>` wraps the box, so the whole footer row is the hit target
           rather than a 13px square — clicking a label activates the control it
           contains, and the `aria-label` below still gives it its name. */}
       <label className="flex cursor-pointer items-center border-t border-border px-3 py-2">
         <input
+          id={checkboxId}
           type="checkbox"
           checked={selected}
           onChange={(event) => onSelect(item.id, event.target.checked)}
-          // The card's visible name is inside the link and is not a `<label>` for
-          // this, so the accessible name is stated outright.
+          // The title's label is the other hit target for this control, and this
+          // is the name both of them announce it by.
           aria-label={`Select ${item.name}`}
         />
       </label>

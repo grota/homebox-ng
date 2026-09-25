@@ -150,6 +150,24 @@ export function ItemsPage() {
     setCriteria(null)
   }
 
+  // Trashing is recoverable (ADR-0004), so this asks — the same question the item
+  // page asks for one item (and the trash page for a purge), with a count, because
+  // a selection can be the whole catalog.
+  const trashSelected = trpc.items.trashMany.useMutation({
+    onSuccess: () => {
+      // The items are gone from the catalog, and so is anything selected: leaving
+      // the set behind would show a count of things that are no longer there.
+      clearSelection()
+      utils.items.list.invalidate()
+    },
+  })
+
+  const trashSelection = async () => {
+    const count = selected.size
+    if (!confirm(`Move ${count} ${count === 1 ? 'item' : 'items'} to the trash?`)) return
+    await trashSelected.mutateAsync({ ids: [...selected] })
+  }
+
   const { data, isLoading } = trpc.items.list.useQuery({
     page,
     pageSize: PAGE_SIZE,
@@ -359,6 +377,11 @@ export function ItemsPage() {
                 }}
               />
             </Popover>
+            {/* Right of "Apply to selection", because both act on the selection as
+                a whole — the panel edits it, this ends it. */}
+            <Button size="sm" disabled={trashSelected.isPending} onClick={() => void trashSelection()}>
+              Trash selected
+            </Button>
             {/* A toggle, so it says which state it is in with the accent — but
                 bordered rather than ghost when off, for the same reason as the
                 rest of the row. */}

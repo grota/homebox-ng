@@ -18,6 +18,7 @@ const state = vi.hoisted(() => ({
 }))
 
 const resolveFetch = vi.hoisted(() => vi.fn(async () => state.resolved))
+const trashManyMutate = vi.hoisted(() => vi.fn(async (input: { ids: number[] }) => input))
 
 vi.mock('../src/api/trpc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/api/trpc')>()
@@ -36,6 +37,20 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         },
       }),
       items: {
+        // `onSuccess` is honoured, unlike the other mocks in this suite: the page
+        // clears the selection there, and that is half of what the Trash action
+        // has to do — the rest of it is the call itself.
+        trashMany: {
+          useMutation: (options?: { onSuccess?: () => void }) => ({
+            mutateAsync: async (input: { ids: number[] }) => {
+              const result = await trashManyMutate(input)
+              options?.onSuccess?.()
+              return result
+            },
+            isPending: false,
+            error: null,
+          }),
+        },
         list: {
           useQuery: (input: any) => {
             state.lastInput = input
@@ -123,6 +138,47 @@ describe('selecting items on the catalog', () => {
     fireEvent.click(box('Select Brass Lamp').closest('label')!)
 
     expect(screen.getByText('1 selected')).toBeInTheDocument()
+  })
+
+  // And from the title, which is a `<label>` for the same box. The name is the
+  // biggest thing on the card, so it is the target that needs no aiming at all.
+  it('toggles from the card title', () => {
+    renderCatalog()
+
+    fireEvent.click(screen.getByText('Brass Lamp'))
+
+    expect(box('Select Brass Lamp')).toBeChecked()
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+  })
+
+  // A whole selection at once, in one call — and it asks first, the same question
+  // the item page asks for one item. Trashing is recoverable (ADR-0004), which is
+  // why the question is all it asks.
+  it('trashes the whole selection, after asking', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderCatalog()
+    fireEvent.click(box('Select Brass Lamp'))
+    fireEvent.click(box('Select Oak Table'))
+
+    press('Trash selected')
+
+    await waitFor(() => expect(trashManyMutate).toHaveBeenCalledWith({ ids: [1, 2] }))
+    // The selection is gone with the items: a count of things no longer in the
+    // catalog would be a lie.
+    await waitFor(() => expect(screen.queryByText('2 selected')).not.toBeInTheDocument())
+    confirmSpy.mockRestore()
+  })
+
+  it('trashes nothing when the question is declined', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderCatalog()
+    fireEvent.click(box('Select Brass Lamp'))
+
+    press('Trash selected')
+
+    expect(trashManyMutate).not.toHaveBeenCalled()
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+    confirmSpy.mockRestore()
   })
 
   // The label carries the count because "all" does not mean "this page".

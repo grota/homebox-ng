@@ -33,6 +33,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         tags: { list: { invalidate: vi.fn() } },
       }),
       items: {
+        trashMany: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
         list: {
           useQuery: () => ({
             data: {
@@ -322,10 +323,10 @@ describe('catalog pages', () => {
     expect(screen.getByRole('link', { name: 'New item' })).toHaveAttribute('href', '/items/new')
   })
 
-  // The card split into two targets while the photo opened a lightbox and the
-  // name opened the item page. The item surface is a page now, so both lead to
-  // the same place and the card went back to being one link (ADR-0005).
-  it('links the whole card, photo included, to the item', () => {
+  // The card was two targets while the photo opened a lightbox and the name opened
+  // the item page, then one when both led to the same page (ADR-0005). It is two
+  // again: the photo opens the item, the title toggles the selection.
+  it('links the photo, and only the photo, to the item', () => {
     render(<AppProviders><ItemsPage /></AppProviders>)
     const link = screen.getByRole('link', { name: 'Lamp' })
     expect(link).toHaveAttribute('href', '/items/1')

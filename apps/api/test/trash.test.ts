@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
-import { listTrash, trashItem, restoreItem, purgeItem, purgeAll } from '../src/modules/trash/service'
+import { listTrash, trashItem, trashItems, restoreItem, purgeItem, purgeAll } from '../src/modules/trash/service'
 import { listDrafts } from '../src/modules/drafts/service'
 import { createItem as repoCreateItem, getItem } from '../src/modules/items/repo'
 import { createItemsFromImage } from '../src/modules/unpack/service'
@@ -147,13 +147,33 @@ describe('trash lifecycle', () => {
 
     expect(listTrash(ctx.db).items.map((t) => t.id)).toEqual([b])
   })
+
+  // The catalog's selection trashes in one call. Nothing is thrown for a row that
+  // is already where this is putting it — a re-trash would restamp `trashedAt` and
+  // move the item up the trash page, and a row that is gone would abort the batch.
+  it('trashes a whole selection, skipping what is already trashed or gone', () => {
+    const ctx = setup()
+    const a = makeCatalogItem(ctx, 'Kettle')
+    const b = makeCatalogItem(ctx, 'Toaster')
+    const c = makeCatalogItem(ctx, 'Blender')
+    const trashed = makeCatalogItem(ctx, 'Gone')
+    trashItem(ctx.db, b)
+    const before = getItem(ctx.db, b)!.trashedAt
+
+    trashItems(ctx.db, [a, b, c, trashed])
+    purgeItem(ctx.db, trashed, ctx.dataDir)
+    trashItems(ctx.db, [trashed])
+
+    expect(listTrash(ctx.db).items.map((t) => t.id).sort()).toEqual([a, b, c].sort())
+    expect(getItem(ctx.db, b)!.trashedAt).toEqual(before)
+  })
 })
 
 // The HTTP surface, which the unit tests above do not touch: the procedures are
 // wired, the write path records a timestamp the page can render, and
 // `trash.list` returns the paginated envelope the page reads.
 describe('trash over tRPC', () => {
-  it('trashes an item, lists it, and restores it', async () => {
+  it('trashes items one at a time and as a selection, lists them, and restores them', async () => {
     process.env.SESSION_SECRET = 'test-secret'
     const db = createDb(':memory:')
     runMigrations(db)
@@ -183,6 +203,16 @@ describe('trash over tRPC', () => {
       expect(restored.statusCode).toBe(200)
       const after = (await app.inject({ method: 'GET', url: listUrl, headers: { cookie } })).json().result.data
       expect(after.total).toBe(0)
+
+      // The bulk form the catalog's selection uses: many ids in one call, and an
+      // empty selection refused rather than read as "everything".
+      const second = (await app.inject({ method: 'POST', url: '/trpc/items.create', headers: { cookie }, payload: { name: 'Toaster', itemTypeId: type.id, locationId: null, quantity: 1 } })).json().result.data
+      const bulk = await app.inject({ method: 'POST', url: '/trpc/items.trashMany', headers: { cookie }, payload: { ids: [item.id, second.id] } })
+      expect(bulk.statusCode).toBe(200)
+      expect((await app.inject({ method: 'GET', url: listUrl, headers: { cookie } })).json().result.data.total).toBe(2)
+
+      const empty = await app.inject({ method: 'POST', url: '/trpc/items.trashMany', headers: { cookie }, payload: { ids: [] } })
+      expect(empty.statusCode).toBe(400)
     } finally {
       await app.close()
     }

@@ -2,10 +2,11 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
-// The card's whole non-image surface is a link. `catalog.test.tsx` renders a
-// single bare item (no location, no type, no tags), so "everything but the photo
-// navigates" is not assertable there; this file mocks a fully populated card and
-// renders the page under a router so a click can be followed to the detail route.
+// The card's photo is a link and its title is the selection toggle. The title used
+// to be a third of the one link every part of the card rode in (ADR-0005), which is
+// why this file mocks a fully populated card: what left the link and what stayed is
+// the subject, and `catalog.test.tsx` renders a single bare item where the split is
+// not assertable.
 vi.mock('../src/api/trpc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/api/trpc')>()
   return {
@@ -16,6 +17,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
         items: { list: { invalidate: vi.fn() }, get: { invalidate: vi.fn() } },
       }),
       items: {
+        trashMany: { useMutation: () => ({ mutateAsync: vi.fn(async (x: any) => x), isPending: false, error: null }) },
         list: {
           useQuery: () => ({
             data: {
@@ -78,12 +80,10 @@ const renderCatalog = () =>
 const itemLink = () => screen.getByRole('link', { name: 'Brass Lamp' })
 
 describe('catalog card click targets', () => {
-  // The card is ONE target again. It was two while the photo opened a lightbox
-  // and the name opened the item page — two destinations because there were two
-  // places to see an item. There is one now (ADR-0005), so the photo, the fields
-  // and the snippet all ride inside the link, and no interactive element sits
-  // inside an anchor.
-  it('puts the whole card, the photo included, inside the one link', () => {
+  // The card is two targets: the photo opens the item and the title picks it. It
+  // was one (ADR-0005) while both halves led to the same page, and the title took
+  // over the toggle because a 13px box in the footer was the only way to select.
+  it('puts the photo inside the card link, and the fields outside it', () => {
     renderCatalog()
 
     expect(itemLink()).toHaveAttribute('href', '/items/7')
@@ -91,16 +91,35 @@ describe('catalog card click targets', () => {
     // name sits directly beneath it, so it has no `img` role to query.
     expect(itemLink().querySelector('img')).toHaveAttribute('src', expect.stringContaining('/file/'))
 
-    // Location, tags and the search snippet are card content, so they ride inside
-    // the link rather than sitting next to it as dead space.
+    // Location, tags and the search snippet are card content, but they are text
+    // now — the title is what toggles, so the fields would be a second destination
+    // sitting inside the anchor.
     //
     // The item type is deliberately absent: a card is for recognising a thing, and
     // the type is a classification you look at once you have opened it.
+    const card = screen.getByTestId('item-location').closest('div')!
     for (const text of ['Living Room', 'vintage']) {
-      expect(within(itemLink()).getByText(text)).toBeInTheDocument()
+      expect(within(card).getByText(text)).toBeInTheDocument()
+      expect(within(itemLink()).queryByText(text)).not.toBeInTheDocument()
     }
     expect(within(itemLink()).queryByText('Lighting')).not.toBeInTheDocument()
-    expect(within(itemLink()).getByTestId('item-snippet')).toBeInTheDocument()
+    expect(within(card).getByTestId('item-snippet')).toBeInTheDocument()
+    // The title is the toggle, so it leads out of the link too.
+    expect(itemLink()).not.toHaveTextContent('Brass Lamp')
+  })
+
+  // The title is a `<label>` for the checkbox in the footer, so the browser does the
+  // toggling: no click handler, and the whole name is the hit target rather than a
+  // 13px square.
+  it('toggles the checkbox from the card title', () => {
+    renderCatalog()
+    const box = screen.getByRole('checkbox', { name: 'Select Brass Lamp' })
+    expect(box).not.toBeChecked()
+
+    fireEvent.click(screen.getByText('Brass Lamp'))
+
+    expect(box).toBeChecked()
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
   })
 
   // How many photos there are to look at. It reads "1/" because a card shows the
@@ -122,10 +141,10 @@ describe('catalog card click targets', () => {
     expect(itemLink().querySelector('img')).toHaveAttribute('src', '/file/uploads/thumbs/cover.jpg')
   })
 
-  it('navigates on a click on the card content', () => {
+  it('navigates on a click on the photo', () => {
     renderCatalog()
 
-    fireEvent.click(within(itemLink()).getByText('Living Room'))
+    fireEvent.click(itemLink())
 
     expect(screen.getByText('DETAIL')).toBeInTheDocument()
   })
