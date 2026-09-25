@@ -5,8 +5,7 @@ import { trpc } from '../../api/trpc'
 import { Button, Card, Modal, Pagination, PhotoViewer } from '../../ui'
 import { usePhotoIndex } from '../../lib/photoIndex'
 import { flattenLocations, locationPathLabel } from '../../lib/locationPath'
-
-const PAGE_SIZE = 20
+import { useUserSettings } from '../../lib/settings/useUserSettings'
 
 // Stable identity, so the peek's memo does not see a new array every render while
 // nothing is being peeked at.
@@ -33,7 +32,9 @@ export function TrashPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const page = Math.max(1, Number(params.get('page')) || 1)
-  const { data, isLoading } = trpc.trash.list.useQuery({ page, pageSize: PAGE_SIZE })
+  // The window is the user's `itemsPerPage` preference; see the items page's note.
+  const { itemsPerPage } = useUserSettings()
+  const { data, isLoading } = trpc.trash.list.useQuery({ page, pageSize: itemsPerPage })
   // The location tree, so a row can say where the thing came from as a path — which
   // is what tells you whether restoring it is right.
   const locations = trpc.locations.list.useQuery()
@@ -49,7 +50,7 @@ export function TrashPage() {
 
   const rows = data?.items ?? []
   const total = data?.total ?? 0
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const pageCount = Math.max(1, Math.ceil(total / itemsPerPage))
 
   const peekItem = rows.find((row) => row.id === peekId) ?? null
   const peek = usePhotoIndex(peekItem?.images ?? NO_PHOTOS, peekId)
@@ -149,7 +150,7 @@ export function TrashPage() {
         </>
       )}
 
-      <Pagination page={page} total={total} pageSize={PAGE_SIZE} onPage={goTo} />
+      <Pagination page={page} total={total} pageSize={itemsPerPage} onPage={goTo} />
 
       {/* A peek, not a surface: it is opened from a list you are returning to, so
           it is the one place an overlay is still the right container (ADR-0005).

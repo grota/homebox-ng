@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useUserSettings, useTrashConfirmation } from '../../lib/settings/useUserSettings'
 import { trpc } from '../../api/trpc'
 import { Button, Card, Input, Pagination } from '../../ui'
 import { UnpackModal } from './UnpackModal'
 import { flattenLocations, locationPathLabel } from '../../lib/locationPath'
 
-// Sent explicitly so the request that produced `total` and the control that reads
-// it cannot disagree about the window — the same agreement the items page makes.
-const PAGE_SIZE = 20
-
 export function DraftsPage() {
   const { t } = useTranslation()
+  // The window is the user's `itemsPerPage` preference; see the items page's note.
+  const { itemsPerPage } = useUserSettings()
+  // Whether this user wants to be asked before a move-to-trash, at all three
+  // sites on this page.
+  const askTrash = useTrashConfirmation()
   const utils = trpc.useUtils()
   const navigate = useNavigate()
   // `UnpackModal.onUnpacked` below writes `?detected=<n>`, and this is the other
@@ -34,7 +36,7 @@ export function DraftsPage() {
   // The page lives in the URL, like the items page, so a refresh or a Back keeps
   // it and the two pages behave the same way.
   const page = Math.max(1, Number(params.get('page')) || 1)
-  const { data, isLoading } = trpc.drafts.list.useQuery({ page, pageSize: PAGE_SIZE })
+  const { data, isLoading } = trpc.drafts.list.useQuery({ page, pageSize: itemsPerPage })
   // The location tree, so a draft's line can show its whole path rather than the
   // leaf name — the same argument the catalog card makes.
   const locations = trpc.locations.list.useQuery()
@@ -65,7 +67,7 @@ export function DraftsPage() {
   const rows = data?.items ?? []
   const total = data?.total ?? 0
   const allSelected = rows.length > 0 && selected.size === rows.length
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const pageCount = Math.max(1, Math.ceil(total / itemsPerPage))
 
   const setPage = (next: number) => {
     const q = new URLSearchParams(params)
@@ -149,7 +151,7 @@ export function DraftsPage() {
           variant="danger"
           disabled={selected.size === 0}
           onClick={() => {
-            if (window.confirm(t('drafts.trashSelectedConfirm', { count: selected.size }))) void trashAll.mutateAsync({ ids: [...selected] })
+            if (askTrash(t('drafts.trashSelectedConfirm', { count: selected.size }))) void trashAll.mutateAsync({ ids: [...selected] })
           }}
         >
           {t('drafts.trashSelected')}
@@ -166,7 +168,7 @@ export function DraftsPage() {
         <Button
           variant="danger"
           onClick={() => {
-            if (window.confirm(t('drafts.trashAllConfirm', { count: total }))) void trashAll.mutateAsync({})
+            if (askTrash(t('drafts.trashAllConfirm', { count: total }))) void trashAll.mutateAsync({})
           }}
         >
           {t('drafts.trashAll', { count: total })}
@@ -225,7 +227,17 @@ export function DraftsPage() {
                 <div className="mt-auto flex flex-wrap items-center gap-2">
                   <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />
                   <Button onClick={() => void publish.mutateAsync({ id: d.id })}>{t('drafts.publish')}</Button>
-                  <Button variant="danger" onClick={() => void trashOne.mutateAsync({ id: d.id })}>{t('drafts.trash')}</Button>
+                  {/* The row's own move-to-trash used to be the one site that never
+                      asked. It asks on the same setting as the other two, which is
+                      the point of the setting being "every move-to-trash". */}
+                  <Button
+                    variant="danger"
+                    onClick={() => {
+                      if (askTrash(t('drafts.trashConfirm', { name: d.name }))) void trashOne.mutateAsync({ id: d.id })
+                    }}
+                  >
+                    {t('drafts.trash')}
+                  </Button>
                 </div>
               </Card>
             </li>
@@ -233,7 +245,7 @@ export function DraftsPage() {
         })}
       </ul>
 
-      <Pagination page={page} total={total} pageSize={PAGE_SIZE} onPage={setPage} />
+      <Pagination page={page} total={total} pageSize={itemsPerPage} onPage={setPage} />
     </div>
   )
 }

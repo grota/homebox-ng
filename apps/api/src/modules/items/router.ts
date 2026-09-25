@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { itemInput, ITEM_SORTS } from '@homebox/shared'
+import { itemInput, ITEM_SORTS, ITEMS_PER_PAGE_MAX, ITEMS_PER_PAGE_MIN } from '@homebox/shared'
 import { t, protectedProcedure } from '../../trpc.js'
 import * as service from './service.js'
 import * as trashService from '../trash/service.js'
@@ -26,7 +26,10 @@ const updateItemInput = z.object({
 const idInput = z.object({ id: z.number().int().positive() })
 const listInput = z.object({
   page: z.number().int().positive().optional(),
-  pageSize: z.number().int().positive().optional(),
+  // Bounded to the same window the `itemsPerPage` preference can hold: the two
+  // ends of the wire have to agree on what a legal page size is, and without the
+  // ceiling a hand-made request could ask for the whole catalog at once.
+  pageSize: z.number().int().min(ITEMS_PER_PAGE_MIN).max(ITEMS_PER_PAGE_MAX).optional(),
   search: z.string().optional(),
   // A location id selects that location's **whole subtree** (ADR-0009), and
   // `'none'` selects the items with no location at all.

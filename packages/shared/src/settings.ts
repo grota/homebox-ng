@@ -47,6 +47,19 @@ export type ItemSortPreference = (typeof ITEM_SORT_PREFERENCES)[number]
 
 export const DEFAULT_ITEM_SORT: ItemSortPreference = 'createdAt:desc'
 
+// How many rows a page of a paged list holds — the catalog, the drafts, the
+// trash. A per-user preference for `itemsSort`'s reason: how much of a list you
+// want in front of you at once is yours, not the instance's.
+//
+// The bound is shared rather than local to the field, because both ends of the
+// wire have to agree on what a legal window is: this is what the settings field
+// refuses to store, and the same numbers are what the list procedures refuse to
+// be asked for, so a hand-made request cannot ask for a window the stored
+// preference could never hold.
+export const ITEMS_PER_PAGE_MIN = 1
+export const ITEMS_PER_PAGE_MAX = 100
+export const DEFAULT_ITEMS_PER_PAGE = 20
+
 export const userSettingsSchema = z.object({
   language: z.enum(LANGUAGES),
   locale: z.enum(LOCALES),
@@ -54,6 +67,12 @@ export const userSettingsSchema = z.object({
   lightThemeId: z.string().min(1),
   darkThemeId: z.string().min(1),
   itemsSort: z.enum(ITEM_SORT_PREFERENCES),
+  itemsPerPage: z.number().int().min(ITEMS_PER_PAGE_MIN).max(ITEMS_PER_PAGE_MAX),
+  // Ask before moving anything to the trash. Defaults to `false` — off — so the
+  // trash acts immediately unless the user opts into being asked. It governs
+  // *every* move-to-trash (the catalog's selection, a draft, one item), which is
+  // why it lives here rather than beside any one of those buttons.
+  confirmTrash: z.boolean(),
 })
 export type UserSettingsDto = z.infer<typeof userSettingsSchema>
 
@@ -70,6 +89,8 @@ export const DEFAULT_USER_SETTINGS: UserSettingsDto = {
   lightThemeId: 'light-default',
   darkThemeId: 'dark-default',
   itemsSort: DEFAULT_ITEM_SORT,
+  itemsPerPage: DEFAULT_ITEMS_PER_PAGE,
+  confirmTrash: false,
 }
 
 // Detection provider selection. `DETECTION_PROVIDERS[number]` is the value stored

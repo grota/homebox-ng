@@ -26,7 +26,7 @@ describe('settings module', () => {
     expect(res.json().result.data).toEqual({
       language: 'en', locale: 'en-US', themeMode: 'auto',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
-      itemsSort: 'createdAt:desc',
+      itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false,
     })
   })
 
@@ -36,7 +36,7 @@ describe('settings module', () => {
     expect(res.json().result.data).toEqual({
       language: 'en', locale: 'de-DE', themeMode: 'dark',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
-      itemsSort: 'createdAt:desc',
+      itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false,
     })
     // A second update is additive and keeps a single row (upsert, not duplicate).
     const second = await UPDATE({ language: 'en' })
@@ -72,5 +72,33 @@ describe('settings module', () => {
     const res = await UPDATE({ itemsSort: 'relevance' })
 
     expect(res.statusCode).toBe(400)
+  })
+
+  // The page size is bounded at *both* ends, and by the same window the list
+  // procedures accept: a stored 0 has nothing to page, and a stored 5000 asks the
+  // server for the whole catalog at once.
+  it('stores a page size inside its bounds, and refuses one outside them', async () => {
+    const updated = await UPDATE({ itemsPerPage: 50 })
+    expect(updated.statusCode).toBe(200)
+    expect(updated.json().result.data.itemsPerPage).toBe(50)
+    // Stored, not just echoed back.
+    expect((await GET()).json().result.data.itemsPerPage).toBe(50)
+
+    for (const bad of [0, -1, 101, 2.5]) {
+      expect((await UPDATE({ itemsPerPage: bad })).statusCode).toBe(400)
+    }
+    // The refused writes wrote nothing — the stored value is still the good one.
+    expect((await GET()).json().result.data.itemsPerPage).toBe(50)
+  })
+
+  // Asking first is opt-in: the trash is recoverable (ADR-0004), so the default is
+  // to act immediately and the checkbox is what turns the question on.
+  it('defaults the trash confirmation off, and stores it on', async () => {
+    expect((await GET()).json().result.data.confirmTrash).toBe(false)
+
+    const updated = await UPDATE({ confirmTrash: true })
+    expect(updated.statusCode).toBe(200)
+    expect(updated.json().result.data.confirmTrash).toBe(true)
+    expect((await GET()).json().result.data.confirmTrash).toBe(true)
   })
 })

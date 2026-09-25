@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `confirm_trash` integer DEFAULT false NOT NULL;

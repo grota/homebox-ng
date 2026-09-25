@@ -57,6 +57,20 @@
       "when": 1789843859018,
       "tag": "0007_steep_cardiac",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790350817033,
+      "tag": "0008_volatile_maria_hill",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790351035694,
+      "tag": "0009_small_zaran",
+      "breakpoints": true
     }
   ]
 }

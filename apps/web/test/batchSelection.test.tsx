@@ -20,6 +20,19 @@ const state = vi.hoisted(() => ({
 const resolveFetch = vi.hoisted(() => vi.fn(async () => state.resolved))
 const trashManyMutate = vi.hoisted(() => vi.fn(async (input: { ids: number[] }) => input))
 
+// The `confirmTrash` preference the items page's "Trash selected" reads. `false`
+// is what the API ships; the cases that assert the question opt in.
+const settings = vi.hoisted(() => ({ confirmTrash: false, itemsPerPage: 20 }))
+
+vi.mock('../src/lib/settings/useUserSettings', () => ({
+  useUserSettings: () => ({ ...settings, updateSettings: vi.fn() }),
+  // The rule, spelled out rather than imported: `vi.mock` replaces what *importers*
+  // see, so the real helper — whose call to `useUserSettings` is internal to its own
+  // module — would keep reading the real (default) settings and never see the flag
+  // above. One line, and the drafts page's suite covers the same rule on its side.
+  useTrashConfirmation: () => (message: string) => !settings.confirmTrash || window.confirm(message),
+}))
+
 vi.mock('../src/api/trpc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/api/trpc')>()
   const items = [
@@ -116,6 +129,9 @@ beforeEach(() => {
   state.lastInput = null
   state.resolved = { ids: [], total: 0 }
   state.criteriaQuery = null
+  // Off, as the API ships it: a case that asserts the question opts in.
+  settings.confirmTrash = false
+  settings.itemsPerPage = 20
   vi.clearAllMocks()
 })
 
@@ -151,10 +167,34 @@ describe('selecting items on the catalog', () => {
     expect(screen.getByText('1 selected')).toBeInTheDocument()
   })
 
-  // A whole selection at once, in one call — and it asks first, the same question
-  // the item page asks for one item. Trashing is recoverable (ADR-0004), which is
-  // why the question is all it asks.
+  // The window is the `itemsPerPage` preference, not a constant: the setting is
+  // what decides how much of the list is on screen, and the pagination arithmetic
+  // has to follow it or the Next guard and the request would disagree.
+  it('takes the page window from the preference, and paginates by it', () => {
+    settings.itemsPerPage = 1
+    renderCatalog()
+
+    // Two items in this fixture, so one per page is two pages.
+    expect(state.lastInput.pageSize).toBe(1)
+    expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
+  })
+
+  // Two items in this fixture, so a wider window fits them on one page — and the
+  // control hides itself rather than rendering a disabled Prev/Next pair.
+  it('can show a wider window without paging', () => {
+    settings.itemsPerPage = 100
+    renderCatalog()
+
+    expect(state.lastInput.pageSize).toBe(100)
+    // Both rows on one page, so the control hides itself — a disabled Prev/Next
+    // pair is noise, not information.
+    expect(screen.queryByText(/^Page \d+ of \d+$/)).not.toBeInTheDocument()
+  })
+
+  // A whole selection at once, in one call — and with the preference on, it asks
+  // first, the same question the item page asks for one item.
   it('trashes the whole selection, after asking', async () => {
+    settings.confirmTrash = true
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     renderCatalog()
     fireEvent.click(box('Select Brass Lamp'))
@@ -162,6 +202,7 @@ describe('selecting items on the catalog', () => {
 
     press('Trash selected')
 
+    expect(confirmSpy).toHaveBeenCalledWith('Move 2 items to the trash?')
     await waitFor(() => expect(trashManyMutate).toHaveBeenCalledWith({ ids: [1, 2] }))
     // The selection is gone with the items: a count of things no longer in the
     // catalog would be a lie.
@@ -170,6 +211,7 @@ describe('selecting items on the catalog', () => {
   })
 
   it('trashes nothing when the question is declined', () => {
+    settings.confirmTrash = true
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
     renderCatalog()
     fireEvent.click(box('Select Brass Lamp'))
@@ -178,6 +220,21 @@ describe('selecting items on the catalog', () => {
 
     expect(trashManyMutate).not.toHaveBeenCalled()
     expect(screen.getByText('1 selected')).toBeInTheDocument()
+    confirmSpy.mockRestore()
+  })
+
+  // The default: nothing is asked and the trash acts. Being asked is the opt-in,
+  // because the trash is recoverable (ADR-0004).
+  it('trashes without asking when the preference is off', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    renderCatalog()
+    fireEvent.click(box('Select Brass Lamp'))
+
+    press('Trash selected')
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    await waitFor(() => expect(trashManyMutate).toHaveBeenCalledWith({ ids: [1] }))
+    expect(screen.queryByText('1 selected')).not.toBeInTheDocument()
     confirmSpy.mockRestore()
   })
 

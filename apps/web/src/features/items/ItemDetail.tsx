@@ -7,6 +7,7 @@ import { PhotoEditor } from '../upload/PhotoEditor'
 import { ManualUnpackModal } from '../drafts/ManualUnpackModal'
 import { ItemForm } from './ItemForm'
 import { ItemPanel } from './ItemPanel'
+import { useTrashConfirmation } from '../../lib/settings/useUserSettings'
 
 // A stable empty array, so `usePhotoIndex`'s memo does not see a new one every
 // render while the query is still loading.
@@ -31,6 +32,8 @@ export function ItemDetail() {
   // the form, and Back leave it.
   const editing = location.pathname.endsWith('/edit')
   const utils = trpc.useUtils()
+  // Whether this user wants to be asked before a move-to-trash.
+  const askTrash = useTrashConfirmation()
   const { data: item, isLoading } = trpc.items.get.useQuery({ id: itemId })
 
   // Every mutation below re-reads the item, which is what the carousel renders.
@@ -300,7 +303,9 @@ export function ItemDetail() {
           onClose={() => setPanelOpen(false)}
           onEdit={() => navigate(`/items/${itemId}/edit`)}
           onTrash={() => {
-            if (confirm(`Move "${item.name}" to the trash?`)) trashItem.mutate({ id: itemId })
+            // The one trash site outside the list pages, and it follows the same
+            // preference: `useTrashConfirmation` is what "ask me first" means.
+            if (askTrash(`Move "${item.name}" to the trash?`)) trashItem.mutate({ id: itemId })
           }}
           onPhotoAdded={setPendingPhoto}
         />

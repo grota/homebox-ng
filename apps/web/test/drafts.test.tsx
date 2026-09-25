@@ -11,15 +11,34 @@ vi.mock('react-i18next', () => ({
   // `{count}`. `unpackedNone` has no count to interpolate, so it is passed
   // through the same `replace` unchanged.
   useTranslation: () => ({
-    t: (k: string, opts?: { count?: number }) => {
+    t: (k: string, opts?: { count?: number; name?: string }) => {
       const message =
         k === 'drafts.trashSelectedConfirm' ? en.drafts.trashSelectedConfirm
+        : k === 'drafts.trashConfirm' ? en.drafts.trashConfirm
         : k === 'drafts.unpacked' ? en.drafts.unpacked
         : k === 'drafts.unpackedNone' ? en.drafts.unpackedNone
         : null
-      return message ? message.replace('{{count}}', String(opts?.count)) : k
+      return message ? message.replace('{{count}}', String(opts?.count)).replace('{{name}}', String(opts?.name)) : k
     },
   }),
+}))
+
+// The two per-user preferences this page now reads: whether a move-to-trash asks
+// (`false` is what the API ships, and the cases that assert the question opt in)
+// and how many drafts a page holds.
+const settings = vi.hoisted(() => ({ confirmTrash: false, itemsPerPage: 20 }))
+
+vi.mock('../src/lib/settings/useUserSettings', () => ({
+  useUserSettings: () => ({
+    itemsPerPage: settings.itemsPerPage,
+    confirmTrash: settings.confirmTrash,
+    updateSettings: vi.fn(),
+  }),
+  // The rule, spelled out rather than imported: `vi.mock` replaces what *importers*
+  // see, so the real helper — whose call to `useUserSettings` is internal to its own
+  // module — would keep reading the real (default) settings and never see the flag
+  // above. One line, and it is the line under test on the items page.
+  useTrashConfirmation: () => (message: string) => !settings.confirmTrash || window.confirm(message),
 }))
 
 // The draft rows returned by `trpc.drafts.list`; reassigned per test so the
@@ -34,6 +53,13 @@ let typeData: { id: number; name: string; fields: never[] }[] = []
 // button sends. Reaching it from a test is the same deferred-reference pattern as
 // `draftData` below: the factory closes over it and only reads it at render.
 const trashAllMutate = vi.fn()
+
+// What the list was asked for — the window is a settings preference now, not a
+// constant, so the request is the thing to assert it on.
+let lastListInput: { page: number; pageSize: number } | null = null
+
+// The single-row trash's, so the row button can be asserted the same way.
+const trashOneMutate = vi.fn()
 
 // The bulk-publish action's, for the same reason: it also clears the selection
 // on success now, and that is only assertable if the callback is wired through.
@@ -84,7 +110,12 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       drafts: {
         // The paginated envelope `drafts.list` returns: one page plus the
         // unpaginated total. `total` is derived so a case only sets the rows.
-        list: { useQuery: () => ({ data: { items: draftData, total: draftData.length }, isLoading: false }) },
+        list: {
+          useQuery: (input: { page: number; pageSize: number }) => {
+            lastListInput = input
+            return { data: { items: draftData, total: draftData.length }, isLoading: false }
+          },
+        },
         update: { useMutation: () => idleMutation },
         publish: { useMutation: () => idleMutation },
         publishAll: {
@@ -96,7 +127,14 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
             },
           }),
         },
-        trash: { useMutation: () => idleMutation },
+        trash: {
+          useMutation: () => ({
+            ...idleMutation,
+            mutateAsync: (input: unknown) => {
+              trashOneMutate(input)
+            },
+          }),
+        },
         trashAll: {
           // `onSuccess` is wired through to the test rather than dropped: the page
           // clears its selection there, and a stub that swallowed the callback
@@ -123,6 +161,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   typeData = []
   locationData = []
+  // Off, as the API ships it: a case that asserts the question opts in.
+  settings.confirmTrash = false
+  settings.itemsPerPage = 20
+  lastListInput = null
 })
 
 describe('drafts page', () => {
@@ -305,6 +347,21 @@ describe('drafts page', () => {
     expect(trashAllMutate).toHaveBeenCalledWith({})
   })
 
+  // The window is the `itemsPerPage` preference, so the drafts page honours the
+  // setting the same way the catalog does — and its pagination arithmetic follows.
+  it('takes the page window from the preference, and paginates by it', () => {
+    settings.itemsPerPage = 1
+    draftData = [draft(1, 'Draft Lamp'), draft(2, 'Draft Cup')]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+
+    expect(lastListInput?.pageSize).toBe(1)
+    expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
+  })
+
   it('renders the empty state when there are no drafts', () => {
     draftData = []
     render(
@@ -329,6 +386,7 @@ describe('drafts page', () => {
 
   it('confirms with the number of drafts before discarding, then sends the selected ids', () => {
     draftData = [draft(1, 'Draft Lamp'), draft(2, 'Draft Cup')]
+    settings.confirmTrash = true
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(
       <MemoryRouter>
@@ -343,6 +401,7 @@ describe('drafts page', () => {
 
   it('discards nothing when the confirmation is declined', () => {
     draftData = [draft(1, 'Draft Lamp')]
+    settings.confirmTrash = true
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     render(
       <MemoryRouter>
@@ -356,9 +415,64 @@ describe('drafts page', () => {
     expect(btn).toBeEnabled()
   })
 
+  // With the preference off (the default) nothing is asked, anywhere on the page.
+  it('moves to the trash without asking when the preference is off', () => {
+    draftData = [draft(1, 'Draft Lamp')]
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('checkbox', { name: 'drafts.selectAll' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'drafts.trashAll' }))
+    // The all-action clears the selection once it succeeds, so re-select before
+    // the second site — otherwise its button is disabled and the click is a no-op.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'drafts.selectAll' }))
+    fireEvent.click(screen.getByRole('button', { name: 'drafts.trashSelected' }))
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(trashAllMutate).toHaveBeenCalledWith({})
+    expect(trashAllMutate).toHaveBeenCalledWith({ ids: [1] })
+  })
+
+  // The row's own move-to-trash was the one site that never asked. It reads the
+  // same preference as the two bulk buttons — "every move-to-trash", not "the
+  // scary ones".
+  it('asks before trashing a single draft when the preference is on', () => {
+    draftData = [draft(1, 'Draft Lamp')]
+    settings.confirmTrash = true
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'drafts.trash' }))
+
+    expect(confirmSpy).toHaveBeenCalledWith('Move "Draft Lamp" to the trash?')
+    expect(trashOneMutate).not.toHaveBeenCalled()
+  })
+
+  it('trashes a single draft without asking when the preference is off', () => {
+    draftData = [draft(1, 'Draft Lamp')]
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'drafts.trash' }))
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(trashOneMutate).toHaveBeenCalledWith({ id: 1 })
+  })
+
   it('clears the selection once the discard succeeds', () => {
     draftData = [draft(1, 'Draft Lamp')]
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(
       <MemoryRouter>
         <DraftsPage />
@@ -393,6 +507,7 @@ describe('drafts page', () => {
     // Selecting through the select-all checkbox cannot tell those two apart, which
     // is why this case ticks a single row instead.
     draftData = [draft(1, 'Draft Lamp'), draft(2, 'Draft Cup')]
+    settings.confirmTrash = true
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(
       <MemoryRouter>

@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
-vi.mock('react-i18next', () => ({
+vi.mock('react-i18next', async (importOriginal) => ({
+  // Spread the real module: the page now reaches `lib/i18n` through
+  // `useUserSettings` → `SettingsProvider`, and that calls `initReactI18next`. A
+  // mock that leaves it out makes the import fail rather than the assertion.
+  ...(await importOriginal<typeof import('react-i18next')>()),
   // Keys come through as keys, which is what the assertions below read.
   useTranslation: () => ({ t: (k: string) => k, i18n: { language: 'en' } }),
 }))
@@ -18,6 +22,21 @@ const { restoreMutate, purgeMutate, purgeAllMutate, state } = vi.hoisted(() => (
 }))
 
 const setRows = (rows: unknown[]) => { state.rows = rows }
+
+// What the list was asked for: the window is a settings preference now, not a
+// constant, so the request is the thing to assert it on.
+let lastListInput: { page: number; pageSize: number } | null = null
+
+// The page-size preference. Module-scoped and mutable so a case can set the window
+// it wants; `useTrashConfirmation` is stubbed only so the import resolves, since
+// this page's confirms are purges and are deliberately not this preference's
+// business.
+const settings = vi.hoisted(() => ({ itemsPerPage: 20 }))
+
+vi.mock('../src/lib/settings/useUserSettings', () => ({
+  useUserSettings: () => ({ itemsPerPage: settings.itemsPerPage, updateSettings: vi.fn() }),
+  useTrashConfirmation: () => () => true,
+}))
 
 // The location tree the row's path is built from, read lazily by the mock factory
 // (which runs on import, after this declaration).
@@ -45,7 +64,12 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       useUtils: () => ({ trash: { list: { invalidate } } }),
       locations: { list: { useQuery: () => ({ data: locationData, isLoading: false }) } },
       trash: {
-        list: { useQuery: () => ({ data: { items: state.rows, total: state.rows.length }, isLoading: false }) },
+        list: {
+          useQuery: (input: { page: number; pageSize: number }) => {
+            lastListInput = input
+            return { data: { items: state.rows, total: state.rows.length }, isLoading: false }
+          },
+        },
         restore: { useMutation: mutation(restoreMutate) },
         purge: { useMutation: mutation(purgeMutate) },
         purgeAll: { useMutation: mutation(purgeAllMutate) },
@@ -66,9 +90,25 @@ const renderPage = () =>
 beforeEach(() => {
   vi.clearAllMocks()
   locationData = []
+  // The shipped default; the case below sets its own window.
+  settings.itemsPerPage = 20
+  lastListInput = null
 })
 
 describe('trash page', () => {
+  // The window is the `itemsPerPage` preference rather than a constant, and the
+  // pagination arithmetic has to follow it or the control and the request would
+  // disagree about how many pages there are.
+  it('takes the page window from the preference, and paginates by it', () => {
+    settings.itemsPerPage = 1
+    setRows([row({ id: 1 }), row({ id: 2, name: 'Kettle Two' })])
+
+    renderPage()
+
+    expect(lastListInput?.pageSize).toBe(1)
+    expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
+  })
+
   // Where a thing came from is what tells you whether restoring it is right — and
   // a leaf name does not say which `garage`.
   it("shows a trashed item's location as its path", () => {

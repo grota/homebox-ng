@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `items_per_page` integer DEFAULT 20 NOT NULL;

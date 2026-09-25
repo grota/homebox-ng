@@ -108,6 +108,16 @@ export const userSettings = sqliteTable('user_settings', {
   })
     .notNull()
     .default('createdAt:desc'),
+  // How many rows a page of a paged list holds (the catalog, the drafts, the
+  // trash) — per-user for the same reason as `items_sort`. The literal default
+  // and range mirror `DEFAULT_ITEMS_PER_PAGE` / `ITEMS_PER_PAGE_MIN|MAX` in
+  // `@homebox/shared`, which is what the wire validates against; this package
+  // depends on no other workspace package, so the numbers are spelled out here
+  // as `items_sort`'s list already is.
+  itemsPerPage: integer('items_per_page').notNull().default(20),
+  // Whether a move-to-trash asks first. Off by default: the trash is recoverable
+  // (ADR-0004), so asking is the opt-in, not the default.
+  confirmTrash: integer('confirm_trash', { mode: 'boolean' }).notNull().default(false),
 })
 
 export const instanceSettings = sqliteTable('instance_settings', {

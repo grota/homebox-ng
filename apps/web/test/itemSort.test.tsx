@@ -26,9 +26,13 @@ vi.mock('../src/lib/settings/useUserSettings', () => ({
     lightThemeId: 'light-default',
     darkThemeId: 'dark-default',
     itemsSort: state.itemsSort,
+    // The page sends this as the query's `pageSize`; 20 is the shipped default.
+    itemsPerPage: 20,
+    confirmTrash: false,
     formatDate: () => 'Sept 6, 2026',
     updateSettings,
   }),
+  useTrashConfirmation: () => () => true,
 }))
 
 vi.mock('../src/api/trpc', async (importOriginal) => {

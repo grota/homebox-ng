@@ -37,6 +37,7 @@
     "createOne": "Create an item type",
     "publish": "Publish",
     "trash": "Move to trash",
+  "trashConfirm": "Move \"{{name}}\" to the trash?",
     "selectAll": "Select all",
     "publishSelected": "Publish selected",
     "trashSelected": "Move selected to trash",
@@ -59,6 +60,11 @@
     "lightPalette": "Light palette",
     "darkPalette": "Dark palette",
     "itemsSort": "Item order",
+    "itemsPerPage": "Items per page",
+    "itemsPerPageRange": "A whole number between {{min}} and {{max}}.",
+    "previewTheme": "Preview theme",
+    "save": "Save",
+    "confirmTrash": "Ask move to trash confirmation",
     "datePreview": "Today",
     "version": "Version"
   }

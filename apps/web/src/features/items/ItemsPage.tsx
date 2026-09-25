@@ -4,19 +4,13 @@ import { hexColor, ITEM_SORT_PREFERENCES, type ItemSort } from '@homebox/shared'
 import { trpc } from '../../api/trpc'
 import { Button, buttonClasses, cn, Field, hoverScrim, Input, PageHeader, Pagination, Popover, Select, Tooltip } from '../../ui'
 import { ITEM_SORT_LABELS } from '../../lib/itemSort'
-import { useUserSettings } from '../../lib/settings/useUserSettings'
+import { useUserSettings, useTrashConfirmation } from '../../lib/settings/useUserSettings'
 import { ItemCard } from './ItemCard'
 import { BulkEditPanel } from './BulkEditPanel'
 import { LocationFacetTree, type LocationFacetId } from './LocationFacetTree'
 import { SelectionCriteria } from './SelectionCriteria'
 // Flattening the location tree, so a card's location path can walk up it.
 import { flattenLocations } from '../../lib/locationPath'
-
-// Sent explicitly rather than left to the server's default, so the request that
-// produced `total` and the Next guard that reads it cannot disagree about the
-// window. The server defaults to this same number; this is the client's half of
-// that agreement, in one place instead of inline in the guard as it was.
-const PAGE_SIZE = 20
 
 // URL param → tRPC input mapping lives in ONE place on this page. The URL uses
 // `q` (Phase-3 spec) but the router input field is `search`; `typeId` maps to
@@ -91,7 +85,10 @@ export function ItemsPage() {
   // ordered by until the user says otherwise, and it is never written down (there
   // is no rank to order by without a term). So the only thing remembered here is
   // a choice made *while searching* — otherwise the stored value is the answer.
-  const { itemsSort, updateSettings } = useUserSettings()
+  const { itemsSort, itemsPerPage, updateSettings } = useUserSettings()
+  // Whether this user wants to be asked before a move-to-trash; see
+  // `useTrashConfirmation`.
+  const askTrash = useTrashConfirmation()
   // Holds a pick made on this page, including `relevance`, which is a legal pick
   // while searching and is not a stored preference.
   const [chosenSort, setChosenSort] = useState<ItemSort | null>(null)
@@ -164,13 +161,17 @@ export function ItemsPage() {
 
   const trashSelection = async () => {
     const count = selected.size
-    if (!confirm(`Move ${count} ${count === 1 ? 'item' : 'items'} to the trash?`)) return
+    if (!askTrash(`Move ${count} ${count === 1 ? 'item' : 'items'} to the trash?`)) return
     await trashSelected.mutateAsync({ ids: [...selected] })
   }
 
+  // The window is the user's `itemsPerPage` preference, sent explicitly rather
+  // than left to the server's default, so the request that produced `total` and
+  // the Next guard that reads it cannot disagree about it. Changing the
+  // preference re-asks with the new window, which is the point of the setting.
   const { data, isLoading } = trpc.items.list.useQuery({
     page,
-    pageSize: PAGE_SIZE,
+    pageSize: itemsPerPage,
     search: q.trim() || undefined,
     locationId,
     itemTypeId,
@@ -237,6 +238,18 @@ export function ItemsPage() {
       next.set('page', String(p))
       return next
     })
+
+  // Landing on a page that no longer exists. Raising `itemsPerPage` is the way to
+  // do it from inside the app — page 3 of 20 rows is page 1 of 100 — and without
+  // this the grid would render "No items yet." under a pagination control that had
+  // just hidden itself (it renders nothing at one page), which reads as an empty
+  // catalog. `replace` keeps the abandoned URL out of history. The drafts and
+  // trash pages carry the same guard.
+  const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / itemsPerPage))
+  useEffect(() => {
+    if (data && page > pageCount) setPage(pageCount)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, page, pageCount])
 
   return (
     <section>
@@ -551,7 +564,7 @@ export function ItemsPage() {
         )}
       </div>
 
-      {data && <Pagination page={page} total={data.total} pageSize={PAGE_SIZE} onPage={setPage} />}
+      {data && <Pagination page={page} total={data.total} pageSize={itemsPerPage} onPage={setPage} />}
     </section>
   )
 }
