@@ -6,6 +6,8 @@ import {
   instanceSettingsSchema,
   instanceSettingsUpdateSchema,
   DEFAULT_INSTANCE_SETTINGS,
+  ITEMS_PER_PAGE_MAX,
+  ITEMS_PER_PAGE_MIN,
 } from '../src/settings'
 
 describe('shared settings schemas', () => {
@@ -25,8 +27,25 @@ describe('shared settings schemas', () => {
     expect(DEFAULT_USER_SETTINGS).toEqual({
       language: 'en', locale: 'en-US', themeMode: 'auto',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
-      itemsSort: 'createdAt:desc',
+      itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false,
     })
+  })
+
+  // The two list preferences are bounded/typed here, not just in the settings
+  // page: this is the schema the API validates a write against, so a value outside
+  // it can never reach the database, whatever a client sends.
+  it('bounds the page size, and requires a whole number inside it', () => {
+    expect(userSettingsUpdateSchema.safeParse({ itemsPerPage: ITEMS_PER_PAGE_MIN }).success).toBe(true)
+    expect(userSettingsUpdateSchema.safeParse({ itemsPerPage: ITEMS_PER_PAGE_MAX }).success).toBe(true)
+
+    for (const bad of [0, -1, ITEMS_PER_PAGE_MAX + 1, 2.5]) {
+      expect(userSettingsUpdateSchema.safeParse({ itemsPerPage: bad }).success).toBe(false)
+    }
+  })
+
+  it('takes the trash confirmation as a boolean only', () => {
+    expect(userSettingsUpdateSchema.safeParse({ confirmTrash: true }).success).toBe(true)
+    expect(userSettingsUpdateSchema.safeParse({ confirmTrash: 'yes' }).success).toBe(false)
   })
 
   it('accepts a catalog ordering, but not relevance', () => {
