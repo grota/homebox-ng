@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, devices } from '@playwright/test'
 
 // Happy-path smoke test for the whole catalog: first-run setup → log in → seed
 // an item type → create an item → the item appears in the list.
@@ -70,9 +70,12 @@ test('uploads a photo and shows it on the item surface', async ({ page }) => {
   })
   expect(login.ok()).toBeTruthy()
 
-  // The main test created the "Lamp" item; its list card is a Link/anchor.
+  // The main test created the "Lamp" item. The card's anchor takes its name from
+  // `aria-label`, not text: the title moved out of the link into the footer's
+  // `label` (`5108b37`), so the name is no longer *inside* the `<a>` and
+  // `a:has-text("Lamp")` matches nothing.
   await page.goto('/items')
-  await page.click('a:has-text("Lamp")')
+  await page.getByRole('link', { name: 'Lamp', exact: true }).click()
 
   // Upload a small PNG. The control lives in the item panel now — one place for
   // it, in the empty case as in the full one.
@@ -205,6 +208,12 @@ test('settings persist across reload and drive locale formatting', async ({ page
   await page.selectOption('#settings-theme-mode', 'dark')
   await page.selectOption('#settings-dark-palette', 'dark-dracula')
 
+  // Settings became a form with one Save (`351b738`): selecting a `<select>` now
+  // only fills the draft, so without this the theme below never applies and the
+  // reload assertions below have nothing stored to survive. (`Preview theme` is
+  // the other way to see it, but it writes nothing.)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
   // The default dark palette resolves to dark-dracula: the root carries the
   // data-theme attribute.
   await expect(page.locator('html[data-theme="dark-dracula"]')).toBeVisible()
@@ -330,4 +339,55 @@ test('Escape dismisses manual unpack without closing the item surface under it',
   await expect(modal).not.toBeVisible()
   await expect(page).toHaveURL(surface)
   await expect(page.getByTestId('photo-viewer')).toBeVisible()
+})
+
+// Below `md` a selection popover *is* the viewport (ui/Popover.tsx), and that
+// only holds while nothing between the panel and the viewport is its containing
+// block. Radix wraps every panel in a `div` carrying the floating styles inline.
+//
+// Two properties on that wrapper each capture the panel's `inset: 0` on their
+// own, and only the first is visible to a desktop browser: `transform`, and
+// `will-change: transform`, which `@floating-ui/react-dom` sets **only when the
+// device pixel ratio is >= 1.5**. Half-fixing this (dropping the transform but
+// not the will-change) looks correct at a phone *width* in a dpr-1 browser and
+// collapses the panel to a 34×34 square on every real phone. That is how a
+// broken fix shipped once, so this leg is a real device profile, pixel ratio
+// included — `setViewportSize` alone would reproduce the mistake.
+//
+// jsdom has no layout, so no unit test can see any of it.
+test.describe('a selection popover below `md`', () => {
+  // `defaultBrowserType` is not a context option; everything else is a Pixel 7.
+  const { defaultBrowserType: _ignored, ...phone } = devices['Pixel 7']
+  test.use(phone)
+
+  test('fills the viewport', async ({ page }) => {
+    const login = await page.request.post('/trpc/auth.login', {
+      data: { email: 'admin@b.co', password: 'password123' },
+    })
+    expect(login.ok()).toBeTruthy()
+
+    await page.goto('/items')
+    await page.getByRole('checkbox', { name: 'Select Lamp', exact: true }).check()
+    await page.getByRole('button', { name: 'Apply to selection', exact: true }).click()
+
+    const panel = page.getByLabel('Apply to the selection', { exact: true })
+    await expect(panel).toBeVisible()
+
+    // Against the visual viewport, not the layout one: a narrow screen that
+    // overflows lays out wider than the device, and the panel follows the layout
+    // viewport. "Covers at least the screen" is the property that matters, and it
+    // is the one the collapsed 34×34 box fails.
+    const cover = await page.evaluate(() => {
+      const el = document.querySelector('[data-radix-popper-content-wrapper] > *')!
+      const r = el.getBoundingClientRect()
+      const vv = window.visualViewport
+      return { x: r.x, y: r.y, w: r.width, h: r.height, vw: vv?.width ?? window.innerWidth, vh: vv?.height ?? window.innerHeight }
+    })
+    expect(cover.x).toBe(0)
+    expect(cover.y).toBe(0)
+    expect(cover.w).toBeGreaterThanOrEqual(cover.vw)
+    expect(cover.h).toBeGreaterThanOrEqual(cover.vh)
+    // And it is the panel, not the page behind it.
+    expect(await panel.evaluate((el) => getComputedStyle(el).borderRadius)).toBe('0px')
+  })
 })

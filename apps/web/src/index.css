@@ -72,6 +72,42 @@ body {
   pointer-events: auto;
 }
 
+/* Below `md` the popover panel *is* the viewport (see ui/Popover.tsx), and that
+   needs the viewport to be its containing block. Radix's `PopperContent` wraps
+   every panel in a `div` carrying the floating styles inline — `transform:
+   translate(x, y)` among them — and a transformed ancestor is a containing
+   block, so the panel's `inset: 0` resolved against that wrapper instead. The
+   wrapper has no in-flow content (its only child is the fixed panel, which is
+   out of flow) and `min-width: max-content` on nothing is zero, so the panel
+   collapsed to its own padding and border: a 34×34 square, reported from a
+   phone.
+
+   `will-change` is the second half, and the half that decides whether this rule
+   works at all on a real phone. `@floating-ui/react-dom` sets
+   `will-change: transform` on the wrapper only when the device pixel ratio is
+   >= 1.5:
+
+       ...(getDPR(elements.floating) >= 1.5 && { willChange: 'transform' })
+
+   Under CSS Will Change Level 1 a property that would create a containing block
+   creates one from `will-change` alone, so on a dpr-2/3 phone the wrapper
+   captured the panel *even with its `transform` gone* — the rule below looked
+   correct in a desktop browser (dpr 1, no `will-change`) and did nothing on the
+   device it was written for. Both have to go. `!important` because both are
+   inline styles — the same reason the panel's own classes need it.
+
+   `not all and (min-width: 48rem)` is Tailwind's own `max-md:` query, copied so
+   the two cannot drift apart. The selector needs no narrowing today: this is the
+   app's only Radix popper (`ui/Tooltip` is CSS-only, `Modal` is not anchored).
+   A second popper that has to stay anchored would have to scope this to the
+   popover's wrapper. */
+@media not all and (min-width: 48rem) {
+  [data-radix-popper-content-wrapper] {
+    transform: none !important;
+    will-change: auto !important;
+  }
+}
+
 /* Visible focus ring for keyboard/Tab users, driven by the semantic focus token. */
 :focus-visible {
   outline: 2px solid var(--color-focus);
