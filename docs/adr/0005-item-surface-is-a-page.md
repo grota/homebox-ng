@@ -100,3 +100,29 @@ the title toggles, so there the text block rides inside the link and the card st
 
 This is the split ADR-0005 called an accident of two destinations, chosen deliberately for two
 *jobs* instead. It is worth revisiting if a third affordance lands on the card.
+
+## Amendment (2026-09-26): the link covers the card
+
+The split above stands — the card still has two targets — but the exception it needed does not.
+
+Wrapping the photo in the link made the link's box its **content's**, and that content can be
+empty: an item with no photo, no location and no tags rendered a zero-height anchor, so such an
+item could not be opened from the catalog at all. Its title toggles the checkbox, and that was
+the only clickable thing left on the card. The leg that creates exactly that item found it.
+
+The link is an empty box stretched over the card instead (`absolute inset-0`), with the photo and
+the text block as ordinary content beside it. Nothing moves — an out-of-flow box takes no space —
+so a photoless card needs no placeholder and no card changes shape, and there is no longer a
+no-photo case to keep in step with the photo case.
+
+Two details are load-bearing:
+
+- **`z-10`, not `z-0`.** The photo's wrapper is `relative` (the "1/2" badge is absolute inside
+  it), and a positioned `z-index: auto` element paints *after* a `z-0` one in tree order: the
+  photo came out on top of the link and swallowed the click meant to open the item. The title's
+  label and the footer's are `z-20`, above the link, so each keeps its own clicks.
+- The card is the link's positioning context, and the unit tests cannot see any of this — they
+  could not have seen the bug either, because what failed was the anchor's *size*.
+
+Revisit if the card gains a third job, or if a non-link control joins the card body: it would
+have to be lifted above `z-10` the way the two labels are.

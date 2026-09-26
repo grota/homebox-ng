@@ -97,6 +97,9 @@ const renderCatalog = () =>
   )
 
 const itemLink = () => screen.getByRole('link', { name: 'Brass Lamp' })
+// The link is an empty overlay covering the card (`catalogCard.test.tsx` asserts
+// exactly that), so the card is where the content has to be looked for now.
+const card = () => itemLink().parentElement!
 const locationLine = () => screen.queryByTestId('item-location')
 
 beforeEach(() => {
@@ -106,12 +109,14 @@ beforeEach(() => {
 
 describe('the catalog card shows its location as a path', () => {
   // The whole point: the leaf alone does not say where the thing is. Asserted on
-  // the link's text rather than on a `data-testid`, so this fails on the *path*
-  // being absent rather than on a selector that does not exist yet.
+  // the card's text rather than on a `data-testid`, so this fails on the *path*
+  // being absent rather than on a selector that does not exist yet. (It was
+  // asserted on the link's text while the link wrapped the card's content; it
+  // covers the card as an empty box now.)
   it('renders the full path from the root, joined with the sidebar separator', () => {
     renderCatalog()
 
-    expect(itemLink()).toHaveTextContent('home › garage › shelf A')
+    expect(card()).toHaveTextContent('home › garage › shelf A')
     expect(locationLine()).toHaveTextContent('home › garage › shelf A')
   })
 
@@ -145,7 +150,7 @@ describe('the catalog card shows its location as a path', () => {
     state.locationId = 10
     renderCatalog()
 
-    expect(itemLink()).toHaveTextContent('b › a')
+    expect(card()).toHaveTextContent('b › a')
     expect(locationLine()?.textContent).toBe('b › a')
   })
 
@@ -168,15 +173,16 @@ describe('the catalog card shows its location as a path', () => {
 
   // The path must never be a link of its own — that would be a nested anchor
   // inside the card's, which is invalid HTML and a keyboard trap. This fixture's
-  // item has no photo, so the card's link falls back to the text and the path
-  // rides in it; with a photo the text sits beside the link instead
-  // (`catalogCard.test.tsx` is where that half is asserted).
-  it('leaves the path as text inside the card link, not a nested link', () => {
+  // item has no photo, no location tree and no tags: the bare card whose link
+  // used to collapse to a zero-height box, because the path was the only thing
+  // that could have gone inside it and it was empty. The path is text beside the
+  // overlay now, so it is inside no anchor at all.
+  it('leaves the path as text beside the card link, never a link of its own', () => {
     renderCatalog()
 
     const path = locationLine()
     expect(path?.tagName).not.toBe('A')
-    expect(path?.closest('a')).toBe(itemLink())
-    expect(within(itemLink()).getByTestId('item-location')).toBeInTheDocument()
+    expect(path?.closest('a')).toBeNull()
+    expect(within(card()).getByTestId('item-location')).toBeInTheDocument()
   })
 })

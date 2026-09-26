@@ -77,55 +77,84 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
   )
 
   return (
-    <Card padding="none" className="overflow-hidden hover:border-text-muted">
+    <Card padding="none" className="relative overflow-hidden hover:border-text-muted">
+      {/* One link per card, and it **covers** the card rather than wrapping
+          anything in it. The card opens the item, so the target is the card body
+          — the photo, or the space where a photo would have been.
+
+          Before this, the link wrapped the photo, and (with no photo) the
+          path/tag text. That has a hole: an item with no photo, no location and
+          no tags put *nothing* in the link, leaving a zero-height anchor and no
+          way to open the item from the catalog at all — the only clickable text
+          left on such a card is the title, which selects. Moving the link out of
+          the content also removes the reason the text had to be rendered inside
+          it, and the two cases no longer have to be kept in step.
+
+          It is out of flow, so the card's layout is unchanged; it is empty and
+          transparent, so what it covers is unchanged. The two controls that are
+          *not* "open the item" — the title's label and the footer's checkbox —
+          sit above it with `relative z-20`, and claim their own clicks.
+
+          `z-10` rather than `z-0` is load-bearing. The photo's wrapper below is
+          `relative` — it has to be, the "1/2" badge is absolute inside it — and a
+          positioned element with `z-index: auto` paints *after* a `z-0` one in
+          tree order, so the photo came out on top of the link and swallowed the
+          click that was meant to open the item. Only the labels need to beat
+          `z-10`, which is why they are `z-20`. */}
+      <Link
+        to={`/items/${item.id}`}
+        aria-label={item.name}
+        className="absolute inset-0 z-10"
+      />
       <div className="p-3">
-        <Link to={`/items/${item.id}`} aria-label={item.name} className="block no-underline text-inherit">
-          {hasPhoto ? (
-            <div className="relative mb-3">
-              {/* `aspect-square` rather than a fixed `h-32`: a fixed height is a
-                  4:1 strip at one column and a 1:1 box at six, so the photo was
-                  cropped by a different amount at every width. A square is the
-                  same shape everywhere, and `object-contain` shows the whole photo
-                  inside it with the mat filling what is left. */}
-              <img
-                src={'/file/' + photo.thumbPath}
-                alt=""
-                className="w-full aspect-square object-contain rounded-md bg-black"
-              />
-              {/* How many photos there are to look at, only when there is more than
-                  one. It reads "1/" because a card shows the primary, and the
-                  primary is position 1 of the order the surface uses — so this is
-                  the number you land on when you open the card. */}
-              {item.images.length > 1 && (
-                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white tabular-nums">
-                  1/{item.images.length}
-                </span>
-              )}
-            </div>
-          ) : null}
-          {/* An item with no photo has nothing above the title, and the title
-              toggles — so without this the card would have no way to open it. */}
-          {hasPhoto ? null : text}
-        </Link>
+        {hasPhoto ? (
+          <div className="relative mb-3">
+            {/* `aspect-square` rather than a fixed `h-32`: a fixed height is a
+                4:1 strip at one column and a 1:1 box at six, so the photo was
+                cropped by a different amount at every width. A square is the
+                same shape everywhere, and `object-contain` shows the whole photo
+                inside it with the mat filling what is left. */}
+            <img
+              src={'/file/' + photo.thumbPath}
+              alt=""
+              className="w-full aspect-square object-contain rounded-md bg-black"
+            />
+            {/* How many photos there are to look at, only when there is more than
+                one. It reads "1/" because a card shows the primary, and the
+                primary is position 1 of the order the surface uses — so this is
+                the number you land on when you open the card. */}
+            {item.images.length > 1 && (
+              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white tabular-nums">
+                1/{item.images.length}
+              </span>
+            )}
+          </div>
+        ) : null}
+        {/* A photoless item has nothing above the title, and the title toggles —
+            so the path/tags go up there, where the photo would have been. */}
+        {hasPhoto ? null : text}
         <h2 className="mt-0">
           {/* A `<label>`, so the toggle is the browser's own: clicking the name
               activates the checkbox in the footer. No click handler, no second
-              focus stop, and it works on a dark card at 200px wide. */}
-          <label htmlFor={checkboxId} className="cursor-pointer">
+              focus stop, and it works on a dark card at 200px wide.
+              `relative z-20` for the box above: only the name itself comes
+              forward, so the space beside it still opens the item. */}
+          <label htmlFor={checkboxId} className="relative z-20 cursor-pointer">
             {item.name}
           </label>
         </h2>
         {hasPhoto ? text : null}
       </div>
-      {/* The checkbox lives **outside** the link, in the card's footer. The whole
-          photo above is an `<a>`, and a checkbox nested inside an anchor is
-          interactive content inside interactive content — invalid, and different
-          in every browser. The drafts card puts its own checkbox here for the same
-          reason. */}
+      {/* The checkbox lives outside the link's path in paint order, not outside
+          one in the DOM: it is a sibling the link's box would otherwise sit on
+          top of. `relative z-20` lifts the whole row above it, so the footer
+          stays the selection target it is meant to be — a checkbox nested inside
+          an anchor would be interactive content inside interactive content,
+          which is why the two are separate elements at all. */}
       {/* A `<label>` wraps the box, so the whole footer row is the hit target
           rather than a 13px square — clicking a label activates the control it
           contains, and the `aria-label` below still gives it its name. */}
-      <label className="flex cursor-pointer items-center border-t border-border px-3 py-2">
+      <label className="relative z-20 flex cursor-pointer items-center border-t border-border px-3 py-2">
         <input
           id={checkboxId}
           type="checkbox"

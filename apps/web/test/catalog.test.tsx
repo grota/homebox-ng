@@ -326,15 +326,16 @@ describe('catalog pages', () => {
   // The card was two targets while the photo opened a lightbox and the name opened
   // the item page, then one when both led to the same page (ADR-0005). It is two
   // again: the photo opens the item, the title toggles the selection.
-  it('links the photo, and only the photo, to the item', () => {
+  it('links the card to the item, and the photo with it', () => {
     render(<AppProviders><ItemsPage /></AppProviders>)
     const link = screen.getByRole('link', { name: 'Lamp' })
     expect(link).toHaveAttribute('href', '/items/1')
     // Decorative (`alt=""`), so it is queried by selector rather than by role.
-    expect(link.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/file/'))
+    // The photo sits in the card *beneath* the link's box now, not inside the link.
+    expect(link.parentElement!.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/file/'))
     // One photo, so there is no count to show: "1/1" is noise on every card with a
     // single photo, which is most of them.
-    expect(within(link).queryByText(/^\d+\/\d+$/)).not.toBeInTheDocument()
+    expect(within(link.parentElement!).queryByText(/^\d+\/\d+$/)).not.toBeInTheDocument()
   })
 
   // The rule the owner chose after asking "why only four columns?" — and the answer
