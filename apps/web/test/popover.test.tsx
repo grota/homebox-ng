@@ -58,4 +58,21 @@ describe('Popover', () => {
 
     expect(screen.queryByText('panel body')).not.toBeInTheDocument()
   })
+
+  // The visible route out, for the viewport where the other two are unavailable:
+  // below `md` the panel is the whole screen (so a click outside has no outside)
+  // and a phone has no Escape key. Its `md:hidden` gating and `fixed` placement
+  // are CSS, and jsdom applies neither — that half is the phone leg in
+  // `e2e/00-catalog.spec.ts`, which asserts the control is displayed and
+  // topmost. What is pinned here is that it is wired to the same dismissal as
+  // everything else, so it cannot be decoration.
+  it('has a Close control that dismisses the panel', () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add to selection' }))
+    expect(screen.getByText('panel body')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(screen.queryByText('panel body')).not.toBeInTheDocument()
+  })
 })

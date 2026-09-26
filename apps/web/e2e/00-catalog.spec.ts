@@ -389,5 +389,27 @@ test.describe('a selection popover below `md`', () => {
     expect(cover.h).toBeGreaterThanOrEqual(cover.vh)
     // And it is the panel, not the page behind it.
     expect(await panel.evaluate((el) => getComputedStyle(el).borderRadius)).toBe('0px')
+
+    // The way out. There is no click-outside when the panel *is* the screen, and
+    // no Escape key on a phone, so this control is the only dismissal available —
+    // it is `md:hidden` and `fixed` for exactly that reason.
+    //
+    // Clicking it is also the assertion that nothing covers it: Playwright refuses
+    // a click whose point another element would take, which is the failure mode of
+    // anything floating over a panel that scrolls.
+    const close = page.getByRole('button', { name: 'Close', exact: true })
+    await expect(close).toBeVisible()
+    await close.click()
+    await expect(panel).not.toBeVisible()
+    // Closing dismisses the panel and nothing else: the selection it was editing
+    // is still there, which is what makes Close a cancel rather than a reset.
+    await expect(page.getByText('1 selected')).toBeVisible()
+
+    // And it is gone at `md`, where the panel sits beside its trigger again and
+    // both of the usual dismissals work.
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.getByRole('button', { name: 'Apply to selection', exact: true }).click()
+    await expect(panel).toBeVisible()
+    await expect(close).toBeHidden()
   })
 })
