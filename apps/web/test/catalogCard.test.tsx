@@ -78,47 +78,49 @@ const renderCatalog = () =>
   )
 
 const itemLink = () => screen.getByRole('link', { name: 'Brass Lamp' })
-// The link is a child of the card, not a wrapper inside it.
-const card = () => itemLink().parentElement!
+// The card names itself rather than being found by its relationship to the link:
+// the link sat in three different places across three versions of this card, and
+// a helper that assumed one of them silently measured the wrong element.
+const card = () => screen.getByTestId('item-card')
+// The overlay: an empty `<label for>` that covers the card, so the body picks the
+// item. A direct child, which is what distinguishes it from the footer's label.
+const overlay = () => card().querySelector(':scope > label')!
 
 describe('catalog card click targets', () => {
-  // The card is two targets: the card body opens the item and the title picks it.
-  // It was one (ADR-0005) while both halves led to the same page, and the title
-  // took over the toggle because a 13px box in the footer was the only way to
-  // select.
+  // The card is two targets: the body picks the item and the title opens it. It
+  // was two the other way round for one round — the photo opened, the title
+  // picked — and one before that (ADR-0005).
   //
-  // The link **is** the card body: an empty absolutely-positioned box over the
-  // whole card, rather than a wrapper around the photo. That is what makes a card
-  // with nothing to put in it — no photo, no location, no tags — openable at all.
-  // Wrapping was the bug: a wrapper's box is its content's, and this content can
-  // be empty, which left a zero-height anchor and no way into such an item from
-  // the catalog. `cardLocationPath.test.tsx` renders that bare card.
-  it('makes the whole card the link, and keeps every field outside it', () => {
+  // The picking target is an empty absolutely-positioned label rather than a
+  // control with content. That is deliberate: the body has to be the target even
+  // on a card with nothing to put in it — no photo, no location, no tags — and
+  // anything that *wraps* content collapses to nothing when the content is
+  // empty, which is exactly how such an item became unopenable from the catalog.
+  it('makes the whole card pick the item, and keeps the fields outside the link', () => {
     renderCatalog()
 
-    expect(itemLink()).toHaveAttribute('href', '/items/7')
     // `z-10`, not `z-0`: the photo's wrapper is `relative` (the "1/2" badge is
     // absolute inside it) and a positioned `z-index: auto` element paints after a
     // `z-0` one in tree order — the photo came out on top and swallowed the click.
-    expect(itemLink()).toHaveClass('absolute', 'inset-0', 'z-10')
+    expect(overlay()).toHaveClass('absolute', 'inset-0', 'z-10')
     // Out of flow and empty: the box it is clicked in comes from the card, which
-    // is why the card has to be its positioning context.
-    expect(itemLink()).toBeEmptyDOMElement()
+    // is why the card has to be its positioning context, and why no content can
+    // be needed to give it a size.
+    expect(overlay()).toBeEmptyDOMElement()
+    expect(overlay()).toHaveAttribute('for', 'select-item-7')
     expect(card()).toHaveClass('relative')
 
     // By selector, not by role: the photo is decorative (`alt=""`) because the
     // name sits directly beneath it, so it has no `img` role to query.
     expect(card().querySelector('img')).toHaveAttribute('src', expect.stringContaining('/file/'))
 
-    // The two controls that are *not* "open the item" have to sit above the
-    // overlay — and above `z-10`, which is why they are `z-20` — or it would
-    // swallow their clicks.
-    expect(screen.getByText('Brass Lamp')).toHaveClass('relative', 'z-20')
-    expect(screen.getByRole('checkbox', { name: 'Select Brass Lamp' }).closest('label')).toHaveClass('relative', 'z-20')
+    // The one control that does *not* pick has to sit above the overlay — above
+    // `z-10`, so `z-20` — or the overlay would swallow its clicks.
+    expect(itemLink()).toHaveClass('relative', 'z-20')
 
-    // Location, tags and the search snippet are card content, but they are text
-    // now — the title is what toggles, so the fields would be a second destination
-    // sitting inside the anchor.
+    // Location, tags and the search snippet are card content, and they are not in
+    // the link: the link is the title alone, so none of them is a second
+    // destination inside the anchor.
     //
     // The item type is deliberately absent: a card is for recognising a thing, and
     // the type is a classification you look at once you have opened it.
@@ -128,22 +130,37 @@ describe('catalog card click targets', () => {
     }
     expect(within(card()).queryByText('Lighting')).not.toBeInTheDocument()
     expect(within(card()).getByTestId('item-snippet')).toBeInTheDocument()
-    // The title is the toggle, so it leads out of the link too.
-    expect(itemLink()).not.toHaveTextContent('Brass Lamp')
   })
 
-  // The title is a `<label>` for the checkbox in the footer, so the browser does the
-  // toggling: no click handler, and the whole name is the hit target rather than a
-  // 13px square.
-  it('toggles the checkbox from the card title', () => {
+  // The body picks the item, and the toggle goes both ways — the label activates
+  // the footer's checkbox through the browser, so this is the same control the
+  // footer's own row drives.
+  it('picks and unpicks from the card body', () => {
     renderCatalog()
     const box = screen.getByRole('checkbox', { name: 'Select Brass Lamp' })
     expect(box).not.toBeChecked()
 
-    fireEvent.click(screen.getByText('Brass Lamp'))
-
+    fireEvent.click(overlay())
     expect(box).toBeChecked()
     expect(screen.getByText('1 selected')).toBeInTheDocument()
+
+    fireEvent.click(overlay())
+    expect(box).not.toBeChecked()
+    expect(screen.queryByText('1 selected')).not.toBeInTheDocument()
+  })
+
+  // The title is the way in, and it is a real link: a text link to a screen
+  // reader, a new-tab target to the browser.
+  it('opens the item from the title', () => {
+    renderCatalog()
+
+    expect(itemLink()).toHaveAttribute('href', '/items/7')
+    expect(itemLink()).toHaveTextContent('Brass Lamp')
+    expect(itemLink().tagName).toBe('A')
+
+    fireEvent.click(itemLink())
+
+    expect(screen.getByText('DETAIL')).toBeInTheDocument()
   })
 
   // How many photos there are to look at. It reads "1/" because a card shows the
@@ -163,13 +180,5 @@ describe('catalog card click targets', () => {
     renderCatalog()
 
     expect(card().querySelector('img')).toHaveAttribute('src', '/file/uploads/thumbs/cover.jpg')
-  })
-
-  it('navigates on a click anywhere on the card body', () => {
-    renderCatalog()
-
-    fireEvent.click(itemLink())
-
-    expect(screen.getByText('DETAIL')).toBeInTheDocument()
   })
 })

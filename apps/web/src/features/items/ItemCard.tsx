@@ -44,12 +44,15 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
   // while it is still loading.
   const locationLabel = locationPathLabel(item.locationId, item.location?.name, locationById)
 
-  // The card is two targets again: the photo opens the item, the title picks it.
-  // It was one (ADR-0005) while both halves led to the same page — the title took
-  // over the toggle because a 13px box in the footer was the only way to select.
+  // The card is two targets: the **card body picks the item, the title opens
+  // it**. The reverse was tried first and read wrong in the hand — the body is
+  // what you hit while scanning a catalog, and picking things while scanning is
+  // the frequent job (ADR-0010); opening one is the deliberate one, and the
+  // title is the part that names what it opens. It was a single link (ADR-0005)
+  // while both halves led to the same page.
   const hasPhoto = Boolean(photo?.thumbPath)
-  // Where the title's `<label>` points. The footer's own label wraps its input and
-  // needs no `for`; this is the other end of that association.
+  // The two ends of the toggle: the overlay label below, and the footer's own
+  // label, which wraps the input and needs no `for`.
   const checkboxId = `select-item-${item.id}`
 
   const text = (
@@ -77,35 +80,27 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
   )
 
   return (
-    <Card padding="none" className="relative overflow-hidden hover:border-text-muted">
-      {/* One link per card, and it **covers** the card rather than wrapping
-          anything in it. The card opens the item, so the target is the card body
-          — the photo, or the space where a photo would have been.
+    <Card
+      padding="none"
+      data-testid="item-card"
+      className="relative overflow-hidden hover:border-text-muted"
+    >
+      {/* One toggle per card, and it **covers** the card rather than wrapping
+          anything in it: the body is the target, so the photo, the path, the
+          tags, the blank space under a short card and the footer row all pick
+          the item. The title opts out with a higher z-index, and opens it.
 
-          Before this, the link wrapped the photo, and (with no photo) the
-          path/tag text. That has a hole: an item with no photo, no location and
-          no tags put *nothing* in the link, leaving a zero-height anchor and no
-          way to open the item from the catalog at all — the only clickable text
-          left on such a card is the title, which selects. Moving the link out of
-          the content also removes the reason the text had to be rendered inside
-          it, and the two cases no longer have to be kept in step.
-
-          It is out of flow, so the card's layout is unchanged; it is empty and
-          transparent, so what it covers is unchanged. The two controls that are
-          *not* "open the item" — the title's label and the footer's checkbox —
-          sit above it with `relative z-20`, and claim their own clicks.
+          Empty and absolutely positioned, so the card's layout is what it was
+          with no overlay at all. An empty `<label for>` is legal and activates
+          the footer's checkbox through the browser, the same way the footer's
+          own label does — no click handler, and no second focus stop.
 
           `z-10` rather than `z-0` is load-bearing. The photo's wrapper below is
           `relative` — it has to be, the "1/2" badge is absolute inside it — and a
           positioned element with `z-index: auto` paints *after* a `z-0` one in
-          tree order, so the photo came out on top of the link and swallowed the
-          click that was meant to open the item. Only the labels need to beat
-          `z-10`, which is why they are `z-20`. */}
-      <Link
-        to={`/items/${item.id}`}
-        aria-label={item.name}
-        className="absolute inset-0 z-10"
-      />
+          tree order, so the photo came out on top of the overlay and took the
+          click for itself. The title is `z-20` to beat the overlay. */}
+      <label htmlFor={checkboxId} className="absolute inset-0 z-10 cursor-pointer" />
       <div className="p-3">
         {hasPhoto ? (
           <div className="relative mb-3">
@@ -130,38 +125,35 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
             )}
           </div>
         ) : null}
-        {/* A photoless item has nothing above the title, and the title toggles —
-            so the path/tags go up there, where the photo would have been. */}
+        {/* A photoless item has nothing above the title, so the path/tags go up
+            there, where the photo would have been. */}
         {hasPhoto ? null : text}
         <h2 className="mt-0">
-          {/* A `<label>`, so the toggle is the browser's own: clicking the name
-              activates the checkbox in the footer. No click handler, no second
-              focus stop, and it works on a dark card at 200px wide.
-              `relative z-20` for the box above: only the name itself comes
-              forward, so the space beside it still opens the item. */}
-          <label htmlFor={checkboxId} className="relative z-20 cursor-pointer">
+          {/* The one thing on the card that opens the item. A real link with the
+              name as its text, so it is a text link to a screen reader and to
+              every "open in new tab" the browser offers — which the overlay
+              cannot be, having no content of its own. `relative z-20` lifts just
+              the name: the space beside it still picks the item. */}
+          <Link to={`/items/${item.id}`} className="relative z-20">
             {item.name}
-          </label>
+          </Link>
         </h2>
         {hasPhoto ? text : null}
       </div>
-      {/* The checkbox lives outside the link's path in paint order, not outside
-          one in the DOM: it is a sibling the link's box would otherwise sit on
-          top of. `relative z-20` lifts the whole row above it, so the footer
-          stays the selection target it is meant to be — a checkbox nested inside
-          an anchor would be interactive content inside interactive content,
-          which is why the two are separate elements at all. */}
-      {/* A `<label>` wraps the box, so the whole footer row is the hit target
+      {/* The checkbox is a sibling of the overlay, not inside it, and the overlay
+          would otherwise sit on top of it: `relative z-20` lifts the whole row,
+          so the footer stays a selection target in its own right. A checkbox
+          nested inside the title's anchor would be interactive content inside
+          interactive content, which is why the three are separate elements. */}
+      {/* The `<label>` wraps the box, so the whole footer row is the hit target
           rather than a 13px square — clicking a label activates the control it
-          contains, and the `aria-label` below still gives it its name. */}
+          contains, and the `aria-label` below is the name it announces. */}
       <label className="relative z-20 flex cursor-pointer items-center border-t border-border px-3 py-2">
         <input
           id={checkboxId}
           type="checkbox"
           checked={selected}
           onChange={(event) => onSelect(item.id, event.target.checked)}
-          // The title's label is the other hit target for this control, and this
-          // is the name both of them announce it by.
           aria-label={`Select ${item.name}`}
         />
       </label>

@@ -118,6 +118,9 @@ const renderCatalog = () =>
     <MemoryRouter initialEntries={['/items']}>
       <Routes>
         <Route path="/items" element={<ItemsPage />} />
+        {/* The item surface, so a click on a card's title lands somewhere and the
+            test can tell "opened" from "picked". */}
+        <Route path="/items/:id" element={<div>DETAIL</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -156,15 +159,17 @@ describe('selecting items on the catalog', () => {
     expect(screen.getByText('1 selected')).toBeInTheDocument()
   })
 
-  // And from the title, which is a `<label>` for the same box. The name is the
-  // biggest thing on the card, so it is the target that needs no aiming at all.
-  it('toggles from the card title', () => {
+  // The title is the one part of the card that is *not* a picker: it opens the
+  // item. The body — photo, path, tags, blank space — is what picks, so a card
+  // is still a huge target for the gesture you make while scanning, and the name
+  // is the deliberate one. (`catalogCard.test.tsx` pins the body's own case.)
+  it('opens the item from the card title', () => {
     renderCatalog()
 
     fireEvent.click(screen.getByText('Brass Lamp'))
 
-    expect(box('Select Brass Lamp')).toBeChecked()
-    expect(screen.getByText('1 selected')).toBeInTheDocument()
+    expect(screen.getByText('DETAIL')).toBeInTheDocument()
+    expect(screen.queryByText('1 selected')).not.toBeInTheDocument()
   })
 
   // The window is the `itemsPerPage` preference, not a constant: the setting is

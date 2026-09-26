@@ -96,10 +96,10 @@ const renderCatalog = () =>
     </MemoryRouter>,
   )
 
-const itemLink = () => screen.getByRole('link', { name: 'Brass Lamp' })
-// The link is an empty overlay covering the card (`catalogCard.test.tsx` asserts
-// exactly that), so the card is where the content has to be looked for now.
-const card = () => itemLink().parentElement!
+// The card names itself rather than being found by its relationship to the link:
+// where the link sits in the card has changed twice, and a helper that assumed a
+// position silently measured the wrong element when it moved.
+const card = () => screen.getByTestId('item-card')
 const locationLine = () => screen.queryByTestId('item-location')
 
 beforeEach(() => {
@@ -171,18 +171,21 @@ describe('the catalog card shows its location as a path', () => {
     expect(locationLine()).toHaveTextContent('shelf A')
   })
 
-  // The path must never be a link of its own — that would be a nested anchor
-  // inside the card's, which is invalid HTML and a keyboard trap. This fixture's
-  // item has no photo, no location tree and no tags: the bare card whose link
-  // used to collapse to a zero-height box, because the path was the only thing
-  // that could have gone inside it and it was empty. The path is text beside the
-  // overlay now, so it is inside no anchor at all.
-  it('leaves the path as text beside the card link, never a link of its own', () => {
+  // The path must never be a link of its own — that would be a nested destination
+  // inside the card, which is invalid HTML when the outer thing is an anchor and a
+  // keyboard trap either way. This fixture's item has no photo and no tags: the
+  // bare card whose only anchor used to be a box around its own text, which is how
+  // an item with nothing to put there ended up with no way in from the catalog.
+  // The path is text on the card now, inside no anchor at all.
+  it('leaves the path as text on the card, never a link of its own', () => {
     renderCatalog()
 
     const path = locationLine()
     expect(path?.tagName).not.toBe('A')
     expect(path?.closest('a')).toBeNull()
     expect(within(card()).getByTestId('item-location')).toBeInTheDocument()
+    // Exactly one link on the card, and it is the title: the way in.
+    expect(within(card()).getAllByRole('link')).toHaveLength(1)
+    expect(within(card()).getByRole('link')).toHaveTextContent('Brass Lamp')
   })
 })

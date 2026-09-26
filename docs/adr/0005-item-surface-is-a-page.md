@@ -126,3 +126,21 @@ Two details are load-bearing:
 
 Revisit if the card gains a third job, or if a non-link control joins the card body: it would
 have to be lifted above `z-10` the way the two labels are.
+
+## Amendment (2026-09-26, later): the body picks, the title opens
+
+The two targets are the amendment above's. Which one does what is reversed, after using it.
+
+Picking is what you do *while scanning* a list — it is the frequent gesture, and the one you make
+without aiming. So it takes the whole body: the photo, the path, the tags, the blank space under a
+short card, the footer row. Opening one item is the deliberate gesture, and it takes the part that
+names what it opens.
+
+Mechanically this is small: the body's target is the overlay label from the amendment above, with
+the link moved back to the title. `z-20` on the title against the overlay's `z-10` is what keeps
+them apart. The title is a link with the name as its *text* now rather than an `aria-label` on a
+box, so it is a text link to a screen reader and a new-tab target to the browser.
+
+The cost, stated plainly: a card's photo no longer opens the item, so opening a specific item
+means aiming at its name — narrower than the photo. That is the price of the body meaning "pick",
+and the reason to reverse this again would be finding that opening is the more frequent gesture.
