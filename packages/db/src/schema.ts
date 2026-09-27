@@ -118,6 +118,10 @@ export const userSettings = sqliteTable('user_settings', {
   // Whether a move-to-trash asks first. Off by default: the trash is recoverable
   // (ADR-0004), so asking is the opt-in, not the default.
   confirmTrash: integer('confirm_trash', { mode: 'boolean' }).notNull().default(false),
+  // Whether the photo dialogs skip their save-as step and save with its
+  // defaults. On by default: picking a photo is one dialog rather than two
+  // unless the user opts into the second one.
+  skipSaveDialog: integer('skip_save_dialog', { mode: 'boolean' }).notNull().default(true),
 })
 
 export const instanceSettings = sqliteTable('instance_settings', {
