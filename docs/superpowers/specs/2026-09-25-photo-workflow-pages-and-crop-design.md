@@ -67,11 +67,10 @@ exists**. No cropper library is installed beyond Filerobot.
    a `Blob` that becomes the form's pending photo; Close keeps the un-cropped file. Upload is one
    `POST /upload/image`; there is no `/upload/image/edit` call and no second rendition, because the
    point of the step is removing garbage before the item exists, not a tentative edit.
-   **Export settings matter here and differ from the edit flow's:** `savingPixelRatio={1}` and
-   `defaultSavedImageType="jpeg"`. `savingPixelRatio` multiplies the *output* canvas
-   (`Konva.pixelRatio = savingPixelRatio` before `toCanvas`), so the existing `4` would store a crop
-   at four times its pixel size, and PNG is the wrong container for a photograph. The edit flow's
-   `4`/PNG is left alone — that is a rendition of an existing photo, not the stored original.
+   **Export settings matter here and differ from the edit flow's:** `savingPixelRatio` (measured, see below) and
+   `defaultSavedImageType="jpeg"`. `savingPixelRatio` is measured from the photo over the stage (see `savingPixelRatioFor` — the export
+   canvas is full-size either way; the ratio sizes the cache drawn into it), so a static `1` would store
+   a stage-sized bitmap blown up to full-size pixels, and PNG is the wrong container for a photograph. The edit flow uses the same measured ratio.
 
 5. **`PhotoEditor`'s blob conversion becomes shareable.** `toBlob` (`PhotoEditor.tsx:27-39`) is the
    piece both flows need; the posting stays where an `imageId` exists. The editor splits into the

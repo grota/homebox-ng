@@ -65,12 +65,18 @@ export const filenameForBlob = (blob: Blob, stem: string) => `${stem}.${EXT_FOR_
 export const savingPixelRatioFor = (
   stage: { width: number; height: number },
   natural: { width: number; height: number },
-): number => Math.max(1, Math.ceil(Math.max(natural.width / stage.width, natural.height / stage.height)))
+): number => {
+  // Integer scale: the cache is stage × ratio, so ceil guarantees photo-dense
+  // coverage on the binding edge; a zero-size stage (pre-layout) stays at 1.
+  if (!Number.isFinite(stage.width) || !Number.isFinite(stage.height) || stage.width <= 0 || stage.height <= 0) return 1
+  return Math.max(1, Math.ceil(Math.max(natural.width / stage.width, natural.height / stage.height)))
+}
 
 // The measured ratio above, for an editor rendering inside `hostRef`. The photo's
 // own pixels come from the same source the editor opens; the stage only exists
 // once that source has loaded into it, so measure across the next frames until it
 // does, and again whenever the host is resized.
+const MAX_MEASURE_FRAMES = 180
 export const useSavingPixelRatio = (hostRef: RefObject<HTMLElement | null>, source: string | null): number => {
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null)
   const [ratio, setRatio] = useState(1)
@@ -99,7 +105,12 @@ export const useSavingPixelRatio = (hostRef: RefObject<HTMLElement | null>, sour
     let raf = 0
     let attempts = 0
     const tick = () => {
-      if (measure() || ++attempts > 180) return
+      if (measure()) return
+      if (++attempts > MAX_MEASURE_FRAMES) {
+        // ponytail: warn-only fallback, old soft-save bug returns if stage never lays out
+        console.warn('[photo] stage never laid out, saving at pixel ratio 1')
+        return
+      }
       raf = requestAnimationFrame(tick)
     }
     tick()

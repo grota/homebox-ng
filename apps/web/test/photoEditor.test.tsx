@@ -115,4 +115,11 @@ describe('savingPixelRatioFor', () => {
     expect(savingPixelRatioFor({ width: 1200, height: 900 }, { width: 600, height: 400 })).toBe(1)
     expect(savingPixelRatioFor({ width: 600, height: 400 }, { width: 600, height: 400 })).toBe(1)
   })
+
+  it('stays at 1 when the stage has no measurable size yet', () => {
+    // The hook measures `.konvajs-content` before layout; the pure helper must
+    // never hand Infinity/NaN to the editor for a zero-size box.
+    expect(savingPixelRatioFor({ width: 0, height: 0 }, { width: 2268, height: 4032 })).toBe(1)
+    expect(savingPixelRatioFor({ width: 400, height: 0 }, { width: 2268, height: 4032 })).toBe(1)
+  })
 })
