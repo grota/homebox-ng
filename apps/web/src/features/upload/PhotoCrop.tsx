@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor'
 import { Modal } from '../../ui'
-import { toBlob, type SaveImageData } from './PhotoEditor'
+import { toBlob, useSavingPixelRatio, type SaveImageData } from './PhotoEditor'
 
 // The tabs a crop step wants: ADJUST, which is crop, rotate and flip. With one tab the
 // library renders no tab strip, and its own `defaultToolId` (crop) is the one tool this
@@ -24,6 +24,11 @@ export function PhotoCrop({ file, onSave, onClose }: PhotoCropProps) {
     setSrc(url)
     return () => URL.revokeObjectURL(url)
   }, [file])
+
+  // The export is only as sharp as the cache inside it, which is sized from the
+  // editor's stage — see `savingPixelRatioFor`.
+  const hostRef = useRef<HTMLDivElement>(null)
+  const savingPixelRatio = useSavingPixelRatio(hostRef, src)
 
   const [error, setError] = useState<string | null>(null)
 
@@ -51,16 +56,18 @@ export function PhotoCrop({ file, onSave, onClose }: PhotoCropProps) {
       {/* A definite height, for the reason `PhotoEditor` documents at length: the
           editor sizes to 100% of its parent and collapses inside a `height: auto`
           dialog. */}
-      <div className="h-[70vh]">
+      <div className="h-[70vh]" ref={hostRef}>
         <FilerobotImageEditor
           source={src}
           onSave={handleSave}
           onClose={onClose}
           tabsIds={CROP_TABS}
-          // This blob becomes the photo's ORIGINAL (ADR-0012), so it is exported at the
-          // source's own pixels — `savingPixelRatio` multiplies the output canvas — and
-          // as JPEG, because PNG is the wrong container for a photograph.
-          savingPixelRatio={1}
+          // This blob becomes the photo's ORIGINAL (ADR-0012), so it has to carry
+          // the source's own pixels — the export canvas is full-size either way,
+          // and the measured ratio above is what keeps the pixels inside it
+          // full-size too — and it is JPEG, because PNG is the wrong container
+          // for a photograph.
+          savingPixelRatio={savingPixelRatio}
           // Required by the library's config type, same as `PhotoEditor` passes it — the
           // preview scale, not the saved one, so it does not touch the output pixels.
           previewPixelRatio={window.devicePixelRatio || 1}

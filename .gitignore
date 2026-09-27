@@ -24,3 +24,8 @@ blob-report/
 
 # Claude Code worktrees: each is a full nested checkout, so never commit one.
 /.claude/worktrees/
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
+
+# Temporarily git ignore the official playwright skill because Claude Code has already the official plugin installed. 
+/.claude/skills/playwright-cli/

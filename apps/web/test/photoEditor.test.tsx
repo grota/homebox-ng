@@ -25,7 +25,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
   }
 })
 
-import { PhotoEditor } from '../src/features/upload/PhotoEditor'
+import { PhotoEditor, savingPixelRatioFor } from '../src/features/upload/PhotoEditor'
 import { editorProps, behavior } from './filerobotMock'
 
 behavior.save = (props) =>
@@ -93,5 +93,26 @@ describe('PhotoEditor', () => {
     // Not the library's own `Crop`: it is not in the Annotate tab's tool list, so the
     // tab would open with no tool highlighted and no options panel.
     expect(defaultToolId).toBe('Text')
+  })
+})
+
+// The export canvas is full-size no matter what; what varies is the density of the
+// cache drawn into it. This is that density as a ratio, and the whole fix for
+// full-size-but-soft saves.
+describe('savingPixelRatioFor', () => {
+  it('makes the cache as dense as the photo, however small the stage', () => {
+    // A phone-portrait photo against a stage a screenful wide: the tall edge
+    // binds at 4032/439 = 9.18, so the cache needs a bit over 9x to hold every
+    // pixel the photo has.
+    expect(savingPixelRatioFor({ width: 850, height: 439 }, { width: 2268, height: 4032 })).toBe(10)
+    // Landscape: now the wide edge binds instead.
+    expect(savingPixelRatioFor({ width: 400, height: 700 }, { width: 3000, height: 2000 })).toBe(8)
+  })
+
+  it('stays at 1 when the stage already out-measures the photo', () => {
+    // A stage bigger than the photo fits it at more than 1:1, so the cache is
+    // already denser than the source and there is nothing to make up.
+    expect(savingPixelRatioFor({ width: 1200, height: 900 }, { width: 600, height: 400 })).toBe(1)
+    expect(savingPixelRatioFor({ width: 600, height: 400 }, { width: 600, height: 400 })).toBe(1)
   })
 })

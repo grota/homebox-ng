@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import FilerobotImageEditor, { TABS, TOOLS } from 'react-filerobot-image-editor'
 import { trpc } from '../../api/trpc'
 import { Modal } from '../../ui'
@@ -54,10 +54,73 @@ const EXT_FOR_TYPE: Record<string, string | undefined> = {
 }
 export const filenameForBlob = (blob: Blob, stem: string) => `${stem}.${EXT_FOR_TYPE[blob.type] ?? 'jpg'}`
 
+// Filerobot's export canvas is always full resolution — Konva's `toCanvas` falls
+// back to a pixel ratio of 1, not to `savingPixelRatio` — but what it DRAWS into
+// that canvas is a cache of the photo as it fits the editor's stage, at
+// `savingPixelRatio` × that size (`Konva.pixelRatio` is set to it right before the
+// cache). A static ratio therefore saves a stage-sized bitmap blown up to
+// full-size pixels: full-resolution files with only a screenful of real detail.
+// The ratio that fixes it is the photo's pixels over the stage's, whichever they
+// happen to be.
+export const savingPixelRatioFor = (
+  stage: { width: number; height: number },
+  natural: { width: number; height: number },
+): number => Math.max(1, Math.ceil(Math.max(natural.width / stage.width, natural.height / stage.height)))
+
+// The measured ratio above, for an editor rendering inside `hostRef`. The photo's
+// own pixels come from the same source the editor opens; the stage only exists
+// once that source has loaded into it, so measure across the next frames until it
+// does, and again whenever the host is resized.
+export const useSavingPixelRatio = (hostRef: RefObject<HTMLElement | null>, source: string | null): number => {
+  const [natural, setNatural] = useState<{ width: number; height: number } | null>(null)
+  const [ratio, setRatio] = useState(1)
+
+  useEffect(() => {
+    if (!source) return
+    let cancelled = false
+    const img = new Image()
+    img.onload = () => {
+      if (!cancelled) setNatural({ width: img.naturalWidth, height: img.naturalHeight })
+    }
+    img.src = source
+    return () => {
+      cancelled = true
+    }
+  }, [source])
+
+  useEffect(() => {
+    if (!natural) return
+    const measure = (): boolean => {
+      const box = hostRef.current?.querySelector('.konvajs-content')?.getBoundingClientRect()
+      if (!box?.width || !box.height) return false
+      setRatio(savingPixelRatioFor({ width: box.width, height: box.height }, natural))
+      return true
+    }
+    let raf = 0
+    let attempts = 0
+    const tick = () => {
+      if (measure() || ++attempts > 180) return
+      raf = requestAnimationFrame(tick)
+    }
+    tick()
+    const observer = new ResizeObserver(() => measure())
+    if (hostRef.current) observer.observe(hostRef.current)
+    return () => {
+      cancelAnimationFrame(raf)
+      observer.disconnect()
+    }
+  }, [natural, hostRef])
+
+  return ratio
+}
+
 export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) {
   const utils = trpc.useUtils()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const hostRef = useRef<HTMLDivElement>(null)
+  const source = '/file/' + image.path
+  const savingPixelRatio = useSavingPixelRatio(hostRef, open ? source : null)
 
   if (!open) return null
 
@@ -90,9 +153,9 @@ export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) 
           that parent has no height — inside a `height: auto` dialog it collapsed
           to its own 250px `min-height`, leaving the photo a postage stamp. A
           definite height here is the whole fix. */}
-      <div className="h-[70vh]">
+      <div className="h-[70vh]" ref={hostRef}>
         <FilerobotImageEditor
-          source={'/file/' + image.path}
+          source={source}
           onSave={handleSave}
           onClose={onClose}
           tabsIds={TABS_IDS}
@@ -107,7 +170,10 @@ export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) 
           // `TEXT_DEFAULTS` below already configures.
           defaultToolId={TOOLS.TEXT}
           Text={TEXT_DEFAULTS}
-          savingPixelRatio={4}
+          // Measured, not guessed: what keeps the saved rendition's pixels the
+          // photo's own rather than a screenful blown up — see
+          // `savingPixelRatioFor`.
+          savingPixelRatio={savingPixelRatio}
           previewPixelRatio={window.devicePixelRatio || 1}
         />
       </div>
