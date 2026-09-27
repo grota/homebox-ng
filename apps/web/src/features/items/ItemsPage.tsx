@@ -266,7 +266,10 @@ export function ItemsPage() {
         <Field
           label="Search"
           htmlFor="item-search"
-          className="flex-1 min-w-0 max-w-[26rem]"
+          // On a phone the three controls shared one row and the search shrank
+          // to ~100px. Below `md` it takes its own line at full width instead;
+          // Order and Clear filters share the next one. Desktop is unchanged.
+          className="flex-1 min-w-0 basis-full md:basis-auto max-w-none md:max-w-[26rem]"
           // The search has two modes and nothing on screen said so: words match
           // from their start as you type, and quotes ask for the word itself.
           // Someone who never learns the second can't search precisely at all —

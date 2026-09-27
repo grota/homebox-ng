@@ -27,7 +27,7 @@ describe('shared settings schemas', () => {
     expect(DEFAULT_USER_SETTINGS).toEqual({
       language: 'en', locale: 'en-US', themeMode: 'auto',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
-      itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false,
+      itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false, skipSaveDialog: true,
     })
   })
 
@@ -46,6 +46,12 @@ describe('shared settings schemas', () => {
   it('takes the trash confirmation as a boolean only', () => {
     expect(userSettingsUpdateSchema.safeParse({ confirmTrash: true }).success).toBe(true)
     expect(userSettingsUpdateSchema.safeParse({ confirmTrash: 'yes' }).success).toBe(false)
+  })
+
+  it('skips the photo save dialog by default, as a boolean only', () => {
+    expect(DEFAULT_USER_SETTINGS.skipSaveDialog).toBe(true)
+    expect(userSettingsUpdateSchema.safeParse({ skipSaveDialog: false }).success).toBe(true)
+    expect(userSettingsUpdateSchema.safeParse({ skipSaveDialog: 'yes' }).success).toBe(false)
   })
 
   it('accepts a catalog ordering, but not relevance', () => {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import FilerobotImageEditor, { TABS, TOOLS } from 'react-filerobot-image-editor'
 import { trpc } from '../../api/trpc'
 import { Modal } from '../../ui'
+import { useUserSettings } from '../../lib/settings/useUserSettings'
 
 // `path` is whichever rendition this session edits: the item page's "Edit photo"
 // passes the edited file when there is one, "Edit original photo" passes the
@@ -132,6 +133,10 @@ export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) 
   const hostRef = useRef<HTMLDivElement>(null)
   const source = '/file/' + image.path
   const savingPixelRatio = useSavingPixelRatio(hostRef, open ? source : null)
+  // The at-create crop's skip owns no widget change here: this editor keeps its
+  // tabs, tools and defaults exactly as they are, and only the second dialog —
+  // name, format, quality — is skipped, with the library's own defaults.
+  const { skipSaveDialog } = useUserSettings()
 
   if (!open) return null
 
@@ -181,6 +186,7 @@ export function PhotoEditor({ image, itemId, open, onClose }: PhotoEditorProps) 
           // `TEXT_DEFAULTS` below already configures.
           defaultToolId={TOOLS.TEXT}
           Text={TEXT_DEFAULTS}
+          onBeforeSave={skipSaveDialog ? () => false : undefined}
           // Measured, not guessed: what keeps the saved rendition's pixels the
           // photo's own rather than a screenful blown up — see
           // `savingPixelRatioFor`.

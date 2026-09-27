@@ -6,12 +6,20 @@ import { StrictMode } from 'react'
 // waits to be driven (`test/filerobotMock.tsx`), unlike `photoEditor.test.tsx`'s.
 vi.mock('react-filerobot-image-editor', async () => await import('./filerobotMock'))
 
+// Mutable, so a case can render the dialog with skipping off.
+const { cropFlags } = vi.hoisted(() => ({ cropFlags: { skipSaveDialog: true } }))
+
+vi.mock('../src/lib/settings/useUserSettings', () => ({
+  useUserSettings: () => ({ skipSaveDialog: cropFlags.skipSaveDialog }),
+}))
+
 import { PhotoCrop } from '../src/features/upload/PhotoCrop'
 import { editorProps } from './filerobotMock'
 
 describe('the crop dialog', () => {
   beforeEach(() => {
     editorProps.length = 0
+    cropFlags.skipSaveDialog = true
     // jsdom does not implement these; the component builds an object URL from the
     // picked file, because the file has no server path yet.
     global.URL.createObjectURL = vi.fn(() => 'blob:fake-file') as any
@@ -27,6 +35,26 @@ describe('the crop dialog', () => {
     // One tab: crop, rotate, flip — the library renders no tab strip at all for a
     // single tab, and arms the crop tool by its own default.
     expect(props.tabsIds).toEqual(['Adjust'])
+  })
+
+  it('opens the crop on the Custom preset, not Original', () => {
+    render(<PhotoCrop file={file()} onSave={vi.fn()} onClose={vi.fn()} />)
+    // The library seeds its crop ratio from this prop and highlights the matching
+    // preset; its default (`null`) is what opens on Original.
+    expect(editorProps.at(-1).Crop).toEqual({ ratio: 'custom' })
+  })
+
+  it('saves straight away while skipping is on, and asks when it is off', () => {
+    render(<PhotoCrop file={file()} onSave={vi.fn()} onClose={vi.fn()} />)
+    // The library takes its direct-save branch when `onBeforeSave` returns
+    // false, instead of opening the name/format/quality dialog.
+    const skipping = editorProps.at(-1).onBeforeSave
+    expect(typeof skipping).toBe('function')
+    expect(skipping()).toBe(false)
+
+    cropFlags.skipSaveDialog = false
+    render(<PhotoCrop file={file()} onSave={vi.fn()} onClose={vi.fn()} />)
+    expect(editorProps.at(-1).onBeforeSave).toBeUndefined()
   })
 
   it('saves as jpeg', () => {

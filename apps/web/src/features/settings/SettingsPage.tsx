@@ -27,6 +27,7 @@ type Draft = {
   itemsSort: ItemSortPreference
   itemsPerPage: string
   confirmTrash: boolean
+  skipSaveDialog: boolean
 }
 
 // A form rather than a row of controls that each write as they change. One Save is
@@ -45,7 +46,7 @@ export function SettingsPage() {
     setPreview,
     formatDate,
   } = useUserSettings()
-  const { locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash } = storedSettings
+  const { locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash, skipSaveDialog } = storedSettings
 
   // What the server holds, in the form's shape. Recomputed each render (cheap) and
   // used for both the initial draft and the "has anything changed" test.
@@ -57,6 +58,7 @@ export function SettingsPage() {
     itemsSort,
     itemsPerPage: String(itemsPerPage),
     confirmTrash,
+    skipSaveDialog,
   }
 
   const [draft, setDraft] = useState<Draft>(stored)
@@ -69,7 +71,7 @@ export function SettingsPage() {
   useEffect(() => {
     setDraft(stored)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash])
+  }, [locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash, skipSaveDialog])
 
   // A page size the API would reject is not offered: the button that would send it
   // is disabled, so nothing is coerced behind the user's back. `min`/`max` on the
@@ -95,6 +97,7 @@ export function SettingsPage() {
       itemsSort: draft.itemsSort,
       itemsPerPage: perPage,
       confirmTrash: draft.confirmTrash,
+      skipSaveDialog: draft.skipSaveDialog,
     })
     // A preview stands in for the stored value; once that value is stored it would
     // otherwise go on overriding it.
@@ -230,6 +233,20 @@ export function SettingsPage() {
           className="self-start"
           checked={draft.confirmTrash}
           onChange={(e) => edit('confirmTrash', e.target.checked)}
+        />
+      </Field>
+
+      {/* Whether the photo dialogs save straight away instead of asking for a
+          name, a format and a quality first. It governs both of them — the
+          at-create crop and Edit photo — which is why it is here rather than
+          beside either dialog. */}
+      <Field label={t('settings.skipSaveDialog')} htmlFor="settings-skip-save-dialog">
+        <input
+          id="settings-skip-save-dialog"
+          type="checkbox"
+          className="self-start"
+          checked={draft.skipSaveDialog}
+          onChange={(e) => edit('skipSaveDialog', e.target.checked)}
         />
       </Field>
 

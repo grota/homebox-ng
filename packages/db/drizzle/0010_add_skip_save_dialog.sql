@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `skip_save_dialog` integer DEFAULT true NOT NULL;

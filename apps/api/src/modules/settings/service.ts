@@ -18,10 +18,11 @@ const toDto = (row: UserSettingsRow): UserSettingsDto => ({
   lightThemeId: row.lightThemeId,
   darkThemeId: row.darkThemeId,
   itemsSort: row.itemsSort as UserSettingsDto['itemsSort'],
-  // No casts: the column is an integer and a boolean, and the range is enforced
+  // No casts: the columns are an integer and booleans, and the range is enforced
   // on the wire.
   itemsPerPage: row.itemsPerPage,
   confirmTrash: row.confirmTrash,
+  skipSaveDialog: row.skipSaveDialog,
 })
 
 // Returns the user's settings row, or the spec defaults when none exists (a

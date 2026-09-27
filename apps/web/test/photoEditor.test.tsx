@@ -13,6 +13,13 @@ const { invalidateList, invalidateGet } = vi.hoisted(() => ({
 // after a save — with the recorded props coming from the shared mock.
 vi.mock('react-filerobot-image-editor', async () => await import('./filerobotMock'))
 
+// Mutable, so a case can render the editor with skipping off.
+const { editorFlags } = vi.hoisted(() => ({ editorFlags: { skipSaveDialog: true } }))
+
+vi.mock('../src/lib/settings/useUserSettings', () => ({
+  useUserSettings: () => ({ skipSaveDialog: editorFlags.skipSaveDialog }),
+}))
+
 vi.mock('../src/api/trpc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/api/trpc')>()
   return {
@@ -35,6 +42,7 @@ describe('PhotoEditor', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     editorProps.length = 0
+    editorFlags.skipSaveDialog = true
     global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) })) as any
   })
 
@@ -93,6 +101,18 @@ describe('PhotoEditor', () => {
     // Not the library's own `Crop`: it is not in the Annotate tab's tool list, so the
     // tab would open with no tool highlighted and no options panel.
     expect(defaultToolId).toBe('Text')
+  })
+
+  // The skip is the only behaviour change this editor gets: its tabs, tools and
+  // defaults stay exactly as they are, so no `Crop` override may ride along.
+  it('leaves the widget alone and only skips the save dialog', () => {
+    render(<PhotoEditor image={{ id: 7, path: 'uploads/originals/x.png' }} itemId={3} open onClose={vi.fn()} />)
+    expect(editorProps.at(-1).Crop).toBeUndefined()
+    expect(editorProps.at(-1).onBeforeSave?.()).toBe(false)
+
+    editorFlags.skipSaveDialog = false
+    render(<PhotoEditor image={{ id: 7, path: 'uploads/originals/x.png' }} itemId={3} open onClose={vi.fn()} />)
+    expect(editorProps.at(-1).onBeforeSave).toBeUndefined()
   })
 })
 

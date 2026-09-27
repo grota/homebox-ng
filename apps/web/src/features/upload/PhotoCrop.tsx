@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor'
 import { Modal } from '../../ui'
+import { useUserSettings } from '../../lib/settings/useUserSettings'
 import { toBlob, useSavingPixelRatio, type SaveImageData } from './PhotoEditor'
 
 // The tabs a crop step wants: ADJUST, which is crop, rotate and flip. With one tab the
@@ -29,6 +30,11 @@ export function PhotoCrop({ file, onSave, onClose }: PhotoCropProps) {
   // editor's stage — see `savingPixelRatioFor`.
   const hostRef = useRef<HTMLDivElement>(null)
   const savingPixelRatio = useSavingPixelRatio(hostRef, src)
+
+  // Saving with the dialog's own defaults (JPEG, quality 92) rather than asking
+  // for a name, a format and a quality in a second dialog. The library takes the
+  // direct-save branch when `onBeforeSave` returns false.
+  const { skipSaveDialog } = useUserSettings()
 
   const [error, setError] = useState<string | null>(null)
 
@@ -62,6 +68,12 @@ export function PhotoCrop({ file, onSave, onClose }: PhotoCropProps) {
           onSave={handleSave}
           onClose={onClose}
           tabsIds={CROP_TABS}
+          // Free-form from the start: the library seeds the crop ratio from this
+          // and highlights the matching preset, so `null` (its default) opens on
+          // Original while `'custom'` opens on Custom. The box itself is
+          // unconstrained either way.
+          Crop={{ ratio: 'custom' }}
+          onBeforeSave={skipSaveDialog ? () => false : undefined}
           // This blob becomes the photo's ORIGINAL (ADR-0012), so it has to carry
           // the source's own pixels — the export canvas is full-size either way,
           // and the measured ratio above is what keeps the pixels inside it

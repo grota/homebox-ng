@@ -65,6 +65,7 @@
     "previewTheme": "Preview theme",
     "save": "Save",
     "confirmTrash": "Ask move to trash confirmation",
+    "skipSaveDialog": "Skip the photo save dialog",
     "datePreview": "Today",
     "version": "Version"
   }

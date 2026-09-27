@@ -73,6 +73,12 @@ export const userSettingsSchema = z.object({
   // *every* move-to-trash (the catalog's selection, a draft, one item), which is
   // why it lives here rather than beside any one of those buttons.
   confirmTrash: z.boolean(),
+  // Skip the photo editor's save-as dialog (name/format/quality) and save with
+  // its defaults straight away. Defaults to `true` — on — so picking a photo is
+  // one dialog rather than two unless the user opts into the second one. It
+  // governs both photo dialogs (the at-create crop and Edit photo), which is
+  // why it lives here rather than beside either of them.
+  skipSaveDialog: z.boolean(),
 })
 export type UserSettingsDto = z.infer<typeof userSettingsSchema>
 
@@ -91,6 +97,7 @@ export const DEFAULT_USER_SETTINGS: UserSettingsDto = {
   itemsSort: DEFAULT_ITEM_SORT,
   itemsPerPage: DEFAULT_ITEMS_PER_PAGE,
   confirmTrash: false,
+  skipSaveDialog: true,
 }
 
 // Detection provider selection. `DETECTION_PROVIDERS[number]` is the value stored

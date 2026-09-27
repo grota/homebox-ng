@@ -23,6 +23,7 @@ const { updateSettings, setPreview, settings, preview } = vi.hoisted(() => ({
     itemsSort: 'createdAt:desc',
     itemsPerPage: 20,
     confirmTrash: false,
+    skipSaveDialog: true,
   },
 }))
 
@@ -71,6 +72,7 @@ beforeEach(() => {
   settings.itemsSort = 'createdAt:desc'
   settings.itemsPerPage = 20
   settings.confirmTrash = false
+  settings.skipSaveDialog = true
 })
 
 describe('SettingsPage', () => {
@@ -88,6 +90,7 @@ describe('SettingsPage', () => {
     expect(label('settings.itemsSort')).toHaveValue('createdAt:desc')
     expect(label('settings.itemsPerPage')).toHaveValue(20)
     expect(label('settings.confirmTrash')).not.toBeChecked()
+    expect(label('settings.skipSaveDialog')).toBeChecked()
   })
 
   // One Save, not a write per control: nothing reaches the server until it is
@@ -98,6 +101,7 @@ describe('SettingsPage', () => {
     fireEvent.change(label('settings.themeMode'), { target: { value: 'dark' } })
     fireEvent.change(label('settings.locale'), { target: { value: 'de-DE' } })
     fireEvent.click(label('settings.confirmTrash'))
+    fireEvent.click(label('settings.skipSaveDialog'))
     expect(updateSettings).not.toHaveBeenCalled()
 
     fireEvent.click(save())
@@ -110,6 +114,7 @@ describe('SettingsPage', () => {
       itemsSort: 'createdAt:desc',
       itemsPerPage: 20,
       confirmTrash: true,
+      skipSaveDialog: false,
     })
   })
 

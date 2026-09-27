@@ -26,7 +26,7 @@ describe('settings module', () => {
     expect(res.json().result.data).toEqual({
       language: 'en', locale: 'en-US', themeMode: 'auto',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
-      itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false,
+      itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false, skipSaveDialog: true,
     })
   })
 
@@ -36,7 +36,7 @@ describe('settings module', () => {
     expect(res.json().result.data).toEqual({
       language: 'en', locale: 'de-DE', themeMode: 'dark',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
-      itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false,
+      itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false, skipSaveDialog: true,
     })
     // A second update is additive and keeps a single row (upsert, not duplicate).
     const second = await UPDATE({ language: 'en' })
@@ -100,5 +100,16 @@ describe('settings module', () => {
     expect(updated.statusCode).toBe(200)
     expect(updated.json().result.data.confirmTrash).toBe(true)
     expect((await GET()).json().result.data.confirmTrash).toBe(true)
+  })
+
+  // Skipping the photo save dialog is opt-OUT: picking a photo is one dialog
+  // rather than two unless the user asks for the second one back.
+  it('defaults the save-dialog skip on, and stores it off', async () => {
+    expect((await GET()).json().result.data.skipSaveDialog).toBe(true)
+
+    const updated = await UPDATE({ skipSaveDialog: false })
+    expect(updated.statusCode).toBe(200)
+    expect(updated.json().result.data.skipSaveDialog).toBe(false)
+    expect((await GET()).json().result.data.skipSaveDialog).toBe(false)
   })
 })
