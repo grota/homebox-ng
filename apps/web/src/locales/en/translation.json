@@ -66,6 +66,7 @@
     "save": "Save",
     "confirmTrash": "Ask move to trash confirmation",
     "skipSaveDialog": "Skip the photo save dialog",
+    "expandLocationTree": "Expand the location tree",
     "datePreview": "Today",
     "version": "Version"
   }

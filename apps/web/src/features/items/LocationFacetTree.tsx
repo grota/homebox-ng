@@ -44,12 +44,25 @@ const label = (node: LocationFacetNode): string =>
     ? `${node.name} (${node.subtreeCount})`
     : `${node.name} ${node.ownCount} (${node.subtreeCount})`
 
+// Every branch id, so `defaultExpanded` opens the whole tree. View state still
+// owns the set from here: closing a chevron deletes its id exactly like any
+// other toggle, and branches arriving with later facet updates start closed.
+const allBranchIds = (list: LocationFacetNode[], into = new Set<LocationFacetId>()): Set<LocationFacetId> => {
+  for (const node of list) {
+    if ((node.children?.length ?? 0) > 0) {
+      into.add(node.id)
+      allBranchIds(node.children ?? [], into)
+    }
+  }
+  return into
+}
+
 // One tree, two jobs. The sidebar **filters** by one location, so its rows are
 // buttons and the branch leading to the selection is forced open. A **criteria
 // clause** selects several, so its rows are checkboxes and nothing is forced —
 // both are the same hierarchy with the same counts, and a second tree would be a
 // second place to get the nesting wrong.
-type Props = { nodes: LocationFacetNode[] } & (
+type Props = { nodes: LocationFacetNode[]; defaultExpanded?: boolean } & (
   | {
       multi?: false
       selected: LocationFacetId | undefined
@@ -61,10 +74,13 @@ type Props = { nodes: LocationFacetNode[] } & (
 // The location facet as the tree it is (ADR-0009). Two gestures on one row, and
 // they mean different things: the **name** filters the grid, the **chevron** only
 // opens the branch — so looking inside a location does not require filtering by it.
-export function LocationFacetTree({ nodes, ...selection }: Props) {
+export function LocationFacetTree({ nodes, defaultExpanded, ...selection }: Props) {
   // Which branches are open. View state, deliberately not in the URL: it is not a
-  // link, and it is fine for it to reset on reload.
-  const [open, setOpen] = useState<Set<LocationFacetId>>(new Set())
+  // link, and it is fine for it to reset on reload. The setting only seeds the
+  // initial set — everything after the first render is toggles.
+  const [open, setOpen] = useState<Set<LocationFacetId>>(() =>
+    defaultExpanded ? allBranchIds(nodes) : new Set(),
+  )
   const forced = selection.multi ? new Set<LocationFacetId>() : pathToSelection(nodes, selection.selected)
 
   const toggle = (id: LocationFacetId) =>

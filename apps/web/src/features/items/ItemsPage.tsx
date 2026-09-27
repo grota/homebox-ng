@@ -85,7 +85,7 @@ export function ItemsPage() {
   // ordered by until the user says otherwise, and it is never written down (there
   // is no rank to order by without a term). So the only thing remembered here is
   // a choice made *while searching* — otherwise the stored value is the answer.
-  const { itemsSort, itemsPerPage, updateSettings } = useUserSettings()
+  const { itemsSort, itemsPerPage, expandLocationTree, updateSettings } = useUserSettings()
   // Whether this user wants to be asked before a move-to-trash; see
   // `useTrashConfirmation`.
   const askTrash = useTrashConfirmation()
@@ -534,6 +534,9 @@ export function ItemsPage() {
                     nodes={facets.locations}
                     selected={locationId}
                     onSelect={setLocationFilter}
+                    // The tree is fetched on every list request either way, so
+                    // starting expanded only draws more of what is already here.
+                    defaultExpanded={expandLocationTree}
                   />
                 </div>
               )}

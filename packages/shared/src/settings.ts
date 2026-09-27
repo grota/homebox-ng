@@ -79,6 +79,11 @@ export const userSettingsSchema = z.object({
   // governs both photo dialogs (the at-create crop and Edit photo), which is
   // why it lives here rather than beside either of them.
   skipSaveDialog: z.boolean(),
+  // Start the catalog's location facet fully expanded. Defaults to `true` — the
+  // tree is already fetched and counted on every list request whether it is
+  // drawn open or not, so expanding only renders more rows. Manual open/close
+  // clicks stay in-memory view state; this only seeds the initial set.
+  expandLocationTree: z.boolean(),
 })
 export type UserSettingsDto = z.infer<typeof userSettingsSchema>
 
@@ -98,6 +103,7 @@ export const DEFAULT_USER_SETTINGS: UserSettingsDto = {
   itemsPerPage: DEFAULT_ITEMS_PER_PAGE,
   confirmTrash: false,
   skipSaveDialog: true,
+  expandLocationTree: true,
 }
 
 // Detection provider selection. `DETECTION_PROVIDERS[number]` is the value stored

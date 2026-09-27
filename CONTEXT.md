@@ -139,8 +139,9 @@ rows and simply end up with no location.
   the trash guard keeps trashed items out of both the catalog and the drafts list.
   `(packages/db/src/schema.ts:137)` `(apps/api/src/modules/items/repo.ts:96)`
 - **location facet** — the location dimension of **facet search**, laid out as a tree: children nest
-  inside their parents and the roots stack vertically. Which branches are open is view state;
-  clicking a name filters, clicking the chevron beside it only opens or closes that branch. A
+  inside their parents and the roots stack vertically. Which branches are open is view state,
+  starting expanded unless the user's expand-preference says otherwise; clicking a name filters,
+  clicking the chevron beside it only opens or closes that branch. A
   root-level leaf-facet beside the roots, **Unlocated**, holds the **unlocated items**.
   `(apps/api/src/modules/items/repo.ts:181)`
 - **own count** / **subtree count** — the two numbers a **location facet** node can carry: items

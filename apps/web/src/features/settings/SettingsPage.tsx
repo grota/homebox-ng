@@ -28,6 +28,7 @@ type Draft = {
   itemsPerPage: string
   confirmTrash: boolean
   skipSaveDialog: boolean
+  expandLocationTree: boolean
 }
 
 // A form rather than a row of controls that each write as they change. One Save is
@@ -46,7 +47,7 @@ export function SettingsPage() {
     setPreview,
     formatDate,
   } = useUserSettings()
-  const { locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash, skipSaveDialog } = storedSettings
+  const { locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash, skipSaveDialog, expandLocationTree } = storedSettings
 
   // What the server holds, in the form's shape. Recomputed each render (cheap) and
   // used for both the initial draft and the "has anything changed" test.
@@ -59,6 +60,7 @@ export function SettingsPage() {
     itemsPerPage: String(itemsPerPage),
     confirmTrash,
     skipSaveDialog,
+    expandLocationTree,
   }
 
   const [draft, setDraft] = useState<Draft>(stored)
@@ -71,7 +73,7 @@ export function SettingsPage() {
   useEffect(() => {
     setDraft(stored)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash, skipSaveDialog])
+  }, [locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash, skipSaveDialog, expandLocationTree])
 
   // A page size the API would reject is not offered: the button that would send it
   // is disabled, so nothing is coerced behind the user's back. `min`/`max` on the
@@ -98,6 +100,7 @@ export function SettingsPage() {
       itemsPerPage: perPage,
       confirmTrash: draft.confirmTrash,
       skipSaveDialog: draft.skipSaveDialog,
+      expandLocationTree: draft.expandLocationTree,
     })
     // A preview stands in for the stored value; once that value is stored it would
     // otherwise go on overriding it.
@@ -247,6 +250,20 @@ export function SettingsPage() {
           className="self-start"
           checked={draft.skipSaveDialog}
           onChange={(e) => edit('skipSaveDialog', e.target.checked)}
+        />
+      </Field>
+
+      {/* Whether the catalog's location facet starts fully expanded. The tree is
+          fetched on every list request either way, so this only decides how much
+          of it is drawn — and opening or closing branches stays in-memory view
+          state either way. */}
+      <Field label={t('settings.expandLocationTree')} htmlFor="settings-expand-location-tree">
+        <input
+          id="settings-expand-location-tree"
+          type="checkbox"
+          className="self-start"
+          checked={draft.expandLocationTree}
+          onChange={(e) => edit('expandLocationTree', e.target.checked)}
         />
       </Field>
 

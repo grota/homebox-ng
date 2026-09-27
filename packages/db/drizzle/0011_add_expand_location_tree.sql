@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `expand_location_tree` integer DEFAULT true NOT NULL;

@@ -28,6 +28,7 @@ describe('shared settings schemas', () => {
       language: 'en', locale: 'en-US', themeMode: 'auto',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
       itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false, skipSaveDialog: true,
+      expandLocationTree: true,
     })
   })
 
@@ -52,6 +53,12 @@ describe('shared settings schemas', () => {
     expect(DEFAULT_USER_SETTINGS.skipSaveDialog).toBe(true)
     expect(userSettingsUpdateSchema.safeParse({ skipSaveDialog: false }).success).toBe(true)
     expect(userSettingsUpdateSchema.safeParse({ skipSaveDialog: 'yes' }).success).toBe(false)
+  })
+
+  it('expands the location tree by default, as a boolean only', () => {
+    expect(DEFAULT_USER_SETTINGS.expandLocationTree).toBe(true)
+    expect(userSettingsUpdateSchema.safeParse({ expandLocationTree: false }).success).toBe(true)
+    expect(userSettingsUpdateSchema.safeParse({ expandLocationTree: 'yes' }).success).toBe(false)
   })
 
   it('accepts a catalog ordering, but not relevance', () => {

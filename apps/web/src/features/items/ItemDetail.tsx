@@ -182,7 +182,13 @@ export function ItemDetail() {
 
   return (
     <div className="flex h-dvh flex-col bg-bg text-text">
-      <header className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
+      {/* Sticky, not merely first: entering from a scrolled-down list can park
+          the document itself scrolled (no scroll reset on navigation, and on
+          mobile `body{min-height:100vh}` vs this `h-dvh` root leaves a real
+          scroll range for the URL-bar gap) — and the photo viewer below is
+          `touch-none`, so fingers on the photo cannot scroll back. Pinned, the
+          bar survives whatever offset the page arrives with. */}
+      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
         {/* The panel carries the name from `lg` up; below that it is behind a
             toggle, so the top bar has to say what is on screen. */}
         <span className="truncate font-semibold lg:hidden">{item.name}</span>

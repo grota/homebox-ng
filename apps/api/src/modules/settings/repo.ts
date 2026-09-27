@@ -17,6 +17,7 @@ export type UserSettingsRow = {
   itemsPerPage: number
   confirmTrash: boolean
   skipSaveDialog: boolean
+  expandLocationTree: boolean
 }
 
 // Select only the DTO columns (never the `id`).
@@ -31,6 +32,7 @@ const ROW_FIELDS = {
   itemsPerPage: userSettings.itemsPerPage,
   confirmTrash: userSettings.confirmTrash,
   skipSaveDialog: userSettings.skipSaveDialog,
+  expandLocationTree: userSettings.expandLocationTree,
 } as const
 
 export const getByUserId = (db: DrizzleDb, userId: number): UserSettingsRow | undefined =>

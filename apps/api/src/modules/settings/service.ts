@@ -23,6 +23,7 @@ const toDto = (row: UserSettingsRow): UserSettingsDto => ({
   itemsPerPage: row.itemsPerPage,
   confirmTrash: row.confirmTrash,
   skipSaveDialog: row.skipSaveDialog,
+  expandLocationTree: row.expandLocationTree,
 })
 
 // Returns the user's settings row, or the spec defaults when none exists (a

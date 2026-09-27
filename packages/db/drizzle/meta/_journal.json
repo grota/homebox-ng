@@ -78,6 +78,13 @@
       "when": 1790522151415,
       "tag": "0010_add_skip_save_dialog",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790528011323,
+      "tag": "0011_add_expand_location_tree",
+      "breakpoints": true
     }
   ]
 }

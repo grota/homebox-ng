@@ -11,6 +11,19 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 // location would mean filtering by it.
 const state = vi.hoisted(() => ({ lastInput: null as any }))
 
+// Mutable, so a case can render the catalog with the expansion default off.
+const { facetFlags } = vi.hoisted(() => ({ facetFlags: { expandLocationTree: true } }))
+
+vi.mock('../src/lib/settings/useUserSettings', () => ({
+  useUserSettings: () => ({
+    itemsSort: 'createdAt:desc',
+    itemsPerPage: 20,
+    expandLocationTree: facetFlags.expandLocationTree,
+    updateSettings: vi.fn(),
+  }),
+  useTrashConfirmation: () => () => true,
+}))
+
 vi.mock('../src/api/trpc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/api/trpc')>()
   return {
@@ -91,15 +104,38 @@ const chevron = (label: string | RegExp) => screen.getByRole('button', { name: n
 
 beforeEach(() => {
   state.lastInput = null
+  facetFlags.expandLocationTree = true
 })
 
 describe('the location facet tree', () => {
-  it('opens collapsed to the roots', () => {
+  it('starts expanded when the setting is on', () => {
+    renderCatalog()
+
+    expect(screen.getByRole('button', { name: 'shed (5)' })).toBeInTheDocument()
+    // The whole hierarchy is drawn without asking: the tree is fetched on every
+    // list request either way, so this only renders more of what is already here.
+    expect(screen.getByRole('button', { name: 'garage 1 (3)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'shelf A (2)' })).toBeInTheDocument()
+  })
+
+  it('starts collapsed when the setting is off', () => {
+    facetFlags.expandLocationTree = false
     renderCatalog()
 
     expect(screen.getByRole('button', { name: 'shed (5)' })).toBeInTheDocument()
     // Nothing is revealed until it is asked for.
     expect(screen.queryByRole('button', { name: 'garage 1 (3)' })).not.toBeInTheDocument()
+  })
+
+  it('keeps chevron clicks as view state on top of the default', () => {
+    renderCatalog()
+
+    // Collapse what the setting opened: the toggle deletes the id from the open
+    // set like any other, and re-opening puts it back.
+    fireEvent.click(chevron('home'))
+    expect(screen.queryByRole('button', { name: 'garage 1 (3)' })).not.toBeInTheDocument()
+    fireEvent.click(chevron('home'))
+    expect(screen.getByRole('button', { name: 'garage 1 (3)' })).toBeInTheDocument()
   })
 
   it('shows both counts when they differ, and one when they do not', () => {
@@ -126,6 +162,7 @@ describe('the location facet tree', () => {
   })
 
   it('only opens the branch when the chevron is clicked', () => {
+    facetFlags.expandLocationTree = false
     renderCatalog()
 
     fireEvent.click(chevron('home'))

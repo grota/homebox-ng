@@ -27,6 +27,7 @@ describe('settings module', () => {
       language: 'en', locale: 'en-US', themeMode: 'auto',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
       itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false, skipSaveDialog: true,
+      expandLocationTree: true,
     })
   })
 
@@ -37,6 +38,7 @@ describe('settings module', () => {
       language: 'en', locale: 'de-DE', themeMode: 'dark',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
       itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false, skipSaveDialog: true,
+      expandLocationTree: true,
     })
     // A second update is additive and keeps a single row (upsert, not duplicate).
     const second = await UPDATE({ language: 'en' })
@@ -111,5 +113,16 @@ describe('settings module', () => {
     expect(updated.statusCode).toBe(200)
     expect(updated.json().result.data.skipSaveDialog).toBe(false)
     expect((await GET()).json().result.data.skipSaveDialog).toBe(false)
+  })
+
+  // An expanded location tree is opt-OUT too: the tree is fetched on every list
+  // request either way, so starting expanded costs nothing to keep.
+  it('defaults the tree expansion on, and stores it off', async () => {
+    expect((await GET()).json().result.data.expandLocationTree).toBe(true)
+
+    const updated = await UPDATE({ expandLocationTree: false })
+    expect(updated.statusCode).toBe(200)
+    expect(updated.json().result.data.expandLocationTree).toBe(false)
+    expect((await GET()).json().result.data.expandLocationTree).toBe(false)
   })
 })

@@ -122,6 +122,10 @@ export const userSettings = sqliteTable('user_settings', {
   // defaults. On by default: picking a photo is one dialog rather than two
   // unless the user opts into the second one.
   skipSaveDialog: integer('skip_save_dialog', { mode: 'boolean' }).notNull().default(true),
+  // Whether the catalog's location facet starts fully expanded. On by default:
+  // the tree is fetched on every list request either way, so this only decides
+  // how much of it is drawn.
+  expandLocationTree: integer('expand_location_tree', { mode: 'boolean' }).notNull().default(true),
 })
 
 export const instanceSettings = sqliteTable('instance_settings', {
