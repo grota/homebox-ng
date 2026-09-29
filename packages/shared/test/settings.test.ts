@@ -28,7 +28,7 @@ describe('shared settings schemas', () => {
       language: 'en', locale: 'en-US', themeMode: 'auto',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
       itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false, skipSaveDialog: true,
-      expandLocationTree: true,
+      expandLocationTree: true, photoOpensItem: true,
     })
   })
 
@@ -59,6 +59,15 @@ describe('shared settings schemas', () => {
     expect(DEFAULT_USER_SETTINGS.expandLocationTree).toBe(true)
     expect(userSettingsUpdateSchema.safeParse({ expandLocationTree: false }).success).toBe(true)
     expect(userSettingsUpdateSchema.safeParse({ expandLocationTree: 'yes' }).success).toBe(false)
+  })
+
+  // The card's photo opens the item and its title selects it, out of the box.
+  // The opposite is the pre-ADR-0013 behaviour and is a per-user opt-in, so the
+  // default is the one that reads as an obvious click target.
+  it('opens the item from the card photo by default, as a boolean only', () => {
+    expect(DEFAULT_USER_SETTINGS.photoOpensItem).toBe(true)
+    expect(userSettingsUpdateSchema.safeParse({ photoOpensItem: false }).success).toBe(true)
+    expect(userSettingsUpdateSchema.safeParse({ photoOpensItem: 'yes' }).success).toBe(false)
   })
 
   it('accepts a catalog ordering, but not relevance', () => {

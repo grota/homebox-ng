@@ -323,17 +323,19 @@ describe('catalog pages', () => {
     expect(screen.getByRole('link', { name: 'New item' })).toHaveAttribute('href', '/items/new')
   })
 
-  // The card was two targets while the photo opened a lightbox and the name opened
-  // the item page, then one when both led to the same page (ADR-0005). It is two
-  // again: the photo opens the item, the title toggles the selection.
-  it('links the title to the item, and only the title', () => {
+  // The card is two targets, and which half does which is the `photoOpensItem`
+  // setting (ADR-0013) — the default being the photo opens, the title picks. What
+  // is asserted here is the shape that is true either way: exactly one destination
+  // on the card, and it names the item. Which half it is belongs to
+  // `catalogCard.test.tsx`, which renders a card with photos and both settings.
+  it('has one destination on the card, and it names the item', () => {
     render(<AppProviders><ItemsPage /></AppProviders>)
-    const link = screen.getByRole('link', { name: 'Lamp' })
+    const link = screen.getByRole('link', { name: 'Open Lamp' })
     expect(link).toHaveAttribute('href', '/items/1')
-    expect(link).toHaveTextContent('Lamp')
-    // Decorative (`alt=""`), so it is queried by selector rather than by role.
-    // The photo is card content, not part of the link: clicking it picks the item.
+    // The name is still on the card as a heading, whatever the setting says.
+    expect(screen.getByText('Lamp')).toBeInTheDocument()
     const card = screen.getByTestId('item-card')
+    // Decorative (`alt=""`), so it is queried by selector rather than by role.
     expect(card.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/file/'))
     expect(within(card).getAllByRole('link')).toHaveLength(1)
     // One photo, so there is no count to show: "1/1" is noise on every card with a
@@ -349,7 +351,7 @@ describe('catalog pages', () => {
   // this is what has to fail if a ladder comes back.
   it('sizes the catalog grid by a minimum card width, not a breakpoint ladder', () => {
     render(<AppProviders><ItemsPage /></AppProviders>)
-    const grid = screen.getByRole('link', { name: 'Lamp' }).closest('.grid')!
+    const grid = screen.getByRole('link', { name: 'Open Lamp' }).closest('.grid')!
     expect(grid.className).toContain('auto-fill')
     expect(grid.className).not.toMatch(/grid-cols-\d/)
   })

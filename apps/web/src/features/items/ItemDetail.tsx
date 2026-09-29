@@ -123,12 +123,14 @@ export function ItemDetail() {
         return
       }
       if (event.key === 'Escape') close()
-      else if (event.key === 'PageDown' && canNext) setIndex(index + 1)
-      else if (event.key === 'PageUp' && canPrevious) setIndex(index - 1)
+      // `next`/`previous` rather than `setIndex(index ± 1)`: the carousel wraps,
+      // and an arithmetic step off the front would clamp to 0 and stop.
+      else if (event.key === 'PageDown' && canNext) next()
+      else if (event.key === 'PageUp' && canPrevious) previous()
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [close, editing, index, canNext, canPrevious, setIndex, leaveEdit])
+  }, [close, editing, canNext, canPrevious, next, previous, leaveEdit])
 
   // Moving to a photo that does not exist yet would set the index past the end,
   // and the clamp would land on nothing. Wait for the refetch that follows the
@@ -192,22 +194,32 @@ export function ItemDetail() {
         {/* The panel carries the name from `lg` up; below that it is behind a
             toggle, so the top bar has to say what is on screen. */}
         <span className="truncate font-semibold lg:hidden">{item.name}</span>
-        <div className="flex flex-1 flex-wrap items-center justify-center gap-1">
+        {/* The counter and its arrows, centred. The badge is positioned out of the
+            flow rather than laid out in it: anything that participates would widen
+            the thing being centred and push the counter left, so the arrows sat in
+            one place on the primary photo and another on every other one — which
+            reads as the controls jumping when you page through.
+
+            So the run is its own positioning context and the badge is `absolute` to
+            the right of it. It stays visually trailing the right arrow — which is
+            the requirement — while the centred box is the same width whether or not
+            the badge is there. */}
+        <div className="flex flex-1 flex-wrap items-center justify-center">
           {current && (
-            <>
+            <div className="relative flex items-center gap-1">
               <Button size="sm" variant="ghost" aria-label="Previous photo" disabled={!canPrevious} onClick={previous}>
                 ‹
               </Button>
               <span className="text-sm tabular-nums">
                 {index + 1} of {photos.length}
               </span>
-              {/* `Set primary` is absent on the primary photo, so this is what
-                  keeps "which one is the cover" answerable. */}
-              {current.isPrimary && <Badge>Primary</Badge>}
               <Button size="sm" variant="ghost" aria-label="Next photo" disabled={!canNext} onClick={next}>
                 ›
               </Button>
-            </>
+              {/* `Set primary` is absent on the primary photo, so this is what keeps
+                  "which one is the cover" answerable without paging through. */}
+              {current.isPrimary && <Badge className="absolute left-full ml-1">Primary</Badge>}
+            </div>
           )}
         </div>
         <Button size="sm" className="lg:hidden" aria-expanded={panelOpen} onClick={() => setPanelOpen((open) => !open)}>

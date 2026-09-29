@@ -1,4 +1,18 @@
-import { test, expect, devices } from '@playwright/test'
+import { test, expect, devices, type Page } from '@playwright/test'
+
+// The card's way into the item, whichever half of the card it currently is.
+//
+// A card has exactly one link, but *which* half it is depends on two things these
+// tests have no business pinning: the `photoOpensItem` setting (ADR-0013), and
+// whether the item has a photo at all — a photoless card is the same card under
+// either setting, with the title as its link. So this asks the invariant rather
+// than the arrangement: the link inside this item's card.
+//
+// The card is found through its checkbox, whose accessible name is the item's
+// name and is an exact match — `filter({ hasText })` would also match "Table Lamp"
+// for "Lamp", and the catalog in these tests has both.
+const cardLink = (page: Page, name: string) =>
+  page.getByTestId('item-card').filter({ has: page.getByRole('checkbox', { name: `Select ${name}`, exact: true }) }).getByRole('link')
 
 // Happy-path smoke test for the whole catalog: first-run setup → log in → seed
 // an item type → create an item → the item appears in the list.
@@ -70,12 +84,12 @@ test('uploads a photo and shows it on the item surface', async ({ page }) => {
   })
   expect(login.ok()).toBeTruthy()
 
-  // The main test created the "Lamp" item. The card's anchor takes its name from
-  // `aria-label`, not text: the title moved out of the link into the footer's
-  // `label` (`5108b37`), so the name is no longer *inside* the `<a>` and
-  // `a:has-text("Lamp")` matches nothing.
+  // The main test created the "Lamp" item. Which half of its card is the link
+  // depends on whether it has a photo (it does not yet) and on the
+  // `photoOpensItem` setting (ADR-0013), so the helper asks for the card's link
+  // rather than for a particular half.
   await page.goto('/items')
-  await page.getByRole('link', { name: 'Lamp', exact: true }).click()
+  await cardLink(page, 'Lamp').click()
 
   // Upload a small PNG. The control lives in the item panel now — one place for
   // it, in the empty case as in the full one.
@@ -240,10 +254,11 @@ test('a catalog card opens the item surface, full-screen and nav-less', async ({
   expect(login.ok()).toBeTruthy()
 
   await page.goto('/items')
-  // The card is ONE target: the photo and the name used to be two, because the
-  // image opened a lightbox and the name opened the item. There is one place to
-  // go now, so the whole card is the link (ADR-0005).
-  await page.getByRole('link', { name: 'Lamp', exact: true }).click()
+  // The card is two targets, and which half opens is the `photoOpensItem` setting
+  // (ADR-0013) — or, for an item with no photo, the title either way. This
+  // Lamp has no photo yet, so it is the title, and the helper asks for whichever
+  // link the card has.
+  await cardLink(page, 'Lamp').click()
 
   await expect(page).toHaveURL(/\/items\/\d+$/)
   // The surface drops the Shell's header — that is what makes it full-screen
@@ -268,7 +283,7 @@ test('re-opening the same item shows its photo again', async ({ page }) => {
   expect(login.ok()).toBeTruthy()
 
   await page.goto('/items')
-  const card = page.getByRole('link', { name: 'Lamp', exact: true })
+  const card = cardLink(page, 'Lamp')
   const stage = page.getByTestId('photo-viewer')
 
   await card.click()
@@ -301,7 +316,7 @@ test('Escape dismisses the editor without closing the item surface under it', as
   expect(login.ok()).toBeTruthy()
 
   await page.goto('/items')
-  await page.getByRole('link', { name: 'Lamp', exact: true }).click()
+  await cardLink(page, 'Lamp').click()
   const surface = page.url()
 
   await page.getByRole('button', { name: 'Edit photo', exact: true }).click()
@@ -325,7 +340,7 @@ test('Escape dismisses manual unpack without closing the item surface under it',
   expect(login.ok()).toBeTruthy()
 
   await page.goto('/items')
-  await page.getByRole('link', { name: 'Lamp', exact: true }).click()
+  await cardLink(page, 'Lamp').click()
   const surface = page.url()
 
   await page.getByRole('button', { name: 'Manual unpack this photo', exact: true }).click()

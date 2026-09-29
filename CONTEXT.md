@@ -55,7 +55,10 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
 - **item surface** — where an item is met in full, and the only place its photos are both
   browsed and acted on: a top bar (position, prev/next, close), the **photo viewer** as its
   largest pane, the **item panel**, and the **per-photo bar**. One surface serves every item
-  state; only the panel's item-level actions differ. `(apps/web/src/features/items/ItemDetail.tsx:15)`
+  state; only the panel's item-level actions differ. Its photo carousel **wraps** at both ends —
+  the primary photo's badge hangs to the right of the right arrow, not between the counter and
+  it — so the arrows are live whenever the item has more than one photo.
+  `(apps/web/src/features/items/ItemDetail.tsx:15)`
 - **item panel** — the read-only account of an item on an **item surface**: name, type,
   description, quantity, location, tags and custom-field values, plus the item-level actions
   and the control that adds a photo. Reading is the panel's job; **Edit item** hands off to the
@@ -66,6 +69,19 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   surface**'s own route with `/edit` on the end. `(docs/adr/0011-create-and-edit-are-pages.md)`
 - **per-photo bar** — the **item surface**'s actions on the photo currently shown: edit, edit
   original, open original, set primary, auto unpack, manual unpack, delete.
+- **card click target** — which part of the **catalog card** selects and which opens: the photo and
+  the title trade those jobs on the `photoOpensItem` **user setting**, default on (photo opens the
+  **item surface**, title toggles the **selection**). An item with no photo has no photo target, so
+  it is the same card under either setting: the body selects, the title opens. The footer checkbox
+  selects under both. `(docs/adr/0013-card-click-targets-are-a-user-setting.md)`
+- **card photo cycling** — stepping a card's photos without leaving the list: a horizontal wheel over
+  the thumbnail on desktop, a single-finger swipe on touch (the same gesture as a horizontal scroll),
+  `ArrowLeft`/`ArrowRight` on the focused thumbnail, in the order `orderPhotos` gives. It wraps at
+  both ends and reports the position as `n/N`, so `1/3` reaches `3/3` and back. It is about the
+  thumbnail on the **catalog**, **draft** and **trash** cards, and it is not the **item surface**'s
+  **photo viewer**, whose drag pans and whose wheel zooms. A mostly-vertical drag and a vertical wheel
+  notch are left to the page, and the click that ends a swipe is swallowed so one gesture cannot also
+  open the item. `(apps/web/src/lib/photoIndex.ts)`
 
 ## Unpack → drafts → publish (the background flow)
 
@@ -98,6 +114,13 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
 - **restore** — put a trashed thing back where it came from: a trashed draft returns to the
   drafts page, a trashed catalog item to the catalog. It keeps whatever it had, so an item
   trashed with no location comes back with no location.
+- **trash peek** — the read-only overlay a trashed item's card opens, and the one place an
+  overlay is still the right container: it is opened from a list the reader is returning to. It
+  acts on nothing — no **item panel**, because `items.get` refuses a trashed row, and no
+  **per-photo bar**, because a photo is only destroyed by **purge** — so it is the **item
+  surface** with the acting parts taken away. It carries the **primary photo**'s badge anyway,
+  because that is the one fact it has no other way to show and a reader restoring an item needs
+  it. It opens on whatever photo the card was showing. `(apps/web/src/features/trash/TrashPage.tsx:125)`
 - **purge** — the irreversible one: the row, its cascaded children and its photo files all go.
   Per row the UI calls it *Delete forever*; for the whole trash, *Empty trash*. **Purging is
   the only operation that destroys an item's photos.**
@@ -128,7 +151,9 @@ rows and simply end up with no location.
 - **instance settings** — instance-wide admin configuration, a single fixed row (`id=1`):
   `maxUploadMb`, `detectionProvider`, `detectionConfig`. `(packages/db/src/schema.ts:99)`
 - **user settings** — per-user one-to-one preferences: `language`, `locale`, `themeMode`
-  (`auto`/`light`/`dark`), `lightThemeId`, `darkThemeId`. `(packages/db/src/schema.ts:89)`
+  (`auto`/`light`/`dark`), `lightThemeId`, `darkThemeId`, `itemsSort`, `itemsPerPage`,
+  `confirmTrash`, `skipSaveDialog`, `expandLocationTree`, `photoOpensItem`. A preference of *how the
+  app behaves for this user* rather than of what the shared catalog holds. `(packages/db/src/schema.ts:89)`
 
 ## Search
 

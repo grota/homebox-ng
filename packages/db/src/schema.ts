@@ -126,6 +126,10 @@ export const userSettings = sqliteTable('user_settings', {
   // the tree is fetched on every list request either way, so this only decides
   // how much of it is drawn.
   expandLocationTree: integer('expand_location_tree', { mode: 'boolean' }).notNull().default(true),
+  // Whether the catalog card's photo opens the item and its title selects it, or
+  // the other way round. On by default (ADR-0013); the swap is a per-user opt-in
+  // rather than a removed behaviour.
+  photoOpensItem: integer('photo_opens_item', { mode: 'boolean' }).notNull().default(true),
 })
 
 export const instanceSettings = sqliteTable('instance_settings', {

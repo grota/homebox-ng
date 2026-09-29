@@ -27,7 +27,7 @@ describe('settings module', () => {
       language: 'en', locale: 'en-US', themeMode: 'auto',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
       itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false, skipSaveDialog: true,
-      expandLocationTree: true,
+      expandLocationTree: true, photoOpensItem: true,
     })
   })
 
@@ -38,7 +38,7 @@ describe('settings module', () => {
       language: 'en', locale: 'de-DE', themeMode: 'dark',
       lightThemeId: 'light-default', darkThemeId: 'dark-default',
       itemsSort: 'createdAt:desc', itemsPerPage: 20, confirmTrash: false, skipSaveDialog: true,
-      expandLocationTree: true,
+      expandLocationTree: true, photoOpensItem: true,
     })
     // A second update is additive and keeps a single row (upsert, not duplicate).
     const second = await UPDATE({ language: 'en' })
@@ -124,5 +124,22 @@ describe('settings module', () => {
     expect(updated.statusCode).toBe(200)
     expect(updated.json().result.data.expandLocationTree).toBe(false)
     expect((await GET()).json().result.data.expandLocationTree).toBe(false)
+  })
+
+  // Which part of the card opens the item is a per-user preference (ADR-0013), so
+  // it round-trips through the API like the rest — a client that only ever reads
+  // it must get the answer the user chose, not the default.
+  it('defaults the card photo to opening the item, and stores the swap', async () => {
+    expect((await GET()).json().result.data.photoOpensItem).toBe(true)
+
+    const updated = await UPDATE({ photoOpensItem: false })
+    expect(updated.statusCode).toBe(200)
+    expect(updated.json().result.data.photoOpensItem).toBe(false)
+    // Stored, not just echoed back.
+    expect((await GET()).json().result.data.photoOpensItem).toBe(false)
+
+    // Put it back, so a later test in this file reads a default-looking value.
+    await UPDATE({ photoOpensItem: true })
+    expect((await GET()).json().result.data.photoOpensItem).toBe(true)
   })
 })

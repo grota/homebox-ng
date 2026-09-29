@@ -84,6 +84,12 @@ export const userSettingsSchema = z.object({
   // drawn open or not, so expanding only renders more rows. Manual open/close
   // clicks stay in-memory view state; this only seeds the initial set.
   expandLocationTree: z.boolean(),
+  // Which part of the catalog card opens the item and which selects it. `true` —
+  // on, and the default — says the card's photo opens the item surface and its
+  // title toggles the selection; `false` swaps the two, which is what the card did
+  // before ADR-0013 and is kept as a per-user opt-in rather than deleted. An item
+  // with no photo is the same card either way: there is no photo target to swap.
+  photoOpensItem: z.boolean(),
 })
 export type UserSettingsDto = z.infer<typeof userSettingsSchema>
 
@@ -104,6 +110,7 @@ export const DEFAULT_USER_SETTINGS: UserSettingsDto = {
   confirmTrash: false,
   skipSaveDialog: true,
   expandLocationTree: true,
+  photoOpensItem: true,
 }
 
 // Detection provider selection. `DETECTION_PROVIDERS[number]` is the value stored

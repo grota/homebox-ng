@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `photo_opens_item` integer DEFAULT true NOT NULL;

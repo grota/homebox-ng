@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
-import { Badge, Card } from '../../ui'
+import { Badge, Card, cn } from '../../ui'
 import { locationPathLabel, type FlatLocation } from '../../lib/locationPath'
+import { useCardPhotoCycling } from '../../lib/photoIndex'
+import { useUserSettings } from '../../lib/settings/useUserSettings'
 
 // The fields a card reads, mirroring the server's `ItemDto` — the same
 // hand-written-mirror convention the locations feature uses for
@@ -29,14 +31,20 @@ type Props = {
 }
 
 export function ItemCard({ item, locationById, searchTerm, selected, onSelect }: Props) {
+  // Which half of the card opens the item and which half picks it. The default is
+  // the photo opening and the title picking (ADR-0013); turning it off restores
+  // the split this card shipped with. Both readings of a card are defensible —
+  // the photo is what you aim at when you mean "show me this", the title is where
+  // you put a tick while scanning — so it is a user setting, not a decision the
+  // code makes for everyone.
+  const { photoOpensItem } = useUserSettings()
+
   // The card shows the PRIMARY photo — marking one primary is exactly what that
   // is for (2026-09-04 design: "one marked primary (used as the card image)"),
-  // and it is what the drafts and trash rows do. This card was the last place
-  // still taking `images[0]`, which had no relationship to the primary at all:
-  // the primary became settable in `ac33300` (item detail only, and this page is
-  // not in that commit), so the card had been showing a photo the user never
-  // chose.
-  const photo = item.images.find((image) => image.isPrimary) ?? item.images[0]
+  // and it is what the drafts and trash rows do. It is also where cycling starts,
+  // so `n/N` is the position you land on when you open the card.
+  const cycle = useCardPhotoCycling(item.images, item.id)
+  const photo = cycle.current
 
   // The location line is the item's whole path, not just the leaf: "shelf A"
   // alone does not say *which* shelf A, and the sidebar navigates the same
@@ -44,13 +52,11 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
   // while it is still loading.
   const locationLabel = locationPathLabel(item.locationId, item.location?.name, locationById)
 
-  // The card is two targets: the **card body picks the item, the title opens
-  // it**. The reverse was tried first and read wrong in the hand — the body is
-  // what you hit while scanning a catalog, and picking things while scanning is
-  // the frequent job (ADR-0010); opening one is the deliberate one, and the
-  // title is the part that names what it opens. It was a single link (ADR-0005)
-  // while both halves led to the same page.
   const hasPhoto = Boolean(photo?.thumbPath)
+  // Without a photo there is no photo target to swap, so the card is the same card
+  // under either setting: the body picks, the title opens. Only the branch that
+  // has a photo reads the setting.
+  const photoIsTheLink = photoOpensItem && hasPhoto
   // The two ends of the toggle: the overlay label below, and the footer's own
   // label, which wraps the input and needs no `for`.
   const checkboxId = `select-item-${item.id}`
@@ -79,6 +85,21 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
     </>
   )
 
+  // `aspect-square` rather than a fixed `h-32`: a fixed height is a 4:1 strip at
+  // one column and a 1:1 box at six, so the photo was cropped by a different amount
+  // at every width. A square is the same shape everywhere, and `object-contain`
+  // shows the whole photo inside it with the mat filling what is left.
+  //
+  // `alt=""` because the card names the item right beneath it, so the image is
+  // decorative rather than a second place to read the name.
+  const thumbnail = photo && (
+    <img
+      src={'/file/' + photo.thumbPath}
+      alt=""
+      className="w-full aspect-square object-contain rounded-md bg-black"
+    />
+  )
+
   return (
     <Card
       padding="none"
@@ -86,9 +107,10 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
       className="relative overflow-hidden hover:border-text-muted"
     >
       {/* One toggle per card, and it **covers** the card rather than wrapping
-          anything in it: the body is the target, so the photo, the path, the
-          tags, the blank space under a short card and the footer row all pick
-          the item. The title opts out with a higher z-index, and opens it.
+          anything in it: everything below the photo — the title, the path, the
+          tags, the blank space under a short card and the footer row — picks the
+          item. The title opts out with a higher z-index, and does the same job
+          directly.
 
           Empty and absolutely positioned, so the card's layout is what it was
           with no overlay at all. An empty `<label for>` is legal and activates
@@ -99,28 +121,38 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
           `relative` — it has to be, the "1/2" badge is absolute inside it — and a
           positioned element with `z-index: auto` paints *after* a `z-0` one in
           tree order, so the photo came out on top of the overlay and took the
-          click for itself. The title is `z-20` to beat the overlay. */}
+          click for itself. `z-20` is for the photo when it is the link, and for
+          the title when it is not. */}
       <label htmlFor={checkboxId} className="absolute inset-0 z-10 cursor-pointer" />
       <div className="p-3">
+        {/* `z-20` only while the photo is the link: it has to beat the overlay to
+            be clickable, and with the setting swapped it must *not* — then the
+            overlay is what the photo is for, and a wrapper above it swallows
+            every pick. */}
         {hasPhoto ? (
-          <div className="relative mb-3">
-            {/* `aspect-square` rather than a fixed `h-32`: a fixed height is a
-                4:1 strip at one column and a 1:1 box at six, so the photo was
-                cropped by a different amount at every width. A square is the
-                same shape everywhere, and `object-contain` shows the whole photo
-                inside it with the mat filling what is left. */}
-            <img
-              src={'/file/' + photo.thumbPath}
-              alt=""
-              className="w-full aspect-square object-contain rounded-md bg-black"
-            />
-            {/* How many photos there are to look at, only when there is more than
-                one. It reads "1/" because a card shows the primary, and the
-                primary is position 1 of the order the surface uses — so this is
-                the number you land on when you open the card. */}
-            {item.images.length > 1 && (
-              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white tabular-nums">
-                1/{item.images.length}
+          <div
+            className={cn('relative mb-3', photoIsTheLink && 'z-20')}
+            ref={cycle.ref}
+            onPointerDown={cycle.onPointerDown}
+            onPointerMove={cycle.onPointerMove}
+            onKeyDown={cycle.onKeyDown}
+            onClickCapture={cycle.onClickCapture}
+          >
+            {/* The thumbnail, wrapped or not: under the default it is the one thing
+                on the card that opens the item, and it needs to be a real link for
+                that to mean anything to a screen reader or to "open in new tab". */}
+            {photoIsTheLink ? (
+              <Link to={`/items/${item.id}`} aria-label={`Open ${item.name}`} className="block">
+                {thumbnail}
+              </Link>
+            ) : (
+              thumbnail
+            )}
+            {/* Where the cycling has got to, and only while there is somewhere to
+                go: `1/1` on every card would be noise. */}
+            {cycle.indicator && (
+              <span className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white tabular-nums">
+                {cycle.indicator}
               </span>
             )}
           </div>
@@ -129,14 +161,20 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
             there, where the photo would have been. */}
         {hasPhoto ? null : text}
         <h2 className="mt-0">
-          {/* The one thing on the card that opens the item. A real link with the
-              name as its text, so it is a text link to a screen reader and to
-              every "open in new tab" the browser offers — which the overlay
-              cannot be, having no content of its own. `relative z-20` lifts just
-              the name: the space beside it still picks the item. */}
-          <Link to={`/items/${item.id}`} className="relative z-20">
-            {item.name}
-          </Link>
+          {/* Under the default the title picks rather than opens, so it is a label
+              for the footer's checkbox rather than an anchor: one control, driven
+              from two places, which cannot drift apart the way a second checkbox
+              would. When the setting is swapped it is a real link instead, and the
+              card is back to being "the body picks, the title opens". */}
+          {photoIsTheLink ? (
+            <span className="relative z-20 block cursor-pointer">
+              <label htmlFor={checkboxId}>{item.name}</label>
+            </span>
+          ) : (
+            <Link to={`/items/${item.id}`} className="relative z-20">
+              {item.name}
+            </Link>
+          )}
         </h2>
         {hasPhoto ? text : null}
       </div>

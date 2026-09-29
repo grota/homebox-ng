@@ -29,6 +29,7 @@ type Draft = {
   confirmTrash: boolean
   skipSaveDialog: boolean
   expandLocationTree: boolean
+  photoOpensItem: boolean
 }
 
 // A form rather than a row of controls that each write as they change. One Save is
@@ -47,7 +48,7 @@ export function SettingsPage() {
     setPreview,
     formatDate,
   } = useUserSettings()
-  const { locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash, skipSaveDialog, expandLocationTree } = storedSettings
+  const { locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash, skipSaveDialog, expandLocationTree, photoOpensItem } = storedSettings
 
   // What the server holds, in the form's shape. Recomputed each render (cheap) and
   // used for both the initial draft and the "has anything changed" test.
@@ -61,6 +62,7 @@ export function SettingsPage() {
     confirmTrash,
     skipSaveDialog,
     expandLocationTree,
+    photoOpensItem,
   }
 
   const [draft, setDraft] = useState<Draft>(stored)
@@ -73,7 +75,7 @@ export function SettingsPage() {
   useEffect(() => {
     setDraft(stored)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash, skipSaveDialog, expandLocationTree])
+  }, [locale, themeMode, lightThemeId, darkThemeId, itemsSort, itemsPerPage, confirmTrash, skipSaveDialog, expandLocationTree, photoOpensItem])
 
   // A page size the API would reject is not offered: the button that would send it
   // is disabled, so nothing is coerced behind the user's back. `min`/`max` on the
@@ -101,6 +103,7 @@ export function SettingsPage() {
       confirmTrash: draft.confirmTrash,
       skipSaveDialog: draft.skipSaveDialog,
       expandLocationTree: draft.expandLocationTree,
+      photoOpensItem: draft.photoOpensItem,
     })
     // A preview stands in for the stored value; once that value is stored it would
     // otherwise go on overriding it.
@@ -264,6 +267,20 @@ export function SettingsPage() {
           className="self-start"
           checked={draft.expandLocationTree}
           onChange={(e) => edit('expandLocationTree', e.target.checked)}
+        />
+      </Field>
+
+      {/* Which part of a catalog card opens the item and which picks it (ADR-0013).
+          Named for the checked state, because the checked state is the default and
+          the unchecked one is the opt-in. An item with no photo is the same card
+          either way — there is no photo target to swap. */}
+      <Field label={t('settings.photoOpensItem')} htmlFor="settings-photo-opens-item">
+        <input
+          id="settings-photo-opens-item"
+          type="checkbox"
+          className="self-start"
+          checked={draft.photoOpensItem}
+          onChange={(e) => edit('photoOpensItem', e.target.checked)}
         />
       </Field>
 

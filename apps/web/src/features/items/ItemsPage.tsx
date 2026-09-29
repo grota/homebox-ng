@@ -548,13 +548,13 @@ export function ItemsPage() {
           <p>Loading…</p>
         ) : (
           <div className="flex-1 min-w-0 grid gap-4 grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
-            {/* One click target, and the whole card is it. The photo and the name
-                used to be two — the image opened the lightbox, the name opened
-                the item — because there were two places to go. There is one now,
-                so the card went back to being one thing (ADR-0005). The heading
-                stays a heading inside the link (the catalog tests query it by
-                role) and the link keeps the item name as its accessible name via
-                `aria-label`; the wrapped text would otherwise become the name. */}
+            {/* The card is two targets — one opens the item, one picks it — and
+                which is which is the `photoOpensItem` setting rather than a
+                decision this page makes (ADR-0013). The card's own link keeps the
+                item name as its accessible name via `aria-label`, because the
+                image inside it is decorative and the wrapped text would otherwise
+                become the name. The name is also a heading on the card whatever
+                the setting says, which is what the catalog tests query by role. */}
             {items.map((item) => (
               <ItemCard
                 key={item.id}

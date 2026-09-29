@@ -25,6 +25,7 @@ const { updateSettings, setPreview, settings, preview } = vi.hoisted(() => ({
     confirmTrash: false,
     skipSaveDialog: true,
     expandLocationTree: true,
+    photoOpensItem: true,
   },
 }))
 
@@ -94,6 +95,7 @@ describe('SettingsPage', () => {
     expect(label('settings.confirmTrash')).not.toBeChecked()
     expect(label('settings.skipSaveDialog')).toBeChecked()
     expect(label('settings.expandLocationTree')).toBeChecked()
+    expect(label('settings.photoOpensItem')).toBeChecked()
   })
 
   // One Save, not a write per control: nothing reaches the server until it is
@@ -106,6 +108,7 @@ describe('SettingsPage', () => {
     fireEvent.click(label('settings.confirmTrash'))
     fireEvent.click(label('settings.skipSaveDialog'))
     fireEvent.click(label('settings.expandLocationTree'))
+    fireEvent.click(label('settings.photoOpensItem'))
     expect(updateSettings).not.toHaveBeenCalled()
 
     fireEvent.click(save())
@@ -120,6 +123,7 @@ describe('SettingsPage', () => {
       confirmTrash: true,
       skipSaveDialog: false,
       expandLocationTree: false,
+      photoOpensItem: false,
     })
   })
 

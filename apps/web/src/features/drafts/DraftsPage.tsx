@@ -5,7 +5,8 @@ import { useUserSettings, useTrashConfirmation } from '../../lib/settings/useUse
 import { trpc } from '../../api/trpc'
 import { Button, Card, Input, Pagination } from '../../ui'
 import { UnpackModal } from './UnpackModal'
-import { flattenLocations, locationPathLabel } from '../../lib/locationPath'
+import { flattenLocations, locationPathLabel, type FlatLocation } from '../../lib/locationPath'
+import { useCardPhotoCycling } from '../../lib/photoIndex'
 
 export function DraftsPage() {
   const { t } = useTranslation()
@@ -181,71 +182,113 @@ export function DraftsPage() {
           the way. The grid is the catalog's, so an item card and a draft card are
           the same size and shape. */}
       <ul className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
-        {rows.map((d) => {
-          // The `<li>` stays the list item — `Card` renders a `<div>`, and a
-          // `<div>` child of `<ul>` would drop the list semantics. The grid lives
-          // on the `<ul>`, so the `<li>`s are its cells.
-          //
-          // Picked once per card so the thumbnail and the full-size rendition the
-          // viewer opens cannot disagree about which image they describe.
-          const photo = d.images.find((i) => i.isPrimary) ?? d.images[0]
-          return (
-            <li key={d.id}>
-              <Card className="flex h-full flex-col gap-3">
-                {/* The thumbnail opens the draft's own surface, the same one the
-                    catalog's cards open. Opening a lightbox here instead would
-                    leave the drafts page with a second, poorer photo experience
-                    — no per-photo actions and no way to publish from it. */}
-                {photo ? (
-                  <Link to={`/items/${d.id}`} aria-label={`Open ${d.name}`} className="block">
-                    <img
-                      src={`/file/${photo.thumbPath}`}
-                      alt=""
-                      className="w-full aspect-square object-contain rounded bg-black"
-                    />
-                  </Link>
-                ) : (
-                  <span className="w-full aspect-square rounded bg-surface-raised" aria-hidden />
-                )}
-                <Input
-                  defaultValue={d.name}
-                  onBlur={(e) => { if (e.target.value.trim() && e.target.value !== d.name) void update.mutateAsync({ id: d.id, name: e.target.value.trim() }) }}
-                />
-                {/* Where it belongs, as a path: a draft's location is the thing you
-                    check before publishing it into a shared catalog, and the leaf
-                    alone does not say which `garage`. */}
-                {d.location ? (
-                  <p className="truncate text-sm text-text-muted" data-testid="draft-location">
-                    {locationPathLabel(d.locationId, d.location.name, locationById)}
-                  </p>
-                ) : null}
-                {/* `flex-wrap` rather than a hard one-line row: a card this narrow
-                    cannot always fit a checkbox and two labels side by side, and
-                    stacking reads better than overflowing. `mt-auto` keeps the
-                    controls on the floor of every card in the row, so a long name
-                    does not leave them floating at different heights. */}
-                <div className="mt-auto flex flex-wrap items-center gap-2">
-                  <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />
-                  <Button onClick={() => void publish.mutateAsync({ id: d.id })}>{t('drafts.publish')}</Button>
-                  {/* The row's own move-to-trash used to be the one site that never
-                      asked. It asks on the same setting as the other two, which is
-                      the point of the setting being "every move-to-trash". */}
-                  <Button
-                    variant="danger"
-                    onClick={() => {
-                      if (askTrash(t('drafts.trashConfirm', { name: d.name }))) void trashOne.mutateAsync({ id: d.id })
-                    }}
-                  >
-                    {t('drafts.trash')}
-                  </Button>
-                </div>
-              </Card>
-            </li>
-          )
-        })}
+        {rows.map((d) => (
+          <li key={d.id}>
+            <DraftCard
+              draft={d}
+              locationById={locationById}
+              selected={selected.has(d.id)}
+              onToggle={() => toggle(d.id)}
+              onRename={(name) => update.mutateAsync({ id: d.id, name })}
+              onPublish={() => publish.mutateAsync({ id: d.id })}
+              onTrash={() => {
+                if (askTrash(t('drafts.trashConfirm', { name: d.name }))) void trashOne.mutateAsync({ id: d.id })
+              }}
+            />
+          </li>
+        ))}
       </ul>
 
       <Pagination page={page} total={total} pageSize={itemsPerPage} onPage={setPage} />
     </div>
+  )
+}
+
+// One draft's card. Its own component because the thumbnail cycles its photos — a
+// draft can carry the crops an unpack made of the same photo, so it can have
+// several, and looking at them is what tells you whether to publish — and that
+// position is state, so it cannot live in a `.map` in the page body.
+function DraftCard({
+  draft: d,
+  locationById,
+  selected,
+  onToggle,
+  onRename,
+  onPublish,
+  onTrash,
+}: {
+  draft: {
+    id: number
+    name: string
+    locationId: number | null
+    location: { id: number; name: string } | null
+    images: { thumbPath: string; isPrimary: boolean | null }[]
+  }
+  locationById: Map<number, FlatLocation>
+  selected: boolean
+  onToggle: () => void
+  onRename: (name: string) => Promise<unknown>
+  onPublish: () => Promise<unknown>
+  onTrash: () => void
+}) {
+  const { t } = useTranslation()
+  const cycle = useCardPhotoCycling(d.images, d.id)
+
+  return (
+    <Card className="flex h-full flex-col gap-3">
+      {/* The thumbnail opens the draft's own surface, the same one the catalog's
+          cards open. Opening a lightbox here instead would leave the drafts page
+          with a second, poorer photo experience — no per-photo actions and no way
+          to publish from it. */}
+      {cycle.current ? (
+        <Link
+          to={`/items/${d.id}`}
+          aria-label={`Open ${d.name}`}
+          className="relative block"
+          ref={cycle.ref}
+          onPointerDown={cycle.onPointerDown}
+          onPointerMove={cycle.onPointerMove}
+          onKeyDown={cycle.onKeyDown}
+          onClickCapture={cycle.onClickCapture}
+        >
+          <img
+            src={`/file/${cycle.current.thumbPath}`}
+            alt=""
+            className="w-full aspect-square object-contain rounded bg-black"
+          />
+          {cycle.indicator && (
+            <span className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white tabular-nums">
+              {cycle.indicator}
+            </span>
+          )}
+        </Link>
+      ) : (
+        <span className="w-full aspect-square rounded bg-surface-raised" aria-hidden />
+      )}
+      <Input
+        defaultValue={d.name}
+        onBlur={(e) => { if (e.target.value.trim() && e.target.value !== d.name) void onRename(e.target.value.trim()) }}
+      />
+      {/* Where it belongs, as a path: a draft's location is the thing you
+          check before publishing it into a shared catalog, and the leaf
+          alone does not say which `garage`. */}
+      {d.location ? (
+        <p className="truncate text-sm text-text-muted" data-testid="draft-location">
+          {locationPathLabel(d.locationId, d.location.name, locationById)}
+        </p>
+      ) : null}
+      {/* `flex-wrap` rather than a hard one-line row: a card this narrow
+          cannot always fit a checkbox and two labels side by side, and
+          stacking reads better than overflowing. `mt-auto` keeps the
+          controls on the floor of every card in the row, so a long name
+          does not leave them floating at different heights. */}
+      <div className="mt-auto flex flex-wrap items-center gap-2">
+        <input type="checkbox" checked={selected} onChange={onToggle} />
+        <Button onClick={() => void onPublish()}>{t('drafts.publish')}</Button>
+        <Button variant="danger" onClick={onTrash}>
+          {t('drafts.trash')}
+        </Button>
+      </div>
+    </Card>
   )
 }

@@ -668,4 +668,35 @@ describe('drafts page', () => {
     )
     expect(screen.getByRole('link', { name: 'Open Draft Lamp' })).toHaveAttribute('href', '/items/1')
   })
+
+  // A draft can carry the crops an unpack made of the same photo, so it can have
+  // several — and a wheel notch or a swipe over the card is how you look at them
+  // before publishing. Same gesture as the catalog card, same badge.
+  it('cycles a card’s photos and says where it is', () => {
+    draftData = [
+      {
+        id: 1,
+        name: 'Draft Lamp',
+        images: [
+          { id: 10, originalPath: 'uploads/originals/a.png', editedPath: null, thumbPath: 'uploads/thumbs/a.jpg', isPrimary: true },
+          { id: 11, originalPath: 'uploads/originals/b.png', editedPath: null, thumbPath: 'uploads/thumbs/b.jpg', isPrimary: null },
+        ],
+      },
+    ]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('1/2')).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: 'Open Draft Lamp' })
+    expect(link.querySelector('img')).toHaveAttribute('src', '/file/uploads/thumbs/a.jpg')
+
+    fireEvent.pointerDown(link, { pointerId: 1, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(link, { pointerId: 1, clientX: 40, clientY: 100 })
+
+    expect(screen.getByText('2/2')).toBeInTheDocument()
+    expect(link.querySelector('img')).toHaveAttribute('src', '/file/uploads/thumbs/b.jpg')
+  })
 })

@@ -30,21 +30,48 @@ describe('usePhotoIndex', () => {
     expect(result.current.current?.id).toBe(3)
   })
 
-  it('walks forward and back, and stops at both ends rather than wrapping', () => {
+  // The carousel loops: stepping past the last photo lands on the first, and
+  // stepping back before the first lands on the last. Both ends used to stop dead
+  // with a disabled arrow, which on a list of items with two photos each meant
+  // most arrows on screen were dead.
+  it('wraps at both ends rather than stopping', () => {
     const { result } = renderHook(() => usePhotoIndex(NEWEST_FIRST, 7))
-    expect(result.current.canPrevious).toBe(false)
 
+    // Forward off the end: 1 of 3 → 1 of 3, i.e. the primary again.
     act(() => result.current.next())
     act(() => result.current.next())
     expect(result.current.current?.id).toBe(1)
-    expect(result.current.canNext).toBe(false)
-
-    // A third step must not wrap round to the primary.
     act(() => result.current.next())
-    expect(result.current.current?.id).toBe(1)
+    expect(result.current.current?.id).toBe(2)
 
+    // Back off the front, onto the last.
     act(() => result.current.previous())
-    expect(result.current.current?.id).toBe(3)
+    expect(result.current.current?.id).toBe(1)
+
+    // A single photo wraps onto itself rather than going nowhere.
+    const one = renderHook(() => usePhotoIndex([photo(9, true)], 7))
+    act(() => one.result.current.next())
+    expect(one.result.current.current?.id).toBe(9)
+    act(() => one.result.current.previous())
+    expect(one.result.current.current?.id).toBe(9)
+  })
+
+  // With wrapping there is no "end" to be disabled at, so an item with more than
+  // one photo can always be stepped in either direction. One photo has nowhere to
+  // go, so the arrows are the only thing that knows that.
+  it('can always step while there is more than one photo, and cannot with one', () => {
+    const { result } = renderHook(() => usePhotoIndex(NEWEST_FIRST, 7))
+    expect(result.current.canPrevious).toBe(true)
+    expect(result.current.canNext).toBe(true)
+
+    act(() => result.current.next())
+    act(() => result.current.next())
+    expect(result.current.canNext).toBe(true)
+    expect(result.current.canPrevious).toBe(true)
+
+    const one = renderHook(() => usePhotoIndex([photo(9, true)], 7))
+    expect(one.result.current.canNext).toBe(false)
+    expect(one.result.current.canPrevious).toBe(false)
   })
 
   // The reason the index is not "fixed up" when the list changes: the refetch

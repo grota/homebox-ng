@@ -169,6 +169,53 @@ describe('trash page', () => {
 
   // No ids: the server's existing "everything" branch, so this cannot quietly
   // come to mean "the page you are looking at".
+  // A trashed item can have several photos, and the card is the only way to see
+  // which ones before deciding to restore it.
+  it('cycles a card’s photos and opens the peek on the one shown', () => {
+    setRows([
+      row({
+        images: [
+          { id: 10, originalPath: 'uploads/originals/a.png', editedPath: null, thumbPath: 'uploads/thumbs/a.jpg', isPrimary: true },
+          { id: 11, originalPath: 'uploads/originals/b.png', editedPath: null, thumbPath: 'uploads/thumbs/b.jpg', isPrimary: null },
+        ],
+      }),
+    ])
+    renderPage()
+
+    // Starts on the primary, at the position you land on.
+    expect(screen.getByText('1/2')).toBeInTheDocument()
+    const thumb = screen.getByRole('button', { name: 'Kettle' })
+    expect(thumb.querySelector('img')).toHaveAttribute('src', '/file/uploads/thumbs/a.jpg')
+
+    fireEvent.pointerDown(thumb, { pointerId: 1, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(thumb, { pointerId: 1, clientX: 40, clientY: 100 })
+    expect(screen.getByText('2/2')).toBeInTheDocument()
+    expect(thumb.querySelector('img')).toHaveAttribute('src', '/file/uploads/thumbs/b.jpg')
+
+    // The click the browser fires at the end of a swipe is swallowed — otherwise
+    // looking around a card would also open it.
+    fireEvent.pointerUp(thumb, { pointerId: 1, clientX: 40, clientY: 100 })
+    fireEvent.click(thumb)
+    expect(screen.queryByTestId('photo-viewer')).not.toBeInTheDocument()
+
+    // A fresh tap opens the peek, and it opens on the photo the card was showing
+    // rather than always the first — looking around then opening is the sequence
+    // this is for.
+    fireEvent.pointerDown(thumb, { pointerId: 2, clientX: 100, clientY: 100 })
+    fireEvent.pointerUp(thumb, { pointerId: 2, clientX: 100, clientY: 100 })
+    fireEvent.click(thumb)
+    expect(screen.getByText('2 of 2')).toBeInTheDocument()
+    // The peek opens on photo 2, which is not the primary, so no badge.
+    expect(screen.queryByText('Primary')).not.toBeInTheDocument()
+
+    // Wrapping lands back on the primary, and the badge says which one it is —
+    // the surface has always done this, because `Set primary` is absent on the
+    // primary itself, so without it "which is the cover" is unanswerable.
+    fireEvent.click(screen.getByRole('button', { name: 'trash.nextPhoto' }))
+    expect(screen.getByText('1 of 2')).toBeInTheDocument()
+    expect(screen.getByText('Primary')).toBeInTheDocument()
+  })
+
   it('empties the whole trash with no ids after confirming', () => {
     setRows([row({ id: 1 }), row({ id: 2 })])
     vi.spyOn(window, 'confirm').mockReturnValue(true)

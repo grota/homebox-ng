@@ -208,7 +208,65 @@ describe('item surface', () => {
     // The badge that says which photo is the cover, now that the per-photo cards
     // that used to carry it are gone.
     expect(screen.getByText('Primary')).toBeInTheDocument()
+  })
+
+  // The badge sits to the *right* of the right arrow, so the bar reads
+  // ‹ 2 of 5 › [Primary] — the counter stays bracketed by its arrows and the
+  // badge hangs off the end rather than splitting the pair.
+  it('puts the Primary badge to the right of the right arrow', () => {
+    renderDetail()
+    const bar = screen.getByRole('button', { name: 'Next photo' }).parentElement!
+    const children = Array.from(bar.children).filter((el) => el.textContent?.trim() !== '')
+    const nextIndex = children.indexOf(screen.getByRole('button', { name: 'Next photo' }))
+    const badgeIndex = children.indexOf(screen.getByText('Primary'))
+    expect(badgeIndex).toBe(nextIndex + 1)
+  })
+
+  // The badge must not move the counter. The bar centres its middle group, so a
+  // badge *inside* that group makes the whole thing wider and shoves the counter
+  // left — the arrows then sat in two different places depending on whether the
+  // photo you were looking at was the primary, which is the kind of thing nobody
+  // notices until they page through and the controls appear to jump.
+  //
+  // jsdom lays nothing out, so this cannot measure the position. What it can
+  // assert is the *structure* that makes it stable: the badge is out of the flow
+  // of the run being centred, so it cannot widen it. The pixel claim itself is
+  // in `e2e/cardPhotos.spec.ts`.
+  it('takes the badge out of the flow of the centred run', () => {
+    renderDetail()
+    // The run is the next arrow's parent, and it is what gets centred.
+    const run = screen.getByRole('button', { name: 'Next photo' }).parentElement!
+    expect(run).toHaveClass('relative')
+    // A positioning context, and the badge hangs off its right edge — inside it,
+    // so it is still trailing the arrow, but `absolute`, so it contributes no
+    // width.
+    expect(screen.getByText('Primary')).toHaveClass('absolute', 'left-full')
+  })
+
+  // The carousel loops, so neither arrow is ever dead on a multi-photo item.
+  it('keeps both arrows live at the ends, and wraps round', () => {
+    renderDetail()
+    expect(screen.getByRole('button', { name: 'Previous photo' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Next photo' })).toBeEnabled()
+
+    // Forward off the end of 2, back onto the primary.
+    fireEvent.click(screen.getByRole('button', { name: 'Next photo' }))
+    expect(screen.getByText('2 of 2')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next photo' }))
+    expect(screen.getByText('1 of 2')).toBeInTheDocument()
+    expect(shown()).toHaveAttribute('src', '/file/uploads/edited/e.png')
+
+    // And back off the front.
+    fireEvent.click(screen.getByRole('button', { name: 'Previous photo' }))
+    expect(screen.getByText('2 of 2')).toBeInTheDocument()
+  })
+
+  // Nothing to page to, so the arrows stay put but have nowhere to go.
+  it('disables the arrows only when the item has a single photo', () => {
+    mocks.overrides = { images: [mocks.images[0]] }
+    renderDetail()
     expect(screen.getByRole('button', { name: 'Previous photo' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Next photo' })).toBeDisabled()
   })
 
   // Edits stack on the last edit, not on the raw file, so once an image has an
@@ -246,7 +304,6 @@ describe('item surface', () => {
     expect(screen.queryByRole('button', { name: 'Edit original photo' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Open original' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Set primary' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Next photo' })).toBeDisabled()
   })
 
   it('sets the photo on screen as primary', () => {
@@ -264,6 +321,9 @@ describe('item surface', () => {
     expect(screen.getByText('2 of 2')).toBeInTheDocument()
     fireEvent.keyDown(window, { key: 'PageUp' })
     expect(screen.getByText('1 of 2')).toBeInTheDocument()
+    // The keys wrap with the arrows rather than stopping at the ends.
+    fireEvent.keyDown(window, { key: 'PageUp' })
+    expect(screen.getByText('2 of 2')).toBeInTheDocument()
   })
 
   it('closes on Escape', () => {

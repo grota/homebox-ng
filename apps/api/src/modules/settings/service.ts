@@ -24,6 +24,7 @@ const toDto = (row: UserSettingsRow): UserSettingsDto => ({
   confirmTrash: row.confirmTrash,
   skipSaveDialog: row.skipSaveDialog,
   expandLocationTree: row.expandLocationTree,
+  photoOpensItem: row.photoOpensItem,
 })
 
 // Returns the user's settings row, or the spec defaults when none exists (a
