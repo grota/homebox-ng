@@ -23,8 +23,8 @@ export type PhotoIndex<T> = {
   setIndex: (next: number) => void
   next: () => void
   previous: () => void
-  canPrevious: boolean
-  canNext: boolean
+  /** False for zero or one photo: with wrapping, both arrows live or die together. */
+  canCycle: boolean
 }
 
 // The index is deliberately *not* reset or fixed up when the photo list changes,
@@ -70,8 +70,7 @@ export function usePhotoIndex<T extends { isPrimary: boolean | null }>(
     previous: () => setIndex((index - 1 + ordered.length) % ordered.length),
     // With wrapping there is no end to run out of, so this is only ever about
     // whether there is anywhere to go at all: one photo, or none.
-    canPrevious: ordered.length > 1,
-    canNext: ordered.length > 1,
+    canCycle: ordered.length > 1,
   }
 }
 
@@ -85,7 +84,6 @@ export type CardPhotoCycling<T> = {
   current: T | null
   /** Where it is in the set, 1-based — what the `n/N` badge prints. */
   index: number
-  count: number
   /** `false` for zero or one photo: there is nowhere to cycle to. */
   canCycle: boolean
   /** `n/N`, or `null` when cycling is off — a `1/1` badge is noise. */
@@ -116,8 +114,7 @@ export function useCardPhotoCycling<T extends { isPrimary: boolean | null }>(
   photos: T[],
   resetKey: unknown,
 ): CardPhotoCycling<T> {
-  const { current, index, photos: ordered, next, previous, canNext } = usePhotoIndex(photos, resetKey)
-  const canCycle = canNext
+  const { current, index, photos: ordered, next, previous, canCycle } = usePhotoIndex(photos, resetKey)
 
   // The pointer's starting point, and whether the gesture became a swipe. Kept in
   // a ref rather than state because it is read and written inside a drag and
@@ -194,7 +191,6 @@ export function useCardPhotoCycling<T extends { isPrimary: boolean | null }>(
   return {
     current,
     index,
-    count: ordered.length,
     canCycle,
     indicator: canCycle ? `${index + 1}/${ordered.length}` : null,
     ref,

@@ -61,17 +61,14 @@ describe('usePhotoIndex', () => {
   // go, so the arrows are the only thing that knows that.
   it('can always step while there is more than one photo, and cannot with one', () => {
     const { result } = renderHook(() => usePhotoIndex(NEWEST_FIRST, 7))
-    expect(result.current.canPrevious).toBe(true)
-    expect(result.current.canNext).toBe(true)
+    expect(result.current.canCycle).toBe(true)
 
     act(() => result.current.next())
     act(() => result.current.next())
-    expect(result.current.canNext).toBe(true)
-    expect(result.current.canPrevious).toBe(true)
+    expect(result.current.canCycle).toBe(true)
 
     const one = renderHook(() => usePhotoIndex([photo(9, true)], 7))
-    expect(one.result.current.canNext).toBe(false)
-    expect(one.result.current.canPrevious).toBe(false)
+    expect(one.result.current.canCycle).toBe(false)
   })
 
   // The reason the index is not "fixed up" when the list changes: the refetch
@@ -109,8 +106,7 @@ describe('usePhotoIndex', () => {
     })
     rerender({ photos: [] })
     expect(result.current.current).toBeNull()
-    expect(result.current.canNext).toBe(false)
-    expect(result.current.canPrevious).toBe(false)
+    expect(result.current.canCycle).toBe(false)
   })
 
   // One route component serves every item, so without the key the index would

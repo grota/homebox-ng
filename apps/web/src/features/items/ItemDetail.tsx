@@ -71,7 +71,7 @@ export function ItemDetail() {
   // refetch has actually delivered it.
   const [pendingPhoto, setPendingPhoto] = useState<number | null>(null)
 
-  const { photos, index, current, setIndex, next, previous, canPrevious, canNext } = usePhotoIndex(
+  const { photos, index, current, setIndex, next, previous, canCycle } = usePhotoIndex(
     item?.images ?? NO_PHOTOS,
     itemId,
   )
@@ -125,12 +125,12 @@ export function ItemDetail() {
       if (event.key === 'Escape') close()
       // `next`/`previous` rather than `setIndex(index ± 1)`: the carousel wraps,
       // and an arithmetic step off the front would clamp to 0 and stop.
-      else if (event.key === 'PageDown' && canNext) next()
-      else if (event.key === 'PageUp' && canPrevious) previous()
+      else if (event.key === 'PageDown' && canCycle) next()
+      else if (event.key === 'PageUp' && canCycle) previous()
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [close, editing, canNext, canPrevious, next, previous, leaveEdit])
+  }, [close, editing, canCycle, next, previous, leaveEdit])
 
   // Moving to a photo that does not exist yet would set the index past the end,
   // and the clamp would land on nothing. Wait for the refetch that follows the
@@ -207,13 +207,13 @@ export function ItemDetail() {
         <div className="flex flex-1 flex-wrap items-center justify-center">
           {current && (
             <div className="relative flex items-center gap-1">
-              <Button size="sm" variant="ghost" aria-label="Previous photo" disabled={!canPrevious} onClick={previous}>
+              <Button size="sm" variant="ghost" aria-label="Previous photo" disabled={!canCycle} onClick={previous}>
                 ‹
               </Button>
               <span className="text-sm tabular-nums">
                 {index + 1} of {photos.length}
               </span>
-              <Button size="sm" variant="ghost" aria-label="Next photo" disabled={!canNext} onClick={next}>
+              <Button size="sm" variant="ghost" aria-label="Next photo" disabled={!canCycle} onClick={next}>
                 ›
               </Button>
               {/* `Set primary` is absent on the primary photo, so this is what keeps

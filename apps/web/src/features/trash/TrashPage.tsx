@@ -134,13 +134,13 @@ export function TrashPage() {
             <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 p-3">
               {peekPhotos.photos.length > 1 && (
                 <>
-                  <Button aria-label={t('trash.previousPhoto')} disabled={!peekPhotos.canPrevious} onClick={peekPhotos.previous}>
+                  <Button aria-label={t('trash.previousPhoto')} disabled={!peekPhotos.canCycle} onClick={peekPhotos.previous}>
                     ‹
                   </Button>
                   <span className="text-sm text-white tabular-nums">
                     {peekPhotos.index + 1} of {peekPhotos.photos.length}
                   </span>
-                  <Button aria-label={t('trash.nextPhoto')} disabled={!peekPhotos.canNext} onClick={peekPhotos.next}>
+                  <Button aria-label={t('trash.nextPhoto')} disabled={!peekPhotos.canCycle} onClick={peekPhotos.next}>
                     ›
                   </Button>
                   {/* Trailing the right arrow, as on the item surface. The peek has
