@@ -267,6 +267,9 @@ describe('item surface', () => {
     renderDetail()
     expect(screen.getByRole('button', { name: 'Previous photo' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Next photo' })).toBeDisabled()
+    // A single photo has nothing to distinguish, so no badge either.
+    expect(screen.queryByText('Primary')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Primary')).not.toBeInTheDocument()
   })
 
   // Edits stack on the last edit, not on the raw file, so once an image has an

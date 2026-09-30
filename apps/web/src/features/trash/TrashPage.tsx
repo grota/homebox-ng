@@ -148,7 +148,14 @@ export function TrashPage() {
                       and `items.get` refuses the row — so this is the only thing
                       that says which photo is the cover, and a reader restoring an
                       item needs to know. */}
-                  {peekPhotos.current.isPrimary && <Badge>Primary</Badge>}
+                  {peekPhotos.current.isPrimary && (
+                    <>
+                      <Badge className="hidden sm:inline-block">Primary</Badge>
+                      <Badge className="sm:hidden" aria-label="Primary">
+                        <span aria-hidden="true">★</span>
+                      </Badge>
+                    </>
+                  )}
                 </>
               )}
               <Button className="ml-auto" onClick={() => setPeek(null)}>

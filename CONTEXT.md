@@ -57,7 +57,8 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   largest pane, the **item panel**, and the **per-photo bar**. One surface serves every item
   state; only the panel's item-level actions differ. Its photo carousel **wraps** at both ends —
   the primary photo's badge hangs to the right of the right arrow, not between the counter and
-  it — so the arrows are live whenever the item has more than one photo.
+  it — so the arrows are live whenever the item has more than one photo. The badge shows only
+  when the item has more than one photo: with a single photo there is nothing to distinguish.
   `(apps/web/src/features/items/ItemDetail.tsx:15)`
 - **item panel** — the read-only account of an item on an **item surface**: name, type,
   description, quantity, location, tags and custom-field values, plus the item-level actions
@@ -118,7 +119,8 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   overlay is still the right container: it is opened from a list the reader is returning to. It
   acts on nothing — no **item panel**, because `items.get` refuses a trashed row, and no
   **per-photo bar**, because a photo is only destroyed by **purge** — so it is the **item
-  surface** with the acting parts taken away. It carries the **primary photo**'s badge anyway,
+  surface** with the acting parts taken away. It carries the **primary photo**'s badge anyway
+  when there is more than one photo,
   because that is the one fact it has no other way to show and a reader restoring an item needs
   it. It opens on whatever photo the card was showing. `(apps/web/src/features/trash/TrashPage.tsx:125)`
 - **purge** — the irreversible one: the row, its cascaded children and its photo files all go.

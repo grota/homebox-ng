@@ -217,8 +217,16 @@ export function ItemDetail() {
                 ›
               </Button>
               {/* `Set primary` is absent on the primary photo, so this is what keeps
-                  "which one is the cover" answerable without paging through. */}
-              {current.isPrimary && <Badge className="absolute left-full ml-1">Primary</Badge>}
+                  "which one is the cover" answerable without paging through. With a
+                  single photo there is nothing to distinguish, so no badge. */}
+              {current.isPrimary && photos.length > 1 && (
+                <>
+                  <Badge className="absolute left-full ml-1 hidden sm:inline-block">Primary</Badge>
+                  <Badge className="absolute left-full ml-1 sm:hidden" aria-label="Primary">
+                    <span aria-hidden="true">★</span>
+                  </Badge>
+                </>
+              )}
             </div>
           )}
         </div>
