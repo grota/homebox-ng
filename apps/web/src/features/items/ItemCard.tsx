@@ -104,7 +104,11 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
     <Card
       padding="none"
       data-testid="item-card"
-      className="relative overflow-hidden hover:border-text-muted"
+      // Pinned footer: `flex-col` plus `mt-auto` on the row below keeps the
+      // selection target on the floor of every card in the row, the way the
+      // draft and trash cards already do — a long name must not leave it
+      // floating at different heights.
+      className="relative flex h-full flex-col overflow-hidden hover:border-text-muted"
     >
       {/* One toggle per card, and it **covers** the card rather than wrapping
           anything in it: everything below the photo — the title, the path, the
@@ -122,8 +126,16 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
           positioned element with `z-index: auto` paints *after* a `z-0` one in
           tree order, so the photo came out on top of the overlay and took the
           click for itself. `z-20` is for the photo when it is the link, and for
-          the title when it is not. */}
-      <label htmlFor={checkboxId} className="absolute inset-0 z-10 cursor-pointer" />
+          the title when it is not.
+
+          The overlay is also what hover lands on: it covers the location line,
+          so a `title` on that line could never fire. The full path lives here
+          instead — the element the pointer actually reaches. */}
+      <label
+        htmlFor={checkboxId}
+        className="absolute inset-0 z-10 cursor-pointer"
+        title={locationLabel || undefined}
+      />
       <div className="p-3">
         {/* `z-20` only while the photo is the link: it has to beat the overlay to
             be clickable, and with the setting swapped it must *not* — then the
@@ -185,8 +197,9 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
           interactive content, which is why the three are separate elements. */}
       {/* The `<label>` wraps the box, so the whole footer row is the hit target
           rather than a 13px square — clicking a label activates the control it
-          contains, and the `aria-label` below is the name it announces. */}
-      <label className="relative z-20 flex cursor-pointer items-center border-t border-border px-3 py-2">
+          contains, and the `aria-label` below is the name it announces. Pinned
+          to the floor with the card above, so the row sits level across cards. */}
+      <label className="relative z-20 mt-auto flex cursor-pointer items-center border-t border-border px-3 py-2">
         <input
           id={checkboxId}
           type="checkbox"

@@ -152,6 +152,13 @@ describe('catalog card click targets', () => {
     expect(within(card()).getByTestId('item-snippet')).toBeInTheDocument()
   })
 
+  // The overlay is what hover lands on — it covers the location line — so the
+  // full path lives on it, or no tooltip could ever fire.
+  it('carries the full location path on the overlay for the hover tooltip', () => {
+    renderCatalog()
+    expect(overlay()).toHaveAttribute('title', 'Living Room')
+  })
+
   it('ticks and unticks from the title', () => {
     renderCatalog()
     expect(box()).not.toBeChecked()

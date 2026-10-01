@@ -184,6 +184,22 @@ describe('drafts page', () => {
     expect(screen.getByTestId('draft-location')).toHaveTextContent('home › garage')
   })
 
+  // Truncated lines hide their tail, so the full path rides a native tooltip —
+  // which fires here because no overlay covers this card.
+  it('carries the full location path for the hover tooltip', () => {
+    locationData = [
+      { id: 1, name: 'home', parentId: null, depth: 1, children: [{ id: 2, name: 'garage', parentId: 1, depth: 2 }] },
+    ]
+    draftData = [draft(1, 'Draft Lamp', { id: 2, name: 'garage' })]
+    render(
+      <MemoryRouter>
+        <DraftsPage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId('draft-location')).toHaveAttribute('title', 'home › garage')
+  })
+
   it('renders a draft with its name, publish/trash actions, and a select-all checkbox', () => {
     draftData = [
       {

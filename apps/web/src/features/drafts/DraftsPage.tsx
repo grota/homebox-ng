@@ -271,9 +271,14 @@ function DraftCard({
       />
       {/* Where it belongs, as a path: a draft's location is the thing you
           check before publishing it into a shared catalog, and the leaf
-          alone does not say which `garage`. */}
+          alone does not say which `garage`. No overlay covers this card, so
+          the native tooltip fires straight off the line. */}
       {d.location ? (
-        <p className="truncate text-sm text-text-muted" data-testid="draft-location">
+        <p
+          className="truncate text-sm text-text-muted"
+          data-testid="draft-location"
+          title={locationPathLabel(d.locationId, d.location.name, locationById)}
+        >
           {locationPathLabel(d.locationId, d.location.name, locationById)}
         </p>
       ) : null}
