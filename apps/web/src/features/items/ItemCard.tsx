@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Badge, Card, cn } from '../../ui'
+import { TailClamp } from '../../ui/TailClamp'
 import { locationPathLabel, type FlatLocation } from '../../lib/locationPath'
 import { useCardPhotoCycling } from '../../lib/photoIndex'
 import { useUserSettings } from '../../lib/settings/useUserSettings'
@@ -64,13 +65,11 @@ export function ItemCard({ item, locationById, searchTerm, selected, onSelect }:
   const text = (
     <>
       {/* Text, never a link: it is a path, and a nested anchor inside the card's
-          link would be invalid HTML and a keyboard trap. Truncated because a path
-          is unbounded in width and a card is ~200px; `title` keeps the whole of it
-          readable. */}
+          link would be invalid HTML and a keyboard trap. Tailed to two lines
+          because a path is unbounded in width and a card is ~200px; the full
+          path rides the overlay's `title`, which is what hover reaches. */}
       {item.location ? (
-        <p className="truncate" title={locationLabel} data-testid="item-location">
-          {locationLabel}
-        </p>
+        <TailClamp text={locationLabel ?? ''} testId="item-location" />
       ) : null}
       {item.tags.map((tag) => (
         <Badge key={tag.id} color={tag.color} className="mr-1">

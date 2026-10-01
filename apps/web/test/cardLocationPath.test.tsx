@@ -155,11 +155,13 @@ describe('the catalog card shows its location as a path', () => {
   })
 
   // A path is unbounded in width (names are free text) and the card is ~200px.
-  it('keeps the full path available when the line is truncated', () => {
+  // The line tails itself to the leaf, so the full path rides the overlay
+  // instead — the overlay covers the line, which is what hover reaches.
+  it('keeps the full path available when the line is tailed', () => {
     renderCatalog()
 
-    expect(locationLine()).toHaveAttribute('title', 'home › garage › shelf A')
-    expect(locationLine()?.className).toContain('truncate')
+    expect(card().querySelector(':scope > label')).toHaveAttribute('title', 'home › garage › shelf A')
+    expect(locationLine()?.className).not.toContain('truncate')
   })
 
   // The tree arrives on its own query. While it is in flight — or if it fails —

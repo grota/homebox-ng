@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useUserSettings, useTrashConfirmation } from '../../lib/settings/useUserSettings'
 import { trpc } from '../../api/trpc'
 import { Button, Card, Input, Pagination } from '../../ui'
+import { TailClamp } from '../../ui/TailClamp'
 import { UnpackModal } from './UnpackModal'
 import { flattenLocations, locationPathLabel, type FlatLocation } from '../../lib/locationPath'
 import { useCardPhotoCycling } from '../../lib/photoIndex'
@@ -271,16 +272,16 @@ function DraftCard({
       />
       {/* Where it belongs, as a path: a draft's location is the thing you
           check before publishing it into a shared catalog, and the leaf
-          alone does not say which `garage`. No overlay covers this card, so
-          the native tooltip fires straight off the line. */}
+          alone does not say which `garage`. Tailed like the catalog's; no
+          overlay covers this card, so the native tooltip fires straight off
+          the line. */}
       {d.location ? (
-        <p
-          className="truncate text-sm text-text-muted"
-          data-testid="draft-location"
+        <TailClamp
+          text={locationPathLabel(d.locationId, d.location.name, locationById) ?? ''}
+          className="text-sm text-text-muted"
+          testId="draft-location"
           title={locationPathLabel(d.locationId, d.location.name, locationById)}
-        >
-          {locationPathLabel(d.locationId, d.location.name, locationById)}
-        </p>
+        />
       ) : null}
       {/* `flex-wrap` rather than a hard one-line row: a card this narrow
           cannot always fit a checkbox and two labels side by side, and
