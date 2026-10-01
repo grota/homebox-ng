@@ -51,7 +51,8 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   rendition as the grid (`editedPath` when one exists, else `originalPath`). Starts fit when
   the photo is larger than the pane and at natural size when it is not; clicking the photo
   toggles between the two, and a **navigator** shows which region of an oversized photo is on
-  screen and jumps to another. It owns no chrome: the surface decides which photo it is handed
+  screen and jumps to another. A past-threshold horizontal drag on a fitted photo is reported
+  to the host (which steps when it can); zoomed drags keep panning. It owns no chrome: the surface decides which photo it is handed
   and where the controls live. `(apps/web/src/ui/PhotoViewer.tsx:59)`
 - **item surface** — where an item is met in full, and the only place its photos are both
   browsed and acted on: a top bar (position, prev/next, close), the **photo viewer** as its

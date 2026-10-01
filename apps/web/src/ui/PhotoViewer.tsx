@@ -22,6 +22,11 @@ type Scene = { natural: Size; viewport: Size; transform: Transform }
 // click, not a drag.
 const DRAG_THRESHOLD = 4
 
+// Past how much mostly-horizontal travel a drag becomes a step rather than a
+// pan-into-the-clamp. Above the click threshold on purpose: a fitted photo
+// answers every touch, so a resting finger must not page.
+const SWIPE_STEP_PX = 32
+
 // Arrow keys move the *view*, so the image travels the other way: ArrowRight
 // reveals what is off-screen to the right.
 const ARROW_PAN: Record<string, Point> = {
@@ -46,6 +51,13 @@ type PhotoViewerProps = {
   src: string
   /** The item or draft name: the image's alt text. */
   alt: string
+  /**
+   * A past-threshold horizontal drag on a *fitted* photo, where there is
+   * nothing off-screen to pan to. The viewer only reports; stepping is the
+   * host's job (it knows whether there is anywhere to step to). Omitted hosts
+   * simply never hear it. Zoomed drags keep panning and stay silent.
+   */
+  onSwipe?: (direction: 'left' | 'right') => void
 }
 
 // The stage: one photo of an item surface, and everything about *looking* at it —
@@ -59,16 +71,25 @@ type PhotoViewerProps = {
 // it was written for (ADR-0005): a page has no backdrop, and a click on empty
 // space discarding the item you are reading is hostile. Clicking the *photo*
 // still toggles fit ↔ 1:1.
-export function PhotoViewer({ src, alt }: PhotoViewerProps) {
+export function PhotoViewer({ src, alt, onSwipe }: PhotoViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   const [scene, setScene] = useState<Scene | null>(null)
+  // Read by the pointer-up handler below, which a state closure would stale:
+  // the scene that was current when the finger landed is not necessarily the
+  // one on screen when it lifts.
+  const sceneRef = useRef<Scene | null>(null)
+  useEffect(() => {
+    sceneRef.current = scene
+  }, [scene])
   // A rendition row can outlive the file on disk, and `/file/*` sets no cache
   // headers, so a 404 on re-open is a real state rather than a theoretical one.
   const [failed, setFailed] = useState(false)
   // The pointer-down that may still turn out to be a click: where it started,
-  // whether it has moved past the threshold, and what it landed on.
-  const drag = useRef<{ x: number; y: number; moved: boolean; on: EventTarget | null } | null>(null)
+  // whether it has moved past the threshold, and what it landed on. `ox`/`oy`
+  // are the origin for the swipe reckoning below; `x`/`y` walk with the pointer
+  // because the pan applies incrementally.
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean; on: EventTarget | null } | null>(null)
   // Every finger currently down, for the two-finger pinch, and the spread they
   // had on the previous move.
   const pointers = useRef(new Map<number, Point>())
@@ -149,7 +170,7 @@ export function PhotoViewer({ src, alt }: PhotoViewerProps) {
       pinch.current = spread(pointers.current)
       return
     }
-    drag.current = { x: event.clientX, y: event.clientY, moved: false, on: target }
+    drag.current = { x: event.clientX, y: event.clientY, ox: event.clientX, oy: event.clientY, moved: false, on: target }
     // jsdom does not implement pointer capture; the drag still works without it,
     // it just stops tracking once the pointer leaves the element.
     event.currentTarget.setPointerCapture?.(event.pointerId)
@@ -189,8 +210,21 @@ export function PhotoViewer({ src, alt }: PhotoViewerProps) {
     if (pointers.current.size < 2) pinch.current = null
     const start = drag.current
     drag.current = null
+    if (!start) return
+    // A past-threshold horizontal drag on a fitted photo is a step, reported to
+    // whoever asked (the host steps if it can). Zoomed photos keep the gesture:
+    // the same travel panned something real, and a pinch already nulled `drag`.
+    const scene = sceneRef.current
+    if (onSwipe && start.moved && scene && !overflows(scene.natural, scene.viewport, scene.transform.scale)) {
+      const dx = event.clientX - start.ox
+      const dy = event.clientY - start.oy
+      if (Math.abs(dx) >= SWIPE_STEP_PX && Math.abs(dx) > Math.abs(dy)) {
+        onSwipe(dx < 0 ? 'left' : 'right')
+        return
+      }
+    }
     // A drag is not a click.
-    if (!start || start.moved) return
+    if (start.moved) return
     // The image toggles; a click on the container around it does nothing at all.
     if (start.on !== imageRef.current) return
     apply((current) => toggleZoom(current.natural, current.viewport, current.transform))

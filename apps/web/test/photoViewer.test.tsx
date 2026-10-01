@@ -14,8 +14,8 @@ const box = (width: number, height: number) => () => ({
 // jsdom lays nothing out and never loads an image, so the two facts the viewer
 // reads off the DOM — the container's box and the image's intrinsic size — are
 // supplied here. Nothing else is stubbed: the geometry runs for real.
-function openViewer(natural = LARGE) {
-  render(<PhotoViewer src={SRC} alt="Lamp" />)
+function openViewer(natural = LARGE, props: { onSwipe?: (direction: 'left' | 'right') => void } = {}) {
+  render(<PhotoViewer src={SRC} alt="Lamp" {...props} />)
   const container = screen.getByTestId('photo-viewer')
   container.getBoundingClientRect = box(VIEWPORT.width, VIEWPORT.height)
   const image = screen.getByRole('img', { name: 'Lamp' })
@@ -47,6 +47,14 @@ const expectTransform = (element: HTMLElement, expected: { x: number; y: number;
 const click = (element: Element, at = { clientX: 0, clientY: 0 }) => {
   fireEvent.pointerDown(element, { pointerId: 1, ...at })
   fireEvent.pointerUp(element, { pointerId: 1, ...at })
+}
+
+// A one-finger drag across the stage: down, one move past every threshold,
+// up. Pointer capture is a no-op in jsdom, so a single move suffices.
+const swipe = (element: Element, from: { clientX: number; clientY: number }, to: { clientX: number; clientY: number }) => {
+  fireEvent.pointerDown(element, { pointerId: 1, ...from })
+  fireEvent.pointerMove(element, { pointerId: 1, ...to })
+  fireEvent.pointerUp(element, { pointerId: 1, ...to })
 }
 
 describe('PhotoViewer initial zoom', () => {
@@ -205,6 +213,43 @@ describe('PhotoViewer non-primary buttons', () => {
     fireEvent.pointerDown(image, { pointerId: 1, button: 2 })
     fireEvent.pointerUp(image, { pointerId: 1, button: 2 })
     expectTransform(image, { scale: 0.2, x: 0, y: 0 })
+  })
+})
+
+describe('PhotoViewer swipe', () => {
+  it('reports a past-threshold horizontal drag on a fitted photo, left means next', () => {
+    const onSwipe = vi.fn()
+    const { image } = openViewer(SMALL, { onSwipe })
+    swipe(image, { clientX: 200, clientY: 150 }, { clientX: 100, clientY: 150 })
+    expect(onSwipe).toHaveBeenCalledTimes(1)
+    expect(onSwipe).toHaveBeenCalledWith('left')
+  })
+
+  it('reports a rightward drag as the other direction', () => {
+    const onSwipe = vi.fn()
+    const { image } = openViewer(SMALL, { onSwipe })
+    swipe(image, { clientX: 100, clientY: 150 }, { clientX: 200, clientY: 150 })
+    expect(onSwipe).toHaveBeenCalledWith('right')
+  })
+
+  // Zoomed, the same travel panned something real: the gesture stays a pan and
+  // nothing is reported.
+  it('stays quiet while zoomed, and pans instead', () => {
+    const onSwipe = vi.fn()
+    const { image } = openViewer(LARGE, { onSwipe })
+    click(image) // 1:1, where there is something off-screen
+    swipe(image, { clientX: 400, clientY: 300 }, { clientX: 300, clientY: 300 })
+    expect(onSwipe).not.toHaveBeenCalled()
+    expectTransform(image, { scale: 1, x: -1700, y: -1200 })
+  })
+
+  it('ignores a mostly-vertical drag and a tap', () => {
+    const onSwipe = vi.fn()
+    const { image } = openViewer(SMALL, { onSwipe })
+    swipe(image, { clientX: 200, clientY: 100 }, { clientX: 200, clientY: 200 })
+    expect(onSwipe).not.toHaveBeenCalled()
+    click(image)
+    expect(onSwipe).not.toHaveBeenCalled()
   })
 })
 

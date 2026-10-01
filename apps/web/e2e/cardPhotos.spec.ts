@@ -139,6 +139,21 @@ test('the item surface’s counter stays put whether or not the photo is the pri
   expect(Math.abs(wrapped.x - baseline.x)).toBeLessThanOrEqual(1)
 })
 
+// The surface steps with Left/Right wherever the stage cannot pan. The e2e
+// photos are 1x1 PNGs, so they always fit and the navigator is never up —
+// exactly the fitted case, in a real browser with real focus.
+test('the item surface steps photos with the arrow keys when fitted', async ({ page }) => {
+  await loginAdmin(page)
+  const itemId = await itemWithPhotos(page, 'Arrow Lamp', 2)
+
+  await page.goto(`/items/${itemId}`)
+  await expect(page.getByText(/\d of \d/).first()).toHaveText('1 of 2')
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByText(/\d of \d/).first()).toHaveText('2 of 2')
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.getByText(/\d of \d/).first()).toHaveText('1 of 2')
+})
+
 // The setting is a *default*, not a constant: the opposite split is one checkbox
 // away, and both halves have to be a real target in their own right.
 test('the card’s two halves swap when the setting is turned off', async ({ page }) => {

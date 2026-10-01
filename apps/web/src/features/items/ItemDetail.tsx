@@ -266,6 +266,11 @@ export function ItemDetail() {
                 key={current.id}
                 src={'/file/' + (current.editedPath ?? current.originalPath)}
                 alt={item.name}
+                // A finger swipe steps exactly like the arrow keys do: only the
+                // host knows whether there is a next photo, so no callback when
+                // there isn't. Leftward travel reveals the next photo, like the
+                // card swipe and the scroll strip agree.
+                onSwipe={canCycle ? (direction) => (direction === 'left' ? next() : previous()) : undefined}
               />
             ) : (
               <p className="grid h-full place-items-center text-text-muted">No photos yet.</p>
