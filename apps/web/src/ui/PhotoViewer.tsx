@@ -218,8 +218,10 @@ export function PhotoViewer({ src, alt }: PhotoViewerProps) {
     if (!delta) return
     // The arrow keys are ours while the stage has focus: the surface does not
     // scroll, and the host's own keys are PageUp/PageDown. The host ignores
-    // arrows and this ignores PageUp/PageDown, so the split is by key and there
-    // is no ordering rule between two handlers.
+    // arrows while the stage can pan (focused and overflowing) and steps with
+    // Left/Right everywhere else, so the split is by key *and* by stage state and
+    // there is no ordering rule between two handlers. When fitted, panning is a
+    // visual no-op, so nothing here is lost to the stepping.
     event.preventDefault()
     apply((current) => panBy(current.natural, current.viewport, current.transform, delta.x, delta.y))
   }
@@ -228,6 +230,10 @@ export function PhotoViewer({ src, alt }: PhotoViewerProps) {
     <div
       ref={containerRef}
       data-testid="photo-viewer"
+      // Marks the pan area for the host: its own arrow keys step photos except
+      // while focus is in here *and* the navigator is up (only then can the
+      // arrows pan anything).
+      data-photo-stage
       // Focusable but not a tab stop. Clicking the non-focusable <img> sends
       // focus to the nearest focusable ancestor, which is this element — so
       // arrow-key panning keeps working after the user clicks the photo to zoom.

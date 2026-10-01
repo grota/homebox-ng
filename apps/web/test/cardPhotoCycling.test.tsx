@@ -45,6 +45,14 @@ const mount = (props: Parameters<typeof Thumbnail>[0] = {}) => {
 
 const indicator = () => screen.queryByTestId('indicator')?.textContent ?? null
 
+// The wheel throttle and the scroll-quiet window read the clock, so the tests
+// own it: time only moves when they say so.
+let now = 1_000_000
+vi.spyOn(Date, 'now').mockImplementation(() => now)
+const tick = (ms: number) => {
+  now += ms
+}
+
 // A horizontal wheel notch over the thumbnail: the desktop gesture.
 const wheel = (target: HTMLElement, deltaX: number, deltaY = 0) => {
   const event = new WheelEvent('wheel', { deltaX, deltaY, cancelable: true, bubbles: true })
@@ -80,20 +88,50 @@ describe('useCardPhotoCycling', () => {
     expect(indicator()).toBeNull()
   })
 
-  // The horizontal wheel is the desktop gesture. It has to be *horizontal*: an
-  // ordinary vertical wheel notch over a card must keep scrolling the page, which
-  // is what a trackpad's two-finger scroll sends.
-  it('steps on a horizontal wheel notch, and leaves a vertical one to the page', () => {
+  // Both wheel directions step from standstill: a mouse has no horizontal notch,
+  // so the vertical wheel is its only gesture. Either way one notch is one step.
+  it('steps on horizontal and vertical wheel notches from standstill', () => {
+    const { thumb, shown } = mount()
+
+    wheel(thumb, 40)
+    tick(200)
+    expect(shown()).toBe('3')
+    wheel(thumb, 40)
+    tick(200)
+    expect(shown()).toBe('1')
+
+    // Vertical down steps forward like a horizontal notch does.
+    wheel(thumb, 0, 120)
+    tick(200)
+    expect(shown()).toBe('2')
+  })
+
+  // A trackpad burst sends many notches for one gesture. The first steps at
+  // once; the rest of the window is dropped — but kept, not handed back, or the
+  // page would scroll mid-burst.
+  it('drops wheel notches inside the throttle window without yielding them', () => {
     const { thumb, shown } = mount()
 
     wheel(thumb, 40)
     expect(shown()).toBe('3')
+    expect(wheel(thumb, 40).defaultPrevented).toBe(true)
+    expect(shown()).toBe('3')
+
+    tick(200)
     wheel(thumb, 40)
     expect(shown()).toBe('1')
+  })
 
-    // Vertical: not ours, and not stopped either — the page must still scroll.
+  // While the page is moving under the pointer the gesture is a scroll that
+  // happens to cross a card: the notch is neither stepped nor stopped.
+  it('leaves a vertical notch to the page while the page is moving', () => {
+    const { thumb, shown } = mount()
+
+    act(() => {
+      window.dispatchEvent(new Event('scroll'))
+    })
     expect(wheel(thumb, 0, 120).defaultPrevented).toBe(false)
-    expect(shown()).toBe('1')
+    expect(shown()).toBe('2')
   })
 
   // A horizontal wheel over a card is history navigation in some browsers, and an

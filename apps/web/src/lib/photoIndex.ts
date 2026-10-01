@@ -74,6 +74,15 @@ export function usePhotoIndex<T extends { isPrimary: boolean | null }>(
   }
 }
 
+// One step per window: a trackpad burst sends many notches for one gesture,
+// and without this a single flick pages through the whole set.
+const STEP_THROTTLE_MS = 150
+// A vertical notch steps only from standstill: while the page is moving under
+// the pointer the gesture is a scroll that happens to cross a card, so it stays
+// the page's. Single-photo cards never get here at all (no listener below),
+// which covers the common case for free.
+const SCROLL_QUIET_MS = 250
+
 // How far a pointer had to travel before a drag stopped being a tap. The same
 // number `PhotoViewer` uses, for the same reason: a finger resting on a phone
 // moves a pixel or two.
@@ -102,7 +111,7 @@ export type CardPhotoCycling<T> = {
   onClickCapture: (event: React.MouseEvent) => void
 }
 
-// Cycling a card's photos without leaving the list: a horizontal wheel notch over
+// Cycling a card's photos without leaving the list: a wheel notch over
 // the thumbnail, a one-finger swipe, or the arrow keys once it has focus. Shared
 // by all three card surfaces (catalog, drafts, trash) because they are the same
 // gesture over the same picture and only the click target differs.
@@ -126,16 +135,44 @@ export function useCardPhotoCycling<T extends { isPrimary: boolean | null }>(
   const [node, setNode] = useState<HTMLElement | null>(null)
   const ref = useCallback((next: HTMLElement | null) => setNode(next), [])
 
+  // When the page last moved under its own power. A vertical wheel notch that
+  // lands mid-scroll is the page's gesture, not the card's.
+  const lastPageScroll = useRef(0)
+  useEffect(() => {
+    const onScroll = () => {
+      lastPageScroll.current = Date.now()
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // The last step taken, for the throttle above.
+  const lastStep = useRef(0)
+
   // The wheel listener is attached natively and non-passively, because React's
   // own `onWheel` is passive and a passive listener cannot `preventDefault` — and
   // a horizontal wheel notch over a card is history navigation in some browsers.
-  // Only horizontal is taken; a vertical notch still scrolls the page.
+  // Both directions step from standstill (a mouse has no horizontal notch, so
+  // vertical is its only gesture); a vertical notch while the page is moving is
+  // left to the page.
   useEffect(() => {
     if (!node || !canCycle) return
     const onWheel = (event: WheelEvent) => {
-      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
+      const vertical = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
+      if (vertical && Date.now() - lastPageScroll.current < SCROLL_QUIET_MS) return
+      if (Date.now() - lastStep.current < STEP_THROTTLE_MS) {
+        // Inside the window the step is dropped but the gesture stays ours —
+        // handing it back would scroll the page mid-burst.
+        event.preventDefault()
+        return
+      }
+      lastStep.current = Date.now()
       event.preventDefault()
-      if (event.deltaX > 0) next()
+      // Down/forward reveals the next photo, like scrolling a strip that way.
+      if (vertical) {
+        if (event.deltaY > 0) next()
+        else previous()
+      } else if (event.deltaX > 0) next()
       else previous()
     }
     node.addEventListener('wheel', onWheel, { passive: false })
@@ -176,7 +213,8 @@ export function useCardPhotoCycling<T extends { isPrimary: boolean | null }>(
   }
 
   // The keyboard path for a gesture set that is otherwise pointer-only, which is
-  // also where the browser puts focus once the thumbnail is a link.
+  // also where the browser puts focus once the thumbnail is a link. Discrete
+  // presses stay instant — the wheel throttle above is for bursts, not for these.
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (!canCycle) return
     if (event.key === 'ArrowRight') {

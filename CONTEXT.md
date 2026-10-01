@@ -18,7 +18,8 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   row in `items`; `published` decides whether it's on the catalog or the drafts page, and a
   **trashed** item is on neither. `(packages/db/src/schema.ts:57)`
 - **location** — a place where items live, hierarchical through `parentId` (a room can be
-  under a building). `(packages/db/src/schema.ts:30)`
+  under a building), with an optional description shown beside it in the tree and indexed
+  for search. `(packages/db/src/schema.ts:30)`
 - **unlocated item** — an item with no **location**, a legitimate state rather than a defect. The
   **location facet** carries an **Unlocated** node so these items are reachable, and a location's
   **subtree count** never includes them.
@@ -75,14 +76,15 @@ Terms that don't exist yet are created lazily by `/domain-modeling`, not pre-inv
   **item surface**, title toggles the **selection**). An item with no photo has no photo target, so
   it is the same card under either setting: the body selects, the title opens. The footer checkbox
   selects under both. `(docs/adr/0013-card-click-targets-are-a-user-setting.md)`
-- **card photo cycling** — stepping a card's photos without leaving the list: a horizontal wheel over
-  the thumbnail on desktop, a single-finger swipe on touch (the same gesture as a horizontal scroll),
+- **card photo cycling** — stepping a card's photos without leaving the list: a wheel notch over
+  the thumbnail on desktop (either direction from standstill, throttled to one step per window),
+  a single-finger swipe on touch (the same gesture as a horizontal scroll),
   `ArrowLeft`/`ArrowRight` on the focused thumbnail, in the order `orderPhotos` gives. It wraps at
   both ends and reports the position as `n/N`, so `1/3` reaches `3/3` and back. It is about the
   thumbnail on the **catalog**, **draft** and **trash** cards, and it is not the **item surface**'s
-  **photo viewer**, whose drag pans and whose wheel zooms. A mostly-vertical drag and a vertical wheel
-  notch are left to the page, and the click that ends a swipe is swallowed so one gesture cannot also
-  open the item. `(apps/web/src/lib/photoIndex.ts)`
+  **photo viewer**, whose drag pans and whose wheel zooms. A mostly-vertical drag is left to the
+  page, and so is a vertical notch while the page is already moving; the click that ends a swipe
+  is swallowed so one gesture cannot also open the item. `(apps/web/src/lib/photoIndex.ts)`
 
 ## Unpack → drafts → publish (the background flow)
 

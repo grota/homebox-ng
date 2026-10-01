@@ -64,24 +64,27 @@ test('a card’s photo cycles on a wheel notch and a swipe, and never opens the 
   // A horizontal wheel notch over the thumbnail. Chromium will not dispatch a
   // horizontal wheel from a real trackpad here, so the event is dispatched at
   // the element the listener is actually on — which is the thing under test.
-  const wheel = async (deltaX: number) => {
-    await card.getByRole('link').dispatchEvent('wheel', { deltaX, deltaY: 0 })
+  // Notches arrive faster than the throttle in a real burst, so the spec waits
+  // out the window between steps — which is also what proves one notch is one
+  // step rather than a burst riding through.
+  const step = async (deltaX: number, deltaY = 0) => {
+    await card.getByRole('link').dispatchEvent('wheel', { deltaX, deltaY })
+    await page.waitForTimeout(200)
   }
-  await wheel(60)
+  await step(60)
   await expect(card.getByText(/^\d\/3$/)).toHaveText('2/3')
-  await wheel(60)
+  await step(60)
   await expect(card.getByText(/^\d\/3$/)).toHaveText('3/3')
   // Wraps at the end rather than sticking there.
-  await wheel(60)
+  await step(60)
   await expect(card.getByText(/^\d\/3$/)).toHaveText('1/3')
-  await wheel(-60)
+  await step(-60)
   await expect(card.getByText(/^\d\/3$/)).toHaveText('3/3')
 
-  // A vertical notch is the page's, not the card's: it must not step the photo,
-  // and it must not be swallowed either.
-  await wheel(0)
-  await card.getByRole('link').dispatchEvent('wheel', { deltaX: 0, deltaY: 120 })
-  await expect(card.getByText(/^\d\/3$/)).toHaveText('3/3')
+  // A vertical notch from standstill is the mouse's gesture: it steps, and is
+  // swallowed like the horizontal one.
+  await step(0, 120)
+  await expect(card.getByText(/^\d\/3$/)).toHaveText('1/3')
 
   // A real mouse drag, which is pointer events the browser generates itself.
   const box = (await card.getByRole('link').boundingBox())!
