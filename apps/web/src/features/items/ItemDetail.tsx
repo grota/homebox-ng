@@ -98,8 +98,11 @@ export function ItemDetail() {
     else navigate(-1)
   }, [itemId, navigate])
 
-  // The surface's own keys. The arrows belong to the stage (they pan), so the
-  // split is by key and there is no ordering rule between two handlers.
+  // The surface's own keys. The arrows pan only while the stage can pan (focus
+  // inside it and the navigator up, meaning the photo overflows); everywhere
+  // else Left/Right step, because a fitted pan is a no-op and off-stage the
+  // arrows otherwise do nothing at all. Up/Down stay pan-only: there is no
+  // vertical stepping to hand them to.
   //
   // Capture phase, and "is an overlay up?" asked of the DOM rather than of this
   // component's state. Both parts are load-bearing and neither is a style choice:
@@ -127,6 +130,17 @@ export function ItemDetail() {
       // and an arithmetic step off the front would clamp to 0 and stop.
       else if (event.key === 'PageDown' && canCycle) next()
       else if (event.key === 'PageUp' && canCycle) previous()
+      else if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && canCycle) {
+        // The navigator is the overflow signal, asked of the DOM like the dialog
+        // guard above: it renders only while the photo overflows the pane.
+        const target = event.target instanceof HTMLElement ? event.target : null
+        const panning = target?.closest('[data-photo-stage]') != null && document.querySelector('[aria-label="Photo navigator"]') != null
+        if (!panning) {
+          event.preventDefault()
+          if (event.key === 'ArrowRight') next()
+          else previous()
+        }
+      }
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
@@ -221,10 +235,16 @@ export function ItemDetail() {
                   single photo there is nothing to distinguish, so no badge. */}
               {current.isPrimary && photos.length > 1 && (
                 <>
-                  <Badge className="absolute left-full ml-1 hidden sm:inline-block">Primary</Badge>
-                  <Badge className="absolute left-full ml-1 sm:hidden" aria-label="Primary">
-                    <span aria-hidden="true">★</span>
-                  </Badge>
+                  {/* Responsive classes live on the wrapper: `Badge` paints its own
+                      `inline-block`, which beats a caller's `hidden` (`ui/cn`). */}
+                  <span className="absolute left-full ml-1 hidden sm:inline-block">
+                    <Badge>Primary</Badge>
+                  </span>
+                  <span className="absolute left-full ml-1 sm:hidden">
+                    <Badge aria-label="Primary">
+                      <span aria-hidden="true">★</span>
+                    </Badge>
+                  </span>
                 </>
               )}
             </div>

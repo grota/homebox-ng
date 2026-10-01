@@ -218,7 +218,7 @@ describe('item surface', () => {
     const bar = screen.getByRole('button', { name: 'Next photo' }).parentElement!
     const children = Array.from(bar.children).filter((el) => el.textContent?.trim() !== '')
     const nextIndex = children.indexOf(screen.getByRole('button', { name: 'Next photo' }))
-    const badgeIndex = children.indexOf(screen.getByText('Primary'))
+    const badgeIndex = children.indexOf(screen.getByText('Primary').parentElement!)
     expect(badgeIndex).toBe(nextIndex + 1)
   })
 
@@ -240,7 +240,7 @@ describe('item surface', () => {
     // A positioning context, and the badge hangs off its right edge — inside it,
     // so it is still trailing the arrow, but `absolute`, so it contributes no
     // width.
-    expect(screen.getByText('Primary')).toHaveClass('absolute', 'left-full')
+    expect(screen.getByText('Primary').parentElement).toHaveClass('absolute', 'left-full')
   })
 
   // The carousel loops, so neither arrow is ever dead on a multi-photo item.
@@ -316,8 +316,8 @@ describe('item surface', () => {
     expect(mocks.setPrimary).toHaveBeenCalledWith({ itemId: 3, imageId: 11 })
   })
 
-  // PageUp/PageDown, because the arrow keys pan the photo and the surface must
-  // not take them (see the viewer's own tests).
+  // PageUp/PageDown always step; Left/Right step everywhere the stage cannot pan
+  // (see below). The keys wrap rather than stopping at the ends.
   it('steps photos with PageUp and PageDown', () => {
     renderDetail()
     fireEvent.keyDown(window, { key: 'PageDown' })
@@ -327,6 +327,18 @@ describe('item surface', () => {
     // The keys wrap with the arrows rather than stopping at the ends.
     fireEvent.keyDown(window, { key: 'PageUp' })
     expect(screen.getByText('2 of 2')).toBeInTheDocument()
+  })
+
+  // Left/Right step everywhere the stage cannot pan. jsdom lays nothing out, so
+  // no photo ever overflows and the navigator is never up — which is exactly
+  // the fitted case. The zoomed case (focus in the stage, navigator up, arrows
+  // pan) needs a real layout: e2e's job, not this file's.
+  it('steps photos with the Left and Right arrows when the stage cannot pan', () => {
+    renderDetail()
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByText('2 of 2')).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(screen.getByText('1 of 2')).toBeInTheDocument()
   })
 
   it('closes on Escape', () => {

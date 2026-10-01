@@ -150,10 +150,14 @@ export function TrashPage() {
                       item needs to know. */}
                   {peekPhotos.current.isPrimary && (
                     <>
-                      <Badge className="hidden sm:inline-block">Primary</Badge>
-                      <Badge className="sm:hidden" aria-label="Primary">
-                        <span aria-hidden="true">★</span>
-                      </Badge>
+                      <span className="hidden sm:inline-block">
+                        <Badge>Primary</Badge>
+                      </span>
+                      <span className="sm:hidden">
+                        <Badge aria-label="Primary">
+                          <span aria-hidden="true">★</span>
+                        </Badge>
+                      </span>
                     </>
                   )}
                 </>
