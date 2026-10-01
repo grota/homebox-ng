@@ -151,7 +151,7 @@ describe('catalog pages', () => {
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
       fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
       const file = new File(['x'], 'a.png', { type: 'image/png' })
-      fireEvent.change(screen.getByLabelText('Photo'), { target: { files: [file] } })
+      fireEvent.change(screen.getByLabelText('Add edited photo'), { target: { files: [file] } })
 
       // Picking opens the crop on the picked file; it is not an upload.
       expect(editorProps.at(-1).source).toBe('blob:picked')
@@ -180,6 +180,30 @@ describe('catalog pages', () => {
       fetchSpy.mockRestore()
     })
 
+    // Two pickers, two photos: the cropped edit and the plain file upload side by
+    // side on submit — the order carries no meaning, so the first picked is
+    // simply the first sent.
+    it('uploads both the edited and the plain photo on submit', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+      render(<AppProviders><ItemNewPage /></AppProviders>)
+
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
+      fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
+      fireEvent.change(screen.getByLabelText('Add edited photo'), { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } })
+      const cropped = new Blob(['cropped'], { type: 'image/jpeg' })
+      await act(async () => {
+        editorProps.at(-1).onSave({ imageCanvas: { toBlob: (cb: any) => cb(cropped) }, mimeType: 'image/jpeg' })
+      })
+      fireEvent.change(screen.getByLabelText('Add photo'), { target: { files: [new File(['y'], 'b.png', { type: 'image/png' })] } })
+
+      fireEvent.click(screen.getByRole('button', { name: /create item/i }))
+
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
+      expect(((fetchSpy.mock.calls[0][1] as RequestInit).body as FormData).get('file')).toMatchObject({ name: 'photo.jpg' })
+      expect(((fetchSpy.mock.calls[1][1] as RequestInit).body as FormData).get('file')).toMatchObject({ name: 'b.png' })
+      fetchSpy.mockRestore()
+    })
+
     // The crop's saved type is whatever the dialog reports, not an assumed `.jpg`: the
     // dialog offers jpeg, png and webp, and a blob named for the wrong container is
     // stored with the wrong extension and served with the wrong content type. The test
@@ -193,7 +217,7 @@ describe('catalog pages', () => {
 
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
       fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
-      fireEvent.change(screen.getByLabelText('Photo'), {
+      fireEvent.change(screen.getByLabelText('Add edited photo'), {
         target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
       })
 
@@ -229,7 +253,7 @@ describe('catalog pages', () => {
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
       fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
       const file = new File(['x'], 'a.png', { type: 'image/png' })
-      fireEvent.change(screen.getByLabelText('Photo'), { target: { files: [file] } })
+      fireEvent.change(screen.getByLabelText('Add edited photo'), { target: { files: [file] } })
 
       // Closing the crop keeps the photo that was picked: the crop is a step the user
       // may decline, not a gate on adding a photo.
@@ -251,7 +275,7 @@ describe('catalog pages', () => {
     it('names the photo it is holding, in place of an input that only shows the pick', async () => {
       render(<AppProviders><ItemNewPage /></AppProviders>)
 
-      fireEvent.change(screen.getByLabelText('Photo'), {
+      fireEvent.change(screen.getByLabelText('Add edited photo'), {
         target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
       })
       // Dismissed, so what is held is the file as picked.
@@ -272,7 +296,7 @@ describe('catalog pages', () => {
 
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Lamp' } })
       fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
-      fireEvent.change(screen.getByLabelText('Photo'), {
+      fireEvent.change(screen.getByLabelText('Add edited photo'), {
         target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
       })
       // Dismissing the crop keeps the picked file as the photo being held.

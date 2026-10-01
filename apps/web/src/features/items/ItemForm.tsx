@@ -68,6 +68,10 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
   // `Clear` reaches the element itself to empty its value, so this picker holds a ref.
   const photoInput = useRef<HTMLInputElement>(null)
   const [photo, setPhoto] = useState<File | null>(null)
+  // The plain upload beside it: picked as-is, no crop step. Same held-until-submit
+  // shape, because create mode has no item id to upload against yet.
+  const plainPhotoInput = useRef<HTMLInputElement>(null)
+  const [plainPhoto, setPlainPhoto] = useState<File | null>(null)
   // The file the crop dialog is open on, if any. Separate from `photo` on purpose:
   // closing the dialog without cropping keeps the file that was picked.
   const [cropping, setCropping] = useState<File | null>(null)
@@ -109,6 +113,11 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
     setPhoto(null)
     setCropping(null)
     if (photoInput.current) photoInput.current.value = ''
+  }
+
+  const clearPlainPhoto = () => {
+    setPlainPhoto(null)
+    if (plainPhotoInput.current) plainPhotoInput.current.value = ''
   }
 
   const handleTypeChange = (value: string) => {
@@ -163,8 +172,19 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
       // Create/edit-then-upload: both mutations return the item DTO, so
       // `saved.id` is the `itemId` the upload route needs. The item write has
       // already committed at this point, so a failed upload reports the error
-      // but does not roll the item back.
-      if (photo) await uploadImage(saved.id, photo)
+      // but does not roll the item back. Each picked file uploads on its own —
+      // the order carries no meaning, and one failing takes neither the other
+      // nor the item with it.
+      let uploadError: string | null = null
+      for (const file of [photo, plainPhoto]) {
+        if (!file) continue
+        try {
+          await uploadImage(saved.id, file)
+        } catch (err) {
+          uploadError = err instanceof Error ? err.message : 'Upload failed'
+        }
+      }
+      if (uploadError) throw new Error(uploadError)
 
       // Same shape of trade-off for the tags: a second, non-atomic call whose
       // failure leaves the item itself saved. Skipped when the set is unchanged,
@@ -341,7 +361,9 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
         </div>
       </fieldset>
 
-      <Field label={item ? 'Add photo' : 'Photo'} htmlFor="item-photo">
+      {/* The crop is the edit: picking here opens the crop dialog, so the label
+          says what the file becomes rather than what the control is. */}
+      <Field label="Add edited photo" htmlFor="item-photo">
         <Input
           ref={photoInput}
           id="item-photo"
@@ -377,6 +399,27 @@ export function ItemForm({ item, onSaved, onCancel }: ItemFormProps) {
           }}
         />
       )}
+
+      {/* The plain picker beside it: no crop step, the file uploads as picked.
+          Held until submit like the one above, for the same reason — create
+          mode has no item id until the save returns. */}
+      <Field label="Add photo" htmlFor="item-plain-photo">
+        <Input
+          ref={plainPhotoInput}
+          id="item-plain-photo"
+          type="file"
+          accept="image/*"
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setPlainPhoto(e.target.files?.[0] ?? null)}
+        />
+        {plainPhoto && (
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-text-muted text-sm">{plainPhoto.name}</span>
+            <Button type="button" onClick={clearPlainPhoto}>
+              Clear
+            </Button>
+          </div>
+        )}
+      </Field>
 
       {error && <p role="alert" className="text-danger">{error}</p>}
 
