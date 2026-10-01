@@ -79,7 +79,7 @@ describe('locations page', () => {
     fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Cabin' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create location' }))
 
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ name: 'Cabin', parentId: null }))
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ name: 'Cabin', parentId: null, description: null }))
   })
 
   it('prefills the form when editing and saves the change', async () => {
@@ -91,7 +91,7 @@ describe('locations page', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Main House' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
-    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ id: 1, name: 'Main House', parentId: null }))
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ id: 1, name: 'Main House', parentId: null, description: null }))
   })
 
   // A location may not be moved under itself or one of its descendants — the API

@@ -3,7 +3,7 @@ import { locationInput } from '@homebox/shared'
 import { t, protectedProcedure } from '../../trpc.js'
 import * as service from './service.js'
 
-// `create` uses the shared `locationInput` ({ name, parentId }). `update` takes
+// `create` uses the shared `locationInput` ({ name, parentId, description? }). `update` takes
 // an optional subset of fields; when `parentId` is provided as `null` it moves
 // the location up to the root. `delete` takes just a location id.
 const idInput = z.object({ id: z.number().int().positive() })

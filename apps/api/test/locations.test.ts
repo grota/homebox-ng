@@ -18,7 +18,7 @@ const post = async (path: string, payload: unknown) =>
 const get = async (path: string) =>
   (await app.inject({ method: 'GET', url: `/trpc/${path}`, headers: { cookie } })).json()?.result?.data
 
-const createLocation = (payload: { name: string; parentId: number | null }) => post('locations.create', payload)
+const createLocation = (payload: { name: string; parentId: number | null; description?: string | null }) => post('locations.create', payload)
 
 const exists = (path: string) => access(path).then(() => true, () => false)
 
@@ -42,6 +42,15 @@ describe('locations module', () => {
     expect(parent.id).toBeTruthy()
     const child = await createLocation({ name: 'Garage', parentId: parent.id })
     expect(child.parentId).toBe(parent.id)
+  })
+
+  // `description` rides the create path rather than arriving null: the form
+  // sends it, so the round trip has to keep it.
+  it('keeps a description through create and update', async () => {
+    const loc = await createLocation({ name: 'Cellar', parentId: null, description: 'damp and dark' })
+    expect(loc.description).toBe('damp and dark')
+    const updated = await post('locations.update', { id: loc.id, description: null })
+    expect(updated.description).toBeNull()
   })
 
   // The delete still takes the whole subtree of *locations*, and the FK on

@@ -113,7 +113,7 @@ export const createLocation = (db: DrizzleDb, input: LocationInput): LocationDto
     if (parentDepth + 1 > LOCATION_DEPTH_MAX) throw new TRPCError({ code: 'BAD_REQUEST' })
   }
 
-  const row = repo.createLocation(db, { name: input.name, parentId: input.parentId, description: null })
+  const row = repo.createLocation(db, { name: input.name, parentId: input.parentId, description: input.description ?? null })
   const depth = computeDepth(buildIndex(repo.listLocations(db)), row)
   return toDto(row, depth)
 }
@@ -142,11 +142,12 @@ export const updateLocation = (db: DrizzleDb, input: UpdateLocationInput): Locat
 
   const row = Object.keys(data).length > 0 ? repo.updateLocation(db, input.id, data) : existing
 
-  // A location rename OR move changes `location_path` for every item in its
-  // subtree (the blob encodes the full ancestor chain), so re-index those items
-  // after the write. The searchable blob only carries the name (not the
-  // description), so reindex when the name or the parent changed.
-  if (input.name !== undefined || input.parentId !== undefined) reindexLocationSubtree(db, input.id)
+  // A location rename, move, or description edit changes `location_path` for
+  // every item in its subtree (the blob encodes the full ancestor chain, names
+  // and descriptions), so re-index those items after the write.
+  if (input.name !== undefined || input.parentId !== undefined || input.description !== undefined) {
+    reindexLocationSubtree(db, input.id)
+  }
 
   const depth = computeDepth(buildIndex(repo.listLocations(db)), row)
   return toDto(row, depth)

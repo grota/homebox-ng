@@ -8,27 +8,27 @@ import type { DrizzleDb } from '@homebox/db'
 // recomputes the item's blob; `rebuildFTS` wipes and repopulates the whole
 // index for the admin/dev repair path.
 
-// Space-joined ancestor location names, root → leaf, so a query naming any
-// ancestor in the path matches the item. The design permits cyclic `parent_id`
-// chains, so guard against revisiting a node (check BEFORE adding its name so a
-// cycle's repeated node is not duplicated in the blob).
+// Space-joined ancestor location names and descriptions, root → leaf, so a
+// query naming any ancestor in the path matches the item. The design permits
+// cyclic `parent_id` chains, so guard against revisiting a node (check BEFORE
+// adding its name so a cycle's repeated node is not duplicated in the blob).
 const locationPathNames = (db: DrizzleDb, locationId: number): string => {
   const chain: string[] = []
   const seen = new Set<number>()
   let id = locationId
-  let cur: { parentId: number | null; name: string } | undefined = db
-    .select({ parentId: locations.parentId, name: locations.name })
+  let cur: { parentId: number | null; name: string; description: string | null } | undefined = db
+    .select({ parentId: locations.parentId, name: locations.name, description: locations.description })
     .from(locations)
     .where(eq(locations.id, id))
     .get()
   while (cur) {
     if (seen.has(id)) break // already visited → cyclic; stop without duplicating
     seen.add(id)
-    chain.unshift(cur.name)
+    chain.unshift(cur.description ? `${cur.name} ${cur.description}` : cur.name)
     if (cur.parentId == null) break
     id = cur.parentId
     cur = db
-      .select({ parentId: locations.parentId, name: locations.name })
+      .select({ parentId: locations.parentId, name: locations.name, description: locations.description })
       .from(locations)
       .where(eq(locations.id, id))
       .get()

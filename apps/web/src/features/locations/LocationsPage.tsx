@@ -20,10 +20,8 @@ const findNode = (nodes: LocationTreeItem[], id: number): LocationTreeItem | nul
 const subtreeIds = (node: LocationTreeItem): number[] => [node.id, ...(node.children ?? []).flatMap(subtreeIds)]
 
 // One form serves both create and edit: `editingId` decides which mutation
-// `handleSubmit` calls. Locations carry a name and a parent and nothing else the
-// UI sets — `description` is writable through the API but has no create-side
-// counterpart in `locationInput`, so it is left alone rather than made
-// edit-only.
+// `handleSubmit` calls. Like item types, a location carries a name, an optional
+// description, and (unlike types) a parent.
 export function LocationsPage() {
   const utils = trpc.useUtils()
   const { data, isLoading } = trpc.locations.list.useQuery()
@@ -33,6 +31,7 @@ export function LocationsPage() {
 
   const [editingId, setEditingId] = useState<number | null>(null)
   const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
   const [parentId, setParentId] = useState<number | ''>('')
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
@@ -50,6 +49,7 @@ export function LocationsPage() {
   const reset = () => {
     setEditingId(null)
     setName('')
+    setDescription('')
     setParentId('')
     setError(null)
   }
@@ -57,6 +57,7 @@ export function LocationsPage() {
   const startEdit = (location: LocationTreeItem) => {
     setEditingId(location.id)
     setName(location.name)
+    setDescription(location.description ?? '')
     setParentId(location.parentId ?? '')
     setError(null)
     setStatus(null)
@@ -66,7 +67,7 @@ export function LocationsPage() {
     e.preventDefault()
     setError(null)
     setStatus(null)
-    const payload = { name, parentId: parentId === '' ? null : Number(parentId) }
+    const payload = { name, parentId: parentId === '' ? null : Number(parentId), description: description === '' ? null : description }
     try {
       if (editingId == null) await create.mutateAsync(payload)
       else await update.mutateAsync({ id: editingId, ...payload })
@@ -116,6 +117,10 @@ export function LocationsPage() {
       <form className="flex flex-col gap-3 max-w-[30rem] mx-auto my-4" onSubmit={handleSubmit}>
         <Field label="Name" htmlFor="location-name">
           <Input id="location-name" value={name} onChange={(e) => setName(e.target.value)} required />
+        </Field>
+
+        <Field label="Description" htmlFor="location-description">
+          <Input id="location-description" value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
 
         <Field label="Parent" htmlFor="location-parent">

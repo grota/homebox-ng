@@ -131,6 +131,16 @@ describe('fts reindex', () => {
     expect(match('bedroom')).toEqual([itemId])
   })
 
+  it('matches a location description, and reindexes the subtree when it changes', () => {
+    const { itemId, childLocationId } = seedItem({ name: 'Vase' })
+    reindexItem(db, itemId)
+    expect(match('cellar')).toEqual([])
+
+    // Through the service, so the subtree reindex is the real one.
+    updateLocationService(db, { id: childLocationId, description: 'damp cellar corner' })
+    expect(match('cellar')).toEqual([itemId])
+  })
+
   it('reindexItemType and reindexLocationSubtree reindex exactly their items', () => {
     const a = seedItem({ name: 'A', typeName: 'Acme', parentLocationName: 'Warehouse' })
     const b = seedItem({ name: 'B' })

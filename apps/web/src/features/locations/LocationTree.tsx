@@ -24,7 +24,10 @@ export function LocationTree({ locations, onEdit, onDelete }: LocationTreeProps)
       {locations.map((loc) => (
         <li key={loc.id}>
           <div className="flex items-center gap-2">
-            <span>{loc.name}</span>
+            <div>
+              <span>{loc.name}</span>
+              {loc.description && <p className="text-sm text-text-muted">{loc.description}</p>}
+            </div>
             <Button size="sm" onClick={() => onEdit(loc)}>
               Edit
             </Button>

@@ -8,6 +8,7 @@ export const loginInput = z.object({
 export const locationInput = z.object({
   name: z.string().min(1),
   parentId: z.number().int().positive().nullable(),
+  description: z.string().nullable().optional(),
 })
 export const itemTypeInput = z.object({
   name: z.string().min(1),
