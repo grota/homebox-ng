@@ -199,19 +199,24 @@ export function ItemsPage() {
     })
   }
 
-  const setTypeFilter = (id: number | undefined) =>
+  const setTypeFilter = (id: number | undefined) => {
+    setFacetsOpen(false)
     applyAndResetPage((next) => {
       if (id == null) next.delete('typeId')
       else next.set('typeId', String(id))
     })
+  }
 
-  const setLocationFilter = (id: LocationFacetId | undefined) =>
+  const setLocationFilter = (id: LocationFacetId | undefined) => {
+    setFacetsOpen(false)
     applyAndResetPage((next) => {
       if (id == null) next.delete('locationId')
       else next.set('locationId', String(id))
     })
+  }
 
-  const toggleTag = (id: number) =>
+  const toggleTag = (id: number) => {
+    setFacetsOpen(false)
     applyAndResetPage((next) => {
       next.delete('tagIds')
       const current = new Set(tagIds)
@@ -219,6 +224,7 @@ export function ItemsPage() {
       else current.add(id)
       for (const tagId of current) next.append('tagIds', String(tagId))
     })
+  }
 
   const clearFilters = () => {
     setSearchInput('')
@@ -429,17 +435,21 @@ export function ItemsPage() {
             panel missing. */}
         {facets && !onlySelected && (
           <>
-            <Button
-              size="sm"
-              className="relative z-[60] lg:hidden"
-              onClick={() => setFacetsOpen((v) => !v)}
-              aria-expanded={facetsOpen}
-            >
-              {facetsOpen ? 'Close' : 'Filters'}
-            </Button>
+            {!facetsOpen && (
+              <Button size="sm" className="lg:hidden" onClick={() => setFacetsOpen(true)} aria-expanded={false}>
+                Filters
+              </Button>
+            )}
             <aside
               className={`${facetsOpen ? 'fixed inset-0 z-50 bg-bg p-4 overflow-y-auto' : 'hidden'} lg:static lg:z-auto lg:block lg:bg-transparent lg:p-0 lg:overflow-visible lg:flex lg:flex-col lg:gap-4 lg:w-60 lg:flex-shrink-0`}
             >
+              {facetsOpen && (
+                <div className="lg:hidden flex justify-end sticky top-0 bg-bg pb-2">
+                  <Button size="sm" onClick={() => setFacetsOpen(false)}>
+                    Close
+                  </Button>
+                </div>
+              )}
               {facets.types.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   <h2 className="w-full mb-0">Types</h2>
