@@ -3,7 +3,7 @@ import { createDb, runMigrations } from '@homebox/db'
 import { listDrafts, renameDraft, publishDraft, publishAll, trashDraft, trashAll } from '../src/modules/drafts/service'
 import { purgeItem, listTrash } from '../src/modules/trash/service'
 import { createItemsFromImage } from '../src/modules/unpack/service'
-import { mkdtempSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { getImagesForItem } from '../src/modules/images/repo'
@@ -28,7 +28,7 @@ const setup = () => {
 const makeDraft = async (ctx: ReturnType<typeof setup>, fileName: string): Promise<number> => {
   const path = join(ctx.dataDir, fileName)
   writeFileSync(path, png)
-  const { drafts } = await createItemsFromImage({ ...ctx, userId: 1, provider: fakeProvider }, { path, itemTypeId: 1 })
+  const { drafts } = await createItemsFromImage({ ...ctx, userId: 1, provider: fakeProvider }, { image: readFileSync(path), itemTypeId: 1 })
   return drafts[0].id
 }
 
@@ -36,7 +36,7 @@ describe('drafts lifecycle', () => {
   it('list returns only unpublished; publish hides it; rename; trash', async () => {
     const { db, dataDir } = setup()
     const path = join(dataDir, 's.png'); writeFileSync(path, png)
-    const { drafts } = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path, itemTypeId: 1 })
+    const { drafts } = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { image: readFileSync(path), itemTypeId: 1 })
     const id = drafts[0].id
     expect(listDrafts(db).items).toHaveLength(1)
     renameDraft(db, id, 'Renamed Cup')
@@ -45,15 +45,15 @@ describe('drafts lifecycle', () => {
     expect(listDrafts(db).items).toHaveLength(0)
     // second draft for discard
     const path2 = join(dataDir, 's2.png'); writeFileSync(path2, png)
-    const r2 = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path: path2, itemTypeId: 1 })
+    const r2 = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { image: readFileSync(path2), itemTypeId: 1 })
     trashDraft(db, r2.drafts[0].id)
     expect(listDrafts(db).items).toHaveLength(0)
   })
   it('publishAll publishes all or selected', async () => {
     const { db, dataDir } = setup()
     const path = join(dataDir, 's.png'); writeFileSync(path, png)
-    const a = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path, itemTypeId: 1 })
-    const b = await (async () => { const p = join(dataDir, 's2.png'); writeFileSync(p, png); return await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path: p, itemTypeId: 1 }) })()
+    const a = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { image: readFileSync(path), itemTypeId: 1 })
+    const b = await (async () => { const p = join(dataDir, 's2.png'); writeFileSync(p, png); return await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { image: readFileSync(p), itemTypeId: 1 }) })()
     publishAll(db, [a.drafts[0].id])
     expect(listDrafts(db).items).toHaveLength(1)
     publishAll(db, [b.drafts[0].id])

@@ -1,6 +1,5 @@
-import { readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import sharp, { type Metadata } from 'sharp'
 import { renderThumbnail } from '../images/thumbnail.js'
@@ -11,7 +10,7 @@ import { createItem } from '../items/repo.js'
 import { insertImage } from '../images/repo.js'
 
 export type UnpackContext = { db: DrizzleDb; dataDir: string; userId: number; provider: DetectionProviderImpl }
-export type UnpackSource = { path: string; itemTypeId: number }
+export type UnpackSource = { image: Buffer; itemTypeId: number }
 export type UnpackResult = { detected: number; drafts: { id: number; name: string; imageId: number }[] }
 
 // Write a cropped buffer as original+thumb under `dataDir`. Paths are stored
@@ -35,14 +34,24 @@ const saveCrop = async (buffer: Buffer, box: { x: number; y: number; width: numb
 export const createItemsFromImage = async (ctx: UnpackContext, source: UnpackSource): Promise<UnpackResult> => {
   const { db, dataDir, userId, provider } = ctx
 
-  const buffer = await readFile(source.path)
   // `sharp().metadata()` rejects (rather than returning null dims) for a
   // non-image or truncated file, so surface both cases as the typed error. We
   // rethrow the reject as UnpackError with the original sharp error preserved
   // as `cause` for diagnostics; the null-dims case stays a plain UnpackError.
+  //
+  // A phone photo usually stores its pixels landscape plus an EXIF tag saying
+  // "rotate 90°". The browser honours the tag, so the user (and the manual
+  // boxes they draw) see the upright image, while `extract` works on the raw
+  // pixels. Baking the rotation in once, up front, puts the provider, the boxes
+  // and every crop in the same upright pixel space.
+  let buffer = source.image
   let meta: Metadata | null
   try {
     meta = await sharp(buffer).metadata()
+    if ((meta.orientation ?? 1) > 1) {
+      buffer = await sharp(buffer).autoOrient().toBuffer()
+      meta = await sharp(buffer).metadata()
+    }
   } catch (err) {
     throw new UnpackError('image-not-decodable', undefined, err)
   }
@@ -55,34 +64,46 @@ export const createItemsFromImage = async (ctx: UnpackContext, source: UnpackSou
 
   if (boxes.length === 0) return { detected: 0, drafts: [] }
 
-  const drafts: UnpackResult['drafts'] = []
-  for (let i = 0; i < boxes.length; i++) {
-    const box = boxes[i]
-    const name = box.label?.trim() || `Draft ${i + 1}`
-    const item = createItem(db, {
-      name,
-      description: '',
-      quantity: 1,
-      unit: null,
-      itemTypeId: source.itemTypeId,
-      locationId: null,
-      createdBy: userId,
-      published: false,
-      fieldValues: [],
-    })
-    const crop = await saveCrop(buffer, box.box, dataDir)
-    const image = insertImage(db, {
-      itemId: item.id,
-      originalPath: crop.originalRel,
-      thumbPath: crop.thumbRel,
-      format: 'image/jpeg',
-      sizeBytes: crop.sizeBytes,
-      width: crop.width,
-      height: crop.height,
-      sortOrder: 1,
-      isPrimary: true,
-    })
-    drafts.push({ id: item.id, name, imageId: image.id })
+  // Every crop is rendered and written before any row exists, and the rows go in
+  // one transaction: a crop that fails (a bad box, a full disk) leaves no draft
+  // behind — not even the ones before it — and takes its sibling files with it.
+  const crops: Awaited<ReturnType<typeof saveCrop>>[] = []
+  try {
+    for (const { box } of boxes) crops.push(await saveCrop(buffer, box, dataDir))
+  } catch (err) {
+    for (const crop of crops) for (const rel of [crop.originalRel, crop.thumbRel]) unlink(join(dataDir, rel)).catch(() => {})
+    throw err
   }
+
+  const drafts = db.transaction((tx) =>
+    boxes.map((box, i) => {
+      const t = tx as unknown as DrizzleDb
+      const crop = crops[i]
+      const name = box.label?.trim() || `Draft ${i + 1}`
+      const item = createItem(t, {
+        name,
+        description: '',
+        quantity: 1,
+        unit: null,
+        itemTypeId: source.itemTypeId,
+        locationId: null,
+        createdBy: userId,
+        published: false,
+        fieldValues: [],
+      })
+      const image = insertImage(t, {
+        itemId: item.id,
+        originalPath: crop.originalRel,
+        thumbPath: crop.thumbRel,
+        format: 'image/jpeg',
+        sizeBytes: crop.sizeBytes,
+        width: crop.width,
+        height: crop.height,
+        sortOrder: 1,
+        isPrimary: true,
+      })
+      return { id: item.id, name, imageId: image.id }
+    }),
+  )
   return { detected: boxes.length, drafts }
 }

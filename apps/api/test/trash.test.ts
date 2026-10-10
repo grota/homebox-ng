@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createDb, runMigrations } from '@homebox/db'
 import { buildApp } from '../src/server'
-import { mkdtempSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
@@ -25,7 +25,7 @@ const setup = () => {
 const makeDraft = async (ctx: ReturnType<typeof setup>, fileName: string): Promise<number> => {
   const path = join(ctx.dataDir, fileName)
   writeFileSync(path, png)
-  const { drafts } = await createItemsFromImage({ ...ctx, userId: 1, provider: fakeProvider }, { path, itemTypeId: 1 })
+  const { drafts } = await createItemsFromImage({ ...ctx, userId: 1, provider: fakeProvider }, { image: readFileSync(path), itemTypeId: 1 })
   return drafts[0].id
 }
 

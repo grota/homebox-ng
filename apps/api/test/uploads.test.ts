@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { buildApp } from '../src/server'
 import { createDb, runMigrations } from '@homebox/db'
 import FormData from 'form-data'
-import { mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import sharp from 'sharp'
@@ -141,5 +141,70 @@ describe('effective instance cap on upload', () => {
     // Restore the default so later tests / the file see the original 10MB cap.
     const upd2 = await app.inject({ method: 'POST', url: '/trpc/instanceSettings.update', headers: { cookie: adminCookie }, payload: { maxUploadMb: 10 } })
     expect(upd2.statusCode).toBe(200)
+  })
+})
+
+describe('image upload of undecodable bytes', () => {
+  it('answers 400, not 500, for a forged image mimetype', async () => {
+    const form = new FormData()
+    form.append('itemId', String(itemId))
+    form.append('file', Buffer.from('this is not a real image'), { filename: 'x.png', contentType: 'image/png' })
+    const res = await app.inject({ method: 'POST', url: '/upload/image', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
+    expect(res.statusCode).toBe(400)
+  })
+})
+
+describe('re-editing a photo', () => {
+  it('removes the previous edited file and thumbnail, and keeps the original', async () => {
+    const img = await uploadImage()
+    const edit = async () => {
+      const form = new FormData()
+      form.append('imageId', String(img.id))
+      form.append('file', png, { filename: 'edited.png', contentType: 'image/png' })
+      const res = await app.inject({ method: 'POST', url: '/upload/image/edit', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
+      expect(res.statusCode).toBe(200)
+      return res.json()
+    }
+    const first = await edit()
+    const second = await edit()
+    // The unlinks are best-effort and not awaited by the route.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(existsSync(join(dataDir, img.thumbPath))).toBe(false)
+    expect(existsSync(join(dataDir, first.editedPath))).toBe(false)
+    expect(existsSync(join(dataDir, first.thumbPath))).toBe(false)
+    expect(existsSync(join(dataDir, second.editedPath))).toBe(true)
+    expect(existsSync(join(dataDir, second.thumbPath))).toBe(true)
+    expect(existsSync(join(dataDir, img.originalPath))).toBe(true)
+  })
+})
+
+describe('GET /file/*', () => {
+  it('serves an uploaded photo without a session', async () => {
+    const img = await uploadImage()
+    const res = await app.inject({ method: 'GET', url: `/file/${img.originalPath}` })
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('refuses anything outside uploads/: the database and stored backups share dataDir', async () => {
+    writeFileSync(join(dataDir, 'homebox.db'), 'db')
+    for (const path of ['homebox.db', 'backups/x.tar.gz', 'uploads/../homebox.db', 'uploadsX/a.png']) {
+      const res = await app.inject({ method: 'GET', url: `/file/${path}` })
+      expect(res.statusCode, path).toBe(403)
+    }
+  })
+})
+
+describe('a rotated phone photo', () => {
+  it('stores the displayed size, not the raw pixel size', async () => {
+    // 400×300 landscape pixels tagged "rotate 90°": a 300×400 portrait on screen.
+    const phone = await sharp({ create: { width: 400, height: 300, channels: 3, background: { r: 9, g: 9, b: 9 } } }).jpeg().withMetadata({ orientation: 6 }).toBuffer()
+    const form = new FormData()
+    form.append('itemId', String(itemId))
+    form.append('file', phone, { filename: 'phone.jpg', contentType: 'image/jpeg' })
+    const res = await app.inject({ method: 'POST', url: '/upload/image', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ width: 300, height: 400 })
+    const thumb = await sharp(join(dataDir, res.json().thumbPath)).metadata()
+    expect([thumb.width, thumb.height]).toEqual([300, 400])
   })
 })

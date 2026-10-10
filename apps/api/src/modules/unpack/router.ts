@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { TRPCError } from '@trpc/server'
 import { images, items } from '@homebox/db'
@@ -23,7 +24,7 @@ export const unpackRouter = t.router({
       try {
         const provider = resolveDetectionProvider(ctx.db)
         return await service.createItemsFromImage({ db: ctx.db, dataDir: ctx.dataDir, userId: ctx.user!.id, provider }, {
-          path: join(ctx.dataDir, image.originalPath),
+          image: await readFile(join(ctx.dataDir, image.originalPath)),
           itemTypeId: sourceItem.itemTypeId,
         })
       } catch (err) {
@@ -48,7 +49,7 @@ export const unpackRouter = t.router({
       try {
         return await service.createItemsFromImage(
           { db: ctx.db, dataDir: ctx.dataDir, userId: ctx.user!.id, provider: manualProvider(input.regions) },
-          { path: join(ctx.dataDir, image.originalPath), itemTypeId: sourceItem.itemTypeId },
+          { image: await readFile(join(ctx.dataDir, image.originalPath)), itemTypeId: sourceItem.itemTypeId },
         )
       } catch (err) {
         if (err instanceof UnpackError) throw new TRPCError({ code: 'BAD_REQUEST', message: 'not a decodable image' })

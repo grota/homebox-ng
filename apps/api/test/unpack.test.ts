@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { createDb, runMigrations } from '@homebox/db'
 import { createItemsFromImage } from '../src/modules/unpack/service'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { manualProvider } from '../src/modules/unpack/manual'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildApp } from '../src/server'
@@ -31,7 +32,7 @@ describe('createItemsFromImage', () => {
     seed(db)
     const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 200, g: 200, b: 200 } } }).png().toBuffer()
     const path = join(dataDir, 'src.png'); writeFileSync(path, png)
-    const result = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path, itemTypeId: 1 })
+    const result = await createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { image: readFileSync(path), itemTypeId: 1 })
     expect(result.detected).toBe(2)
     expect(result.drafts).toHaveLength(2)
     const draftRow = db.prepare('SELECT published, location_id AS locationId, item_type_id AS itemTypeId, created_by AS createdBy FROM items WHERE id = ?').get(result.drafts[0].id) as any
@@ -45,15 +46,73 @@ describe('createItemsFromImage', () => {
     seed(db)
     const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 200, g: 200, b: 200 } } }).png().toBuffer()
     const path = join(dataDir, 'src.png'); writeFileSync(path, png)
-    const result = await createItemsFromImage({ db, dataDir, userId: 1, provider: noBoxProvider }, { path, itemTypeId: 1 })
+    const result = await createItemsFromImage({ db, dataDir, userId: 1, provider: noBoxProvider }, { image: readFileSync(path), itemTypeId: 1 })
     expect(result).toEqual({ detected: 0, drafts: [] })
   })
   it('rejects with image-not-decodable when the source file is not a decodable image', async () => {
     const db = createDb(':memory:'); runMigrations(db)
     seed(db)
     const path = join(dataDir, 'src.png'); writeFileSync(path, Buffer.from('this is not an image'))
-    await expect(createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { path, itemTypeId: 1 }))
+    await expect(createItemsFromImage({ db, dataDir, userId: 1, provider: fakeProvider }, { image: readFileSync(path), itemTypeId: 1 }))
       .rejects.toMatchObject({ code: 'image-not-decodable', cause: expect.any(Error) })
+  })
+
+  // A phone photo: an upright 300×400 portrait — red top half, blue bottom half —
+  // stored the way phones store it, as 400×300 landscape pixels plus an EXIF
+  // "rotate 90° clockwise" tag (orientation 6). The browser shows the portrait,
+  // so that is the space the user's boxes are drawn in.
+  const phonePhoto = async () => {
+    const upright = await sharp({ create: { width: 300, height: 400, channels: 3, background: { r: 255, g: 0, b: 0 } } })
+      .composite([{ input: { create: { width: 300, height: 200, channels: 3, background: { r: 0, g: 0, b: 255 } } }, top: 200, left: 0 }])
+      .png().toBuffer()
+    return sharp(upright).rotate(-90).jpeg().withMetadata({ orientation: 6 }).toBuffer()
+  }
+  const meanColour = async (file: string) => {
+    const { channels } = await sharp(file).stats()
+    return { r: Math.round(channels[0].mean), b: Math.round(channels[2].mean) }
+  }
+
+  it('crops a rotated phone photo in the upright space the user drew on', async () => {
+    const db = createDb(':memory:'); runMigrations(db)
+    seed(db)
+    const regions = [
+      { name: 'top', box: { x: 10, y: 10, width: 100, height: 100 } },
+      // Past the raw image's 300px height: only fits once the photo is upright.
+      { name: 'bottom', box: { x: 10, y: 320, width: 100, height: 70 } },
+    ]
+    const result = await createItemsFromImage({ db, dataDir, userId: 1, provider: manualProvider(regions) }, { image: await phonePhoto(), itemTypeId: 1 })
+    expect(result.drafts.map((d) => d.name)).toEqual(['top', 'bottom'])
+
+    const crop = (itemId: number) => db.prepare('SELECT original_path AS path, width, height FROM images WHERE item_id = ?').get(itemId) as { path: string; width: number; height: number }
+    const top = crop(result.drafts[0].id)
+    const bottom = crop(result.drafts[1].id)
+    expect([top.width, top.height]).toEqual([100, 100])
+    expect([bottom.width, bottom.height]).toEqual([100, 70])
+    // The content, not just the size: sideways pixels would put blue (or a mix)
+    // under the top box.
+    const topColour = await meanColour(join(dataDir, top.path))
+    const bottomColour = await meanColour(join(dataDir, bottom.path))
+    expect(topColour.r).toBeGreaterThan(200)
+    expect(topColour.b).toBeLessThan(50)
+    expect(bottomColour.r).toBeLessThan(50)
+    expect(bottomColour.b).toBeGreaterThan(200)
+  })
+
+  it('leaves no draft and no file behind when one crop fails', async () => {
+    const db = createDb(':memory:'); runMigrations(db)
+    seed(db)
+    const png = await sharp({ create: { width: 300, height: 300, channels: 3, background: { r: 200, g: 200, b: 200 } } }).png().toBuffer()
+    // The manual path trusts the client's clamp, so a box past the edge reaches
+    // `extract` — after a good one has already been cropped.
+    const regions = [
+      { name: 'fits', box: { x: 0, y: 0, width: 100, height: 100 } },
+      { name: 'overflows', box: { x: 250, y: 250, width: 100, height: 100 } },
+    ]
+    await expect(createItemsFromImage({ db, dataDir, userId: 1, provider: manualProvider(regions) }, { image: png, itemTypeId: 1 })).rejects.toThrow()
+    expect((db.prepare('SELECT count(*) AS n FROM items').get() as { n: number }).n).toBe(0)
+    await new Promise((r) => setTimeout(r, 50)) // the cleanup unlinks are not awaited
+    const files = ['originals', 'thumbs'].flatMap((d) => { try { return readdirSync(join(dataDir, 'uploads', d)) } catch { return [] } })
+    expect(files).toEqual([])
   })
 })
 
@@ -169,6 +228,19 @@ describe('unpack routes', () => {
     expect(data.drafts).toHaveLength(2)
     expect(data.drafts[0]).toMatchObject({ id: expect.any(Number), name: 'chair', imageId: expect.any(Number) })
     expect(data.drafts[1]).toMatchObject({ id: expect.any(Number), name: 'table', imageId: expect.any(Number) })
+  })
+
+  it('POST /upload/unpack honours the instance upload cap', async () => {
+    await app.inject({ method: 'POST', url: '/trpc/instanceSettings.update', headers: { cookie: adminCookie }, payload: { maxUploadMb: 1 } })
+    try {
+      const form = new FormData()
+      form.append('itemTypeId', String(itemTypeId))
+      form.append('file', Buffer.alloc(2 * 1024 * 1024, 1), { filename: 'big.png', contentType: 'image/png' })
+      const res = await app.inject({ method: 'POST', url: '/upload/unpack', headers: { cookie: adminCookie, ...form.getHeaders() }, payload: form.getBuffer() })
+      expect(res.statusCode).toBe(413)
+    } finally {
+      await app.inject({ method: 'POST', url: '/trpc/instanceSettings.update', headers: { cookie: adminCookie }, payload: { maxUploadMb: 10 } })
+    }
   })
 
   it('unpack.run rejects an unauthenticated request with 401', async () => {
