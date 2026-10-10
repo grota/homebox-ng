@@ -1,11 +1,10 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import { createDb, images } from '@homebox/db'
+import { createDb } from '@homebox/db'
 import { DEFAULT_DATA_DIR, DEFAULT_DATABASE_PATH, resolveDataPath } from '../src/env.js'
-import { renderThumbnail } from '../src/modules/images/thumbnail.js'
+import { regenerateThumbnails } from '../src/modules/images/regenerate.js'
 
-// Admin CLI: re-render every stored thumbnail from its original, using the rule in
-// `modules/images/thumbnail.ts`.
+// Admin CLI: re-render every stored thumbnail, using the rule in
+// `modules/images/thumbnail.ts`. The work is `regenerateThumbnails`, which the
+// admin System tab also runs (as a background job) for instances with no shell.
 //
 // **This is not needed to change how thumbnails look.** The display fix in
 // `docs/superpowers/specs/2026-09-18-photo-fitting-and-page-width-design.md` fits the
@@ -21,8 +20,9 @@ import { renderThumbnail } from '../src/modules/images/thumbnail.js'
 //      photos uploaded after it.
 //
 // It overwrites `thumbPath` **in place**. The path is already known, already unique
-// and already in the database, so no row changes, no file is orphaned, and a second
-// run produces the same bytes as the first.
+// and already in the database, so no path changes, no file is orphaned, and a second
+// run produces the same bytes as the first. The only column it may write is the
+// stored width/height, corrected to the displayed size.
 //
 // **Deleting `uploads/thumbs/` is not an alternative.** Thumbnails are written at
 // upload/edit/unpack and never lazily, so removing them 404s every photo until each
@@ -42,37 +42,13 @@ const main = async () => {
   // itself created, and silently migrating a database is a side effect a thumbnail
   // tool should not own. A missing table fails immediately and says so.
   const db = createDb(dbPath)
-  const rows = db
-    .select({ originalPath: images.originalPath, thumbPath: images.thumbPath, edit: images.editedPath })
-    .from(images)
-    .all()
+  process.stdout.write(`Re-rendering thumbnails from ${dataDir}\n`)
+  const { total, rewritten, resized, skipped } = await regenerateThumbnails(db, dataDir)
 
-  process.stdout.write(`Re-rendering ${rows.length} thumbnail(s) from ${dataDir}\n`)
-
-  let written = 0
-  const failed: string[] = []
-  for (const row of rows) {
-    try {
-      // The displayed photo — the edit when there is one, else the original — which
-      // is what the edit route renders the thumb from (see the image-editor spec).
-      // Rendering an edited photo's thumb from its original would undo the edit on
-      // every card.
-      const source = await readFile(join(dataDir, row.edit ?? row.originalPath))
-      const thumb = await renderThumbnail(source)
-      const dest = join(dataDir, row.thumbPath)
-      await mkdir(dirname(dest), { recursive: true })
-      await writeFile(dest, thumb)
-      written++
-    } catch (err) {
-      // One unreadable original must not abandon the remaining hundreds, so the
-      // loop carries on and the summary at the end is the report.
-      failed.push(`${row.edit ?? row.originalPath}: ${(err as Error).message}`)
-    }
-  }
-
-  for (const line of failed) process.stderr.write(`skipped — ${line}\n`)
-  process.stdout.write(`\n${written} rewritten, ${failed.length} skipped, of ${rows.length} images.\n`)
-  process.exit(failed.length > 0 ? 1 : 0)
+  for (const { path, reason } of skipped) process.stderr.write(`skipped — ${path}: ${reason}\n`)
+  process.stdout.write(`\n${rewritten} rewritten, ${skipped.length} skipped, of ${total} images.\n`)
+  if (resized > 0) process.stdout.write(`${resized} stored size(s) corrected.\n`)
+  process.exit(skipped.length > 0 ? 1 : 0)
 }
 
 void main()

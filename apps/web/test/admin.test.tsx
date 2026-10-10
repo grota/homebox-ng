@@ -11,9 +11,14 @@ vi.mock('react-i18next', () => ({
   // single-brace placeholder then fails the assertion instead of silently
   // rendering `{count}`.
   useTranslation: () => ({
-    t: (k: string, opts?: { count?: number }) =>
+    t: (k: string, opts?: Record<string, unknown>) =>
       k === 'admin.title' ? 'Admin'
       : k === 'admin.system.rebuilt' ? adminJson.admin.system.rebuilt.replace('{{count}}', String(opts?.count))
+      : k.startsWith('admin.system.thumbnails.') && opts
+        ? Object.entries(opts).reduce(
+            (text, [key, value]) => text.replace(`{{${key}}}`, String(value)),
+            (adminJson.admin.system.thumbnails as Record<string, string>)[k.slice('admin.system.thumbnails.'.length)],
+          )
       : k,
   }),
   // `AppRoutes` → `SettingsPage` → `SettingsProvider` touches `i18n.ts`, which
@@ -29,6 +34,9 @@ vi.mock('react-filerobot-image-editor', async () => await import('./filerobotMoc
 
 // The active user's role, mutable so each test can exercise admin vs non-admin.
 let mockRole: string = 'admin'
+// What `system.thumbnailsStatus` answers, mutable per test.
+let mockThumbnailJob: Record<string, unknown> = { status: 'idle' }
+const startThumbnails = vi.fn()
 
 // mock the tRPC module so `useAuth` (auth.me) and `SetupGate` (requiresSetup)
 // resolve deterministically without a backend. The admin page renders the
@@ -46,7 +54,7 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
       useUtils: () => ({
         users: { list: { invalidate } },
         instanceSettings: { get: { invalidate } },
-        system: { rebuildFts: { invalidate } },
+        system: { rebuildFts: { invalidate }, thumbnailsStatus: { setData: vi.fn() } },
         items: { list: { invalidate } },
       }),
       auth: {
@@ -72,6 +80,8 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
             mutate: () => options?.onSuccess?.({ reindexed: 3 }),
           }),
         },
+        thumbnailsStatus: { useQuery: () => ({ data: mockThumbnailJob, isLoading: false }) },
+        regenerateThumbnails: { useMutation: () => ({ ...idleMutation, mutate: startThumbnails }) },
       },
       // The non-admin guard lands on `/`, which redirects to the items page, so
       // the catalog's two queries must resolve here too. A stub that omits these
@@ -106,6 +116,7 @@ const renderAt = (path: string) =>
 describe('admin route', () => {
   beforeEach(() => {
     mockRole = 'admin'
+    mockThumbnailJob = { status: 'idle' }
   })
 
   it('renders the admin page for an admin', () => {
@@ -160,5 +171,38 @@ describe('admin route', () => {
     expect(screen.getByRole('tab', { name: 'admin.tabs.system' })).toHaveAttribute('aria-selected', 'true')
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'admin.tabs.backup' }))
     expect(screen.getByTestId('where')).toHaveTextContent('/admin/backup')
+  })
+})
+
+describe('thumbnail regeneration', () => {
+  beforeEach(() => {
+    mockRole = 'admin'
+    startThumbnails.mockClear()
+  })
+
+  it('starts a run from the system tab', () => {
+    mockThumbnailJob = { status: 'idle' }
+    renderAt('/admin/system')
+    fireEvent.click(screen.getByRole('button', { name: 'admin.system.thumbnails.run' }))
+    expect(startThumbnails).toHaveBeenCalledOnce()
+  })
+
+  it('shows progress and disables the button while a run is going', () => {
+    mockThumbnailJob = { status: 'running', done: 412, total: 1830 }
+    renderAt('/admin/system')
+    expect(screen.getByTestId('thumbnails-progress')).toHaveTextContent('412 / 1830 photos')
+    expect(screen.getByRole('button', { name: 'admin.system.thumbnails.run' })).toBeDisabled()
+  })
+
+  it('shows the result, the skipped photos, and how many were left off the list', () => {
+    mockThumbnailJob = {
+      status: 'done', total: 60, rewritten: 3, resized: 1, skippedCount: 57,
+      skipped: [{ path: 'uploads/originals/a.jpg', reason: 'file missing' }],
+    }
+    renderAt('/admin/system')
+    const result = screen.getByTestId('thumbnails-result')
+    expect(result).toHaveTextContent('3 rewritten, 57 skipped, 1 sizes corrected')
+    expect(result).toHaveTextContent('uploads/originals/a.jpg: file missing')
+    expect(result).toHaveTextContent('…and 56 more')
   })
 })

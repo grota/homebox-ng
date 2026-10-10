@@ -74,7 +74,16 @@
     "system": {
       "title": "System",
       "rebuildFts": "Rebuild search index",
-      "rebuilt": "Reindexed {{count}} items"
+      "rebuilt": "Reindexed {{count}} items",
+      "thumbnails": {
+        "title": "Thumbnails",
+        "help": "Re-render every thumbnail from its photo. Fixes sideways or outdated thumbnails. Originals and edits are never changed, and it is safe to run again.",
+        "run": "Regenerate thumbnails",
+        "progress": "{{done}} / {{total}} photos",
+        "result": "{{rewritten}} rewritten, {{skipped}} skipped, {{resized}} sizes corrected",
+        "more": "…and {{count}} more",
+        "failed": "Thumbnail regeneration failed: {{error}}"
+      }
     },
     "tabsLabel": "Admin sections"
   }

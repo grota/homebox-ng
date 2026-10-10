@@ -1,9 +1,10 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import type { DrizzleDb } from '@homebox/db'
 import { getSessionUser } from './auth/sessions.js'
+import type { Maintenance } from './modules/system/maintenance.js'
 
 export type SessionUser = { id: number; role: 'admin' | 'user' }
-export type Context = { db: DrizzleDb; user: SessionUser | null; req: FastifyRequest; res: FastifyReply; dataDir: string }
+export type Context = { db: DrizzleDb; user: SessionUser | null; req: FastifyRequest; res: FastifyReply; dataDir: string; maintenance: Maintenance }
 // Holds the live (swappable) DB. Restore swaps `holder.current` for a fresh
 // connection, so per-request consumers (tRPC context, upload routes) must read
 // the handle at request time rather than capture the original instance.
@@ -27,9 +28,10 @@ export const parseSessionCookie = (cookieHeader: string | undefined): string | n
 // The live DB is read from `holder.current` at call time so a restore that swaps
 // the connection takes effect on the next request. `dataDir` locates the image
 // store so detection/download handlers resolve relative paths against it.
-export const createContext = (holder: DbHolder, dataDir: string) => async ({ req, res }: { req: FastifyRequest; res: FastifyReply }): Promise<Context> => {
+// `maintenance` is the app's shared state for long-running admin work.
+export const createContext = (holder: DbHolder, dataDir: string, maintenance: Maintenance) => async ({ req, res }: { req: FastifyRequest; res: FastifyReply }): Promise<Context> => {
   const db = holder.current
   const token = parseSessionCookie(req.headers.cookie)
   const user = token ? getSessionUser(db, token, process.env.SESSION_SECRET ?? '') : null
-  return { db, user, req, res, dataDir }
+  return { db, user, req, res, dataDir, maintenance }
 }

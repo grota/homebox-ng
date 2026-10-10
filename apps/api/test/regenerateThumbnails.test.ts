@@ -95,10 +95,10 @@ describe('regenerate-thumbnails', () => {
 
     expect(await run()).toContain('2 rewritten, 0 skipped, of 2 images.')
 
-    // The path in the database is untouched, which is the whole reason this is safe
-    // to re-run: `thumbPath` is already unique and already known, so no row changes
-    // and no file is orphaned.
-    expect(db.select().from(images).get()).toEqual(row)
+    // The paths in the database are untouched, which is the whole reason this is
+    // safe to re-run: `thumbPath` is already unique and already known, so no file is
+    // orphaned. The one write is the stored size, filled in from the photo.
+    expect(db.select().from(images).get()).toEqual({ ...row, width: 200, height: 100 })
     expect(await sizeOf(thumbAbs)).toEqual({ width: 200, height: 100 }) // never enlarged
     // The edited photo's thumb follows the edit, not the original under it.
     expect(await sizeOf(join(dataDir, editedThumbPath))).toEqual({ width: 300, height: 100 })

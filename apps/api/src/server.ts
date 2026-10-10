@@ -9,6 +9,7 @@ import { registerUnpackRoute } from './modules/unpack/route.js'
 import { getSettings } from './modules/instanceSettings/service.js'
 import { DEFAULT_DATA_DIR, type LogLevel } from './env.js'
 import { registerDetectionProviders } from './modules/detection/register.js'
+import { createMaintenance } from './modules/system/maintenance.js'
 
 export type BuildAppOptions = {
   db: DrizzleDb
@@ -44,6 +45,9 @@ export const buildApp = ({
   // tRPC and the upload/backup routes read `dbHolder.current` per request, so
   // they keep working after a restore (instead of holding a closed old handle).
   const dbHolder: DbHolder = { current: db }
+  // Shared by tRPC (the thumbnail run) and the backup routes (restore), which
+  // must not overlap.
+  const maintenance = createMaintenance()
 
   // `version` is the whole point of the release pipeline's build argument: a
   // self-hosted instance should be able to say which build it is running without
@@ -54,14 +58,14 @@ export const buildApp = ({
     prefix: '/trpc',
     trpcOptions: {
       router: appRouter,
-      createContext: createContext(dbHolder, dataDir),
+      createContext: createContext(dbHolder, dataDir, maintenance),
     } satisfies FastifyTRPCPluginOptions<AppRouter>['trpcOptions'],
   })
 
   // Uploads first: it registers @fastify/multipart, which the backup upload route
   // reuses (`/upload/backup` reads `req.file()`).
   registerUploadRoutes(app, { dbHolder, dataDir })
-  registerBackupRoutes(app, { dbHolder, dataDir, dbPath })
+  registerBackupRoutes(app, { dbHolder, dataDir, dbPath, maintenance })
   // After the upload/backup routes so `@fastify/multipart` (registered by
   // registerUploadRoutes) is available to the unpack route's `req.file()`.
   registerUnpackRoute(app, { dbHolder, dataDir })

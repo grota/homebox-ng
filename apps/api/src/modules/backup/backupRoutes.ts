@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { parseSessionCookie } from '../../context.js'
 import type { DbHolder } from '../../context.js'
+import type { Maintenance } from '../system/maintenance.js'
 import { getSessionUser } from '../../auth/sessions.js'
 import { createBackup, validateBackup, applyRestore } from './service.js'
 import { archivePath, deleteBackup, isBackupId, listBackups, readBackupMeta, sweepRunningToFailed, writeBackupMeta } from './store.js'
@@ -15,8 +16,8 @@ import { archivePath, deleteBackup, isBackupId, listBackups, readBackupMeta, swe
 // treated as abandoned and its temp dir is cleaned up.
 const RESTORE_TTL_MS = 15 * 60 * 1000 // 15 minutes
 
-export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbHolder; dataDir: string; dbPath?: string }): void => {
-  const { dbHolder, dataDir, dbPath } = opts
+export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbHolder; dataDir: string; dbPath?: string; maintenance: Maintenance }): void => {
+  const { dbHolder, dataDir, dbPath, maintenance } = opts
 
   // Use the CURRENT db handle for auth, mirroring uploads.ts.
   const admin = (req: FastifyRequest, reply: FastifyReply) => {
@@ -213,10 +214,16 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
     const { restoreId } = (req.body ?? {}) as { restoreId?: string }
     const dest = restoreId ? restoreDirs.get(restoreId) : undefined
     if (!dest || !restoreId) return reply.code(400).send({ error: 'unknown restoreId' })
+    // A thumbnail run writes into the `uploads/` tree a restore is about to
+    // replace. Refused before anything is consumed, so the confirm can be retried
+    // once the run finishes.
+    if (maintenance.thumbnails.status === 'running') return reply.code(409).send({ error: 'thumbnails_in_progress' })
+    maintenance.restoring = true
     try {
       await applyRestore(dbHolder, dest, dbPath, dataDir)
       return { ok: true }
     } finally {
+      maintenance.restoring = false
       // Whether the swap succeeded or failed, the validated extraction has been
       // consumed (or can no longer be safely applied) — drop the map entry + its
       // temp dir so it can't leak. Idempotent and best-effort.
