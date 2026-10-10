@@ -56,6 +56,14 @@ describe('renderThumbnail', () => {
     expect(await sizeOf(await renderThumbnail(cropped))).toEqual({ width: 300, height: 150 })
   })
 
+  // A phone photo: 400×300 landscape pixels plus EXIF orientation 6 ("rotate 90°
+  // clockwise"), which every viewer shows as a 300×400 portrait. The thumbnail
+  // carries no metadata, so it has to be rendered upright.
+  it('renders a rotated phone photo upright', async () => {
+    const phone = await sharp(await solid(400, 300)).jpeg().withMetadata({ orientation: 6 }).toBuffer()
+    expect(await sizeOf(await renderThumbnail(phone))).toEqual({ width: 300, height: 400 })
+  })
+
   it('renders jpeg', async () => {
     const meta = await sharp(await renderThumbnail(await solid(800, 600))).metadata()
     expect(meta.format).toBe('jpeg')

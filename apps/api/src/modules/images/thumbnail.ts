@@ -37,6 +37,11 @@ export const THUMBNAIL_MAX_EDGE = 400
 
 export const renderThumbnail = async (source: Buffer | Sharp): Promise<Buffer> =>
   (Buffer.isBuffer(source) ? sharp(source) : source)
+    // A phone photo stores landscape pixels plus an EXIF "rotate" tag, and the
+    // JPEG written below carries no metadata — so without this the tag is lost
+    // and a portrait photo's thumbnail comes out sideways. A no-op for anything
+    // already upright (the unpack crops are).
+    .autoOrient()
     .resize({
       width: THUMBNAIL_MAX_EDGE,
       height: THUMBNAIL_MAX_EDGE,

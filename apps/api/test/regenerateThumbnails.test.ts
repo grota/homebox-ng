@@ -41,6 +41,9 @@ let thumbAbs: string
 
 const sourcePath = 'uploads/originals/seed.png'
 const thumbPath = 'uploads/thumbs/seed.jpg'
+const editedOriginalPath = 'uploads/originals/edited-source.png'
+const editedPath = 'uploads/edited/edit.png'
+const editedThumbPath = 'uploads/thumbs/edit.jpg'
 
 const run = async () => {
   const { stdout } = await exec('pnpm', ['exec', 'tsx', SCRIPT], {
@@ -69,6 +72,13 @@ beforeAll(async () => {
   const [type] = db.insert(itemTypes).values({ name: 'Type' }).returning({ id: itemTypes.id }).all()
   const [item] = db.insert(items).values({ name: 'Item', itemTypeId: type.id, createdBy: user.id }).returning({ id: items.id }).all()
   db.insert(images).values({ itemId: item.id, originalPath: sourcePath, thumbPath }).run()
+  // An edited photo, whose thumb must come from the edit: a 300×100 crop of a
+  // 100×300 original, so the two sources give visibly different thumbs.
+  db.insert(images).values({ itemId: item.id, originalPath: editedOriginalPath, editedPath, thumbPath: editedThumbPath }).run()
+  mkdirSync(dirname(join(dataDir, editedPath)), { recursive: true })
+  writeFileSync(join(dataDir, editedOriginalPath), await sharp({ create: { width: 100, height: 300, channels: 3, background: { r: 1, g: 1, b: 1 } } }).png().toBuffer())
+  writeFileSync(join(dataDir, editedPath), await sharp({ create: { width: 300, height: 100, channels: 3, background: { r: 1, g: 1, b: 1 } } }).png().toBuffer())
+  writeFileSync(join(dataDir, editedThumbPath), Buffer.from('stale'))
 
   // Smaller than the bound, so the two rules disagree visibly: the old one inflates
   // it to 400 wide, the new one leaves it alone.
@@ -83,13 +93,15 @@ describe('regenerate-thumbnails', () => {
     const row = db.select().from(images).get()!
     expect(await sizeOf(thumbAbs)).toEqual({ width: 400, height: 200 }) // enlarged by the old rule
 
-    expect(await run()).toContain('1 rewritten, 0 skipped, of 1 images.')
+    expect(await run()).toContain('2 rewritten, 0 skipped, of 2 images.')
 
     // The path in the database is untouched, which is the whole reason this is safe
     // to re-run: `thumbPath` is already unique and already known, so no row changes
     // and no file is orphaned.
     expect(db.select().from(images).get()).toEqual(row)
     expect(await sizeOf(thumbAbs)).toEqual({ width: 200, height: 100 }) // never enlarged
+    // The edited photo's thumb follows the edit, not the original under it.
+    expect(await sizeOf(join(dataDir, editedThumbPath))).toEqual({ width: 300, height: 100 })
 
     // Idempotent, and proved to have actually rewritten rather than merely left
     // alone: clobber the file, run again, and the previous bytes come back.

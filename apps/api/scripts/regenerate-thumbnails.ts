@@ -53,11 +53,11 @@ const main = async () => {
   const failed: string[] = []
   for (const row of rows) {
     try {
-      // The `originalPath`, never `editedPath`: the thumbnail follows the photo the
-      // server crops from, which is the rule everywhere else too. An edited photo
-      // gets a new thumb path at edit time, so re-rendering from the original is
-      // exactly what the edit already did.
-      const source = await readFile(join(dataDir, row.originalPath))
+      // The displayed photo — the edit when there is one, else the original — which
+      // is what the edit route renders the thumb from (see the image-editor spec).
+      // Rendering an edited photo's thumb from its original would undo the edit on
+      // every card.
+      const source = await readFile(join(dataDir, row.edit ?? row.originalPath))
       const thumb = await renderThumbnail(source)
       const dest = join(dataDir, row.thumbPath)
       await mkdir(dirname(dest), { recursive: true })
@@ -66,7 +66,7 @@ const main = async () => {
     } catch (err) {
       // One unreadable original must not abandon the remaining hundreds, so the
       // loop carries on and the summary at the end is the report.
-      failed.push(`${row.originalPath}: ${(err as Error).message}`)
+      failed.push(`${row.edit ?? row.originalPath}: ${(err as Error).message}`)
     }
   }
 
