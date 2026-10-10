@@ -68,7 +68,10 @@ export function AppRoutes() {
         <Route path="/drafts" element={<DraftsPage />} />
     <Route path="/trash" element={<TrashPage />} />
         <Route path="/change-password" element={<ChangePasswordPage />} />
-        <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
+        {/* Each admin tab has its own URL; bare `/admin` opens the first one.
+            `replace` keeps the detour out of the history stack. */}
+        <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
+        <Route path="/admin/:tab" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
       </Route>
     </Routes>
   )

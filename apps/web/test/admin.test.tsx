@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import adminJson from '../src/locales/en/admin.json'
 
 vi.mock('react-i18next', () => ({
@@ -90,6 +90,19 @@ vi.mock('../src/api/trpc', async (importOriginal) => {
 
 import { AppRoutes } from '../src/app/routes'
 
+// Renders the current path so a test can assert where the router ended up.
+function Where() {
+  return <output data-testid="where">{useLocation().pathname}</output>
+}
+
+const renderAt = (path: string) =>
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <AppRoutes />
+      <Where />
+    </MemoryRouter>,
+  )
+
 describe('admin route', () => {
   beforeEach(() => {
     mockRole = 'admin'
@@ -131,5 +144,21 @@ describe('admin route', () => {
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'admin.tabs.system' }))
     fireEvent.click(screen.getByRole('button', { name: 'admin.system.rebuildFts' }))
     expect(screen.getByRole('status')).toHaveTextContent('Reindexed 3 items')
+  })
+
+  it('opens the first tab when the URL names none, or one that does not exist', () => {
+    for (const path of ['/admin', '/admin/nope']) {
+      const { unmount } = renderAt(path)
+      expect(screen.getByTestId('where')).toHaveTextContent('/admin/users')
+      expect(screen.getByRole('tab', { name: 'admin.tabs.users' })).toHaveAttribute('aria-selected', 'true')
+      unmount()
+    }
+  })
+
+  it('opens the tab its URL names, and switching tabs changes the URL', () => {
+    renderAt('/admin/system')
+    expect(screen.getByRole('tab', { name: 'admin.tabs.system' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'admin.tabs.backup' }))
+    expect(screen.getByTestId('where')).toHaveTextContent('/admin/backup')
   })
 })
