@@ -1,5 +1,6 @@
-import { createReadStream, existsSync } from 'node:fs'
-import { writeFile, mkdtemp, rm } from 'node:fs/promises'
+import { createReadStream, createWriteStream, existsSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { pipeline } from 'node:stream/promises'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -178,13 +179,16 @@ export const registerBackupRoutes = (app: FastifyInstance, opts: { dbHolder: DbH
   // Phase 1 — ingest + validate (non-destructive).
   app.post('/upload/backup', async (req, reply) => {
     if (!admin(req, reply)) return
-    const part = await req.file()
+    // No size cap here: the global multipart limit is the photo ceiling, and a
+    // backup carries every photo, so it routinely outgrows it. Streamed to disk
+    // rather than buffered, for the same reason.
+    const part = await req.file({ limits: { fileSize: Infinity } })
     if (!part) return reply.code(400).send({ error: 'expected a backup archive' })
     const tmp = await mkdtemp(join(tmpdir(), 'homebox-restore-'))
     const archive = join(tmp, 'backup.tar.gz')
     const dest = join(tmp, 'extract')
     try {
-      await writeFile(archive, await part.toBuffer())
+      await pipeline(part.file, createWriteStream(archive))
       const { preview, restoreId } = await validateBackup(archive, dest)
       // Keep the validated extraction for the confirm step, and arm an expiry
       // timer so a never-confirmed restore can't leak the temp dir forever.
