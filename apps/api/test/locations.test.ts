@@ -46,6 +46,22 @@ describe('locations module', () => {
 
   // `description` rides the create path rather than arriving null: the form
   // sends it, so the round trip has to keep it.
+  it('refuses a move that would push the moved subtree past the depth limit', async () => {
+    // A chain 7 deep, and a separate two-level subtree: under the level-7 node
+    // its leaf would sit at level 9.
+    let parentId: number | null = null
+    for (let i = 1; i <= 7; i++) parentId = (await createLocation({ name: `Deep ${i}`, parentId })).id
+    const box = await createLocation({ name: 'Box', parentId: null })
+    await createLocation({ name: 'Box inner', parentId: box.id })
+
+    const res = await app.inject({ method: 'POST', url: '/trpc/locations.update', headers: { cookie }, payload: { id: box.id, parentId } })
+    expect(res.json()?.error?.data?.code).toBe('BAD_REQUEST')
+
+    // A leaf may still go there: it lands exactly on level 8.
+    const leaf = await createLocation({ name: 'Leaf', parentId: null })
+    expect((await post('locations.update', { id: leaf.id, parentId }))?.depth).toBe(8)
+  })
+
   it('keeps a description through create and update', async () => {
     const loc = await createLocation({ name: 'Cellar', parentId: null, description: 'damp and dark' })
     expect(loc.description).toBe('damp and dark')

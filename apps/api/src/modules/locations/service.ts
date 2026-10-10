@@ -71,6 +71,21 @@ const isDescendantOrSelf = (rows: LocationRow[], candidateId: number, rootId: nu
   return false
 }
 
+// Levels in the subtree rooted at `rootId`, the root included (a leaf is 1).
+// Moving a location carries this whole height with it, so a move is legal only
+// when the new parent's depth plus this stays within the limit.
+const subtreeHeight = (rows: LocationRow[], rootId: number): number => {
+  const seen = new Set([rootId])
+  let level = [rootId]
+  let height = 0
+  while (level.length > 0) {
+    height++
+    level = rows.filter((r) => r.parentId != null && level.includes(r.parentId) && !seen.has(r.id)).map((r) => r.id)
+    for (const id of level) seen.add(id)
+  }
+  return height
+}
+
 const buildIndex = (rows: LocationRow[]): Map<number, LocationRow> => new Map(rows.map((r) => [r.id, r]))
 
 // Assemble the flat rows into a tree. Top-level locations are rows with
@@ -132,7 +147,7 @@ export const updateLocation = (db: DrizzleDb, input: UpdateLocationInput): Locat
     const rows = repo.listLocations(db)
     if (isDescendantOrSelf(rows, nextParentId, input.id)) throw new TRPCError({ code: 'CONFLICT' })
     const parentDepth = computeDepth(buildIndex(rows), parent)
-    if (parentDepth + 1 > LOCATION_DEPTH_MAX) throw new TRPCError({ code: 'BAD_REQUEST' })
+    if (parentDepth + subtreeHeight(rows, input.id) > LOCATION_DEPTH_MAX) throw new TRPCError({ code: 'BAD_REQUEST' })
   }
 
   const data: repo.UpdateLocationData = {}
